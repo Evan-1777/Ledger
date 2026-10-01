@@ -18,7 +18,8 @@ func InitDB(dbPath string) (*sql.DB, error) {
 		}
 	}
 
-	database, err := sql.Open("sqlite", dbPath)
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)", dbPath)
+	database, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -27,18 +28,10 @@ func InitDB(dbPath string) (*sql.DB, error) {
 	database.SetMaxOpenConns(10)
 	database.SetMaxIdleConns(5)
 
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL;",
-		"PRAGMA busy_timeout = 5000;",
-		"PRAGMA synchronous = NORMAL;",
-		"PRAGMA foreign_keys = ON;",
-	}
-
-	for _, pragma := range pragmas {
-		if _, err := database.Exec(pragma); err != nil {
-			_ = database.Close()
-			return nil, fmt.Errorf("failed to execute pragma (%s): %w", pragma, err)
-		}
+	// PRAGMA journal_mode is persistent in the database file header once set
+	if _, err := database.Exec("PRAGMA journal_mode = WAL;"); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("failed to execute pragma journal_mode: %w", err)
 	}
 
 	if err := database.Ping(); err != nil {

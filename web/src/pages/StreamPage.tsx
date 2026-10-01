@@ -70,7 +70,13 @@ export const StreamPage: FC<StreamPageProps> = ({
 
       const parts = dateStr.split('-');
       if (parts.length === 3) {
-        return `${parseInt(parts[1], 10)}月${parseInt(parts[2], 10)}日`;
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const day = parseInt(parts[2], 10);
+        if (year !== today.getFullYear()) {
+          return `${year}年${month}月${day}日`;
+        }
+        return `${month}月${day}日`;
       }
       return dateStr;
     } catch {

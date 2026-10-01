@@ -71,14 +71,25 @@ func (s *Server) handleCreatePaymentMethod(w http.ResponseWriter, r *http.Reques
 
 	res, err := s.db.ExecContext(r.Context(), "INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)", req.Name, req.SortOrder)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "payment method already exists or invalid data")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "payment method already exists")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to create payment method: "+err.Error())
 		return
 	}
 
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to retrieve id: "+err.Error())
+		return
+	}
 	var pm PaymentMethod
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
-		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
+		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read payment method: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, pm)
 }
@@ -107,7 +118,11 @@ func (s *Server) handleUpdatePaymentMethod(w http.ResponseWriter, r *http.Reques
 
 	res, err := s.db.ExecContext(r.Context(), "UPDATE payment_methods SET name = ?, sort_order = ? WHERE id = ?", req.Name, req.SortOrder, id)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "duplicate name or invalid update")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "payment method already exists")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to update payment method: "+err.Error())
 		return
 	}
 	rowsAffected, _ := res.RowsAffected()
@@ -117,8 +132,11 @@ func (s *Server) handleUpdatePaymentMethod(w http.ResponseWriter, r *http.Reques
 	}
 
 	var pm PaymentMethod
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
-		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
+		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read payment method: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusOK, pm)
 }
@@ -218,15 +236,26 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.db.ExecContext(r.Context(), "INSERT INTO categories (name, sort_order) VALUES (?, ?)", req.Name, req.SortOrder)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "category already exists or invalid data")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "category already exists")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to create category: "+err.Error())
 		return
 	}
 
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to retrieve id: "+err.Error())
+		return
+	}
 	var cat Category
 	cat.Tags = make([]Tag, 0)
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, cat)
 }
@@ -255,7 +284,11 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.db.ExecContext(r.Context(), "UPDATE categories SET name = ?, sort_order = ? WHERE id = ?", req.Name, req.SortOrder, id)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "duplicate name or invalid update")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "category already exists")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to update category: "+err.Error())
 		return
 	}
 	rowsAffected, _ := res.RowsAffected()
@@ -266,8 +299,11 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 
 	var cat Category
 	cat.Tags = make([]Tag, 0)
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusOK, cat)
 }
@@ -395,14 +431,25 @@ func (s *Server) handleCreateTag(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.db.ExecContext(r.Context(), "INSERT INTO tags (category_id, name, sort_order) VALUES (?, ?, ?)", req.CategoryID, req.Name, req.SortOrder)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "tag already exists in this category or invalid category")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "tag already exists in this category")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to create tag: "+err.Error())
 		return
 	}
 
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to retrieve id: "+err.Error())
+		return
+	}
 	var tag Tag
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, category_id, name, sort_order, created_at FROM tags WHERE id = ?", id).
-		Scan(&tag.ID, &tag.CategoryID, &tag.Name, &tag.SortOrder, &tag.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, category_id, name, sort_order, created_at FROM tags WHERE id = ?", id).
+		Scan(&tag.ID, &tag.CategoryID, &tag.Name, &tag.SortOrder, &tag.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read tag: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusCreated, tag)
 }
@@ -431,7 +478,11 @@ func (s *Server) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.db.ExecContext(r.Context(), "UPDATE tags SET name = ?, sort_order = ? WHERE id = ?", req.Name, req.SortOrder, id)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "duplicate tag name or invalid update")
+		if isUniqueConstraintError(err) {
+			writeJSONError(w, http.StatusBadRequest, "duplicate tag name or invalid update")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to update tag: "+err.Error())
 		return
 	}
 	rowsAffected, _ := res.RowsAffected()
@@ -441,8 +492,11 @@ func (s *Server) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tag Tag
-	_ = s.db.QueryRowContext(r.Context(), "SELECT id, category_id, name, sort_order, created_at FROM tags WHERE id = ?", id).
-		Scan(&tag.ID, &tag.CategoryID, &tag.Name, &tag.SortOrder, &tag.CreatedAt)
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, category_id, name, sort_order, created_at FROM tags WHERE id = ?", id).
+		Scan(&tag.ID, &tag.CategoryID, &tag.Name, &tag.SortOrder, &tag.CreatedAt); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to read tag: "+err.Error())
+		return
+	}
 
 	writeJSON(w, http.StatusOK, tag)
 }
@@ -491,4 +545,23 @@ func writeJSONError(w http.ResponseWriter, statusCode int, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "unique")
+}
+
+type badRequestError struct {
+	msg string
+}
+
+func (e *badRequestError) Error() string {
+	return e.msg
+}
+
+func badRequest(msg string) error {
+	return &badRequestError{msg: msg}
 }

@@ -514,3 +514,68 @@ func jsonNumber(id int64) string {
 	b, _ := json.Marshal(id)
 	return string(b)
 }
+
+func TestErrorHandlingAndStatsFailFast(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// 1. Duplicate payment method returns 400
+	pmBody := strings.NewReader(`{"name":"微信支付","sort_order":1}`) // "微信支付" already exists from seed
+	req := httptest.NewRequest("POST", "/api/payment-methods", pmBody)
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for duplicate payment method, got %d", rec.Code)
+	}
+
+	// 2. Duplicate category returns 400
+	catBody := strings.NewReader(`{"name":"餐饮美食","sort_order":1}`) // "餐饮美食" already exists from seed
+	req = httptest.NewRequest("POST", "/api/categories", catBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for duplicate category, got %d", rec.Code)
+	}
+
+	// 3. Now simulate DB failure: close underlying DB connection
+	_ = s.db.Close()
+
+	// 3a. Stats summary on broken DB MUST return 500 (not fake 200 with 0s)
+	reqStats := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqStats.Header.Set("Authorization", authHeader)
+	recStats := httptest.NewRecorder()
+	s.ServeHTTP(recStats, reqStats)
+	if recStats.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for stats summary with closed DB, got %d", recStats.Code)
+	}
+
+	// 3b. Create payment method on broken DB MUST return 500 (not 400 "already exists")
+	pmNew := strings.NewReader(`{"name":"全新渠道","sort_order":99}`)
+	reqBrokenPM := httptest.NewRequest("POST", "/api/payment-methods", pmNew)
+	reqBrokenPM.Header.Set("Authorization", authHeader)
+	recBrokenPM := httptest.NewRecorder()
+	s.ServeHTTP(recBrokenPM, reqBrokenPM)
+	if recBrokenPM.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for payment method creation on broken DB, got %d", recBrokenPM.Code)
+	}
+
+	// 3c. Create transaction on broken DB MUST return 500 (not 400 "payment method does not exist")
+	txJSON, _ := json.Marshal(map[string]any{
+		"amount":            -10.0,
+		"description":       "测试",
+		"payment_method_id": 1,
+		"category_id":       1,
+		"tag_id":            1,
+	})
+	reqBrokenTx := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(txJSON)))
+	reqBrokenTx.Header.Set("Authorization", authHeader)
+	recBrokenTx := httptest.NewRecorder()
+	s.ServeHTTP(recBrokenTx, reqBrokenTx)
+	if recBrokenTx.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for transaction validation on broken DB, got %d", recBrokenTx.Code)
+	}
+}

@@ -76,4 +76,38 @@ func TestInitDB(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected foreign key constraint violation error, got nil")
 	}
+
+	// Verify multi-connection pool foreign_keys and busy_timeout inheritance
+	conn1, err := database2.Conn(t.Context())
+	if err != nil {
+		t.Fatalf("failed to open conn1: %v", err)
+	}
+	defer conn1.Close()
+
+	conn2, err := database2.Conn(t.Context())
+	if err != nil {
+		t.Fatalf("failed to open conn2: %v", err)
+	}
+	defer conn2.Close()
+
+	var fk2 int
+	if err := conn2.QueryRowContext(t.Context(), "PRAGMA foreign_keys;").Scan(&fk2); err != nil {
+		t.Fatalf("failed to query foreign_keys on conn2: %v", err)
+	}
+	if fk2 != 1 {
+		t.Errorf("expected foreign_keys=1 on conn2, got %d", fk2)
+	}
+
+	var bt2 int
+	if err := conn2.QueryRowContext(t.Context(), "PRAGMA busy_timeout;").Scan(&bt2); err != nil {
+		t.Fatalf("failed to query busy_timeout on conn2: %v", err)
+	}
+	if bt2 != 5000 {
+		t.Errorf("expected busy_timeout=5000 on conn2, got %d", bt2)
+	}
+
+	_, err = conn2.ExecContext(t.Context(), "INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at) VALUES (100, 'test', 9999, 9999, 9999, '2026-10-01T12:00:00Z')")
+	if err == nil {
+		t.Errorf("expected foreign key violation on conn2, got nil")
+	}
 }

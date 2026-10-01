@@ -117,7 +117,12 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 
 	amountCents, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		var brErr *badRequestError
+		if errors.As(err, &brErr) {
+			writeJSONError(w, http.StatusBadRequest, brErr.Error())
+		} else {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -158,7 +163,12 @@ func (s *Server) handleUpdateTransaction(w http.ResponseWriter, r *http.Request)
 
 	amountCents, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		var brErr *badRequestError
+		if errors.As(err, &brErr) {
+			writeJSONError(w, http.StatusBadRequest, brErr.Error())
+		} else {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 
@@ -214,33 +224,42 @@ func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request)
 func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, string, error) {
 	amountCents := int64(math.Round(req.Amount * 100))
 	if amountCents == 0 {
-		return 0, "", errors.New("amount must not be 0")
+		return 0, "", badRequest("amount must not be 0")
 	}
 
 	req.Description = strings.TrimSpace(req.Description)
 	if req.Description == "" {
-		return 0, "", errors.New("description cannot be empty")
+		return 0, "", badRequest("description cannot be empty")
 	}
 
 	// Validate payment method exists
 	var pmExists int
 	err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM payment_methods WHERE id = ?", req.PaymentMethodID).Scan(&pmExists)
-	if err != nil || pmExists == 0 {
-		return 0, "", errors.New("payment method does not exist")
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to query payment method: %w", err)
+	}
+	if pmExists == 0 {
+		return 0, "", badRequest("payment method does not exist")
 	}
 
 	// Validate category exists
 	var catExists int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM categories WHERE id = ?", req.CategoryID).Scan(&catExists)
-	if err != nil || catExists == 0 {
-		return 0, "", errors.New("category does not exist")
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to query category: %w", err)
+	}
+	if catExists == 0 {
+		return 0, "", badRequest("category does not exist")
 	}
 
 	// Validate tag exists and belongs to the given category
 	var tagBelongs int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM tags WHERE id = ? AND category_id = ?", req.TagID, req.CategoryID).Scan(&tagBelongs)
-	if err != nil || tagBelongs == 0 {
-		return 0, "", errors.New("tag does not belong to specified category")
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to query tag: %w", err)
+	}
+	if tagBelongs == 0 {
+		return 0, "", badRequest("tag does not belong to specified category")
 	}
 
 	// Validate/standardize transacted_at
@@ -251,7 +270,7 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 	} else {
 		parsedTime, err := parseFlexibleTime(transactedAtStr)
 		if err != nil {
-			return 0, "", fmt.Errorf("invalid transacted_at: %w", err)
+			return 0, "", badRequest(fmt.Sprintf("invalid transacted_at: %v", err))
 		}
 		finalTransactedAt = parsedTime.UTC().Format(time.RFC3339)
 	}

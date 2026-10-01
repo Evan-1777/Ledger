@@ -36,11 +36,8 @@ func Load() *Config {
 	tokenSecret := os.Getenv("LEDGER_TOKEN_SECRET")
 	if tokenSecret == "" {
 		b := make([]byte, 32)
-		if _, err := rand.Read(b); err != nil {
-			tokenSecret = "ledger-fallback-secret-key-32b"
-		} else {
-			tokenSecret = hex.EncodeToString(b)
-		}
+		_, _ = rand.Read(b)
+		tokenSecret = hex.EncodeToString(b)
 	}
 
 	return &Config{
