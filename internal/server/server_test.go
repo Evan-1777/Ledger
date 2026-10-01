@@ -1,11 +1,14 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"testing/fstest"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestHandleHealth(t *testing.T) {
@@ -27,6 +30,27 @@ func TestHandleHealth(t *testing.T) {
 
 	if resp.Status != "ok" {
 		t.Errorf("expected status 'ok', got '%s'", resp.Status)
+	}
+
+	// Test disconnected DB returns degraded status and 503
+	closedDB, _ := sql.Open("sqlite", ":memory:")
+	_ = closedDB.Close()
+	sDegraded := New(closedDB, nil)
+
+	reqDegraded := httptest.NewRequest("GET", "/api/health", nil)
+	recDegraded := httptest.NewRecorder()
+	sDegraded.ServeHTTP(recDegraded, reqDegraded)
+
+	if recDegraded.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503 for degraded health, got %d", recDegraded.Code)
+	}
+
+	var respDegraded HealthResponse
+	if err := json.NewDecoder(recDegraded.Body).Decode(&respDegraded); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if respDegraded.Status != "degraded" || respDegraded.DB != "disconnected" {
+		t.Errorf("expected status 'degraded' and db 'disconnected', got status '%s' and db '%s'", respDegraded.Status, respDegraded.DB)
 	}
 }
 

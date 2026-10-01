@@ -32,6 +32,6 @@ dev-web:
 
 # Clean generated build artifacts and restore fallback index
 clean:
-	@rm -rf bin data
+	@rm -rf bin
 	@rm -rf web/dist/*
 	@echo '<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8" /><title>Ledger</title></head><body><div id="root"></div></body></html>' > web/dist/index.html

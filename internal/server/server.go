@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -49,11 +48,13 @@ func (s *Server) routes() {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+	status := "ok"
 	dbStatus := "connected"
 	statusCode := http.StatusOK
 
 	if s.db != nil {
 		if err := s.db.PingContext(r.Context()); err != nil {
+			status = "degraded"
 			dbStatus = "disconnected"
 			statusCode = http.StatusServiceUnavailable
 		}
@@ -63,7 +64,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(HealthResponse{
-		Status:  "ok",
+		Status:  status,
 		DB:      dbStatus,
 		Version: "dev",
 	})
@@ -114,18 +115,7 @@ func (s *Server) serveIndexFallback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, name string, file fs.File, stat fs.FileInfo) {
 	defer file.Close()
-
-	if rs, ok := file.(io.ReadSeeker); ok {
-		http.ServeContent(w, r, name, stat.ModTime(), rs)
-		return
-	}
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	http.ServeContent(w, r, name, stat.ModTime(), bytes.NewReader(data))
+	http.ServeContent(w, r, name, stat.ModTime(), file.(io.ReadSeeker))
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
