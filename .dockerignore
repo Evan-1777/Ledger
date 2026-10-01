@@ -1,0 +1,16 @@
+.git
+.github
+.docs
+.agents
+.codebuddy
+.vscode
+.idea
+*.md
+.env
+.env.*
+bin/
+data/
+temp/
+web/node_modules/
+web/dist/
+.DS_Store

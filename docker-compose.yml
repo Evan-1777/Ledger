@@ -1,0 +1,20 @@
+# 镜像由 GitHub Actions 自动构建并推送至 GHCR（.github/workflows/docker-publish.yml），VPS 仅拉取运行。
+# 首次在 VPS 上拉取私有镜像：
+#   1. docker login ghcr.io -u <GitHub用户名> -p <GitHub_PAT>  # PAT 需具备 read:packages 权限
+#   2. docker compose pull && docker compose up -d
+
+services:
+  ledger:
+    image: ghcr.io/evan-1777/ledger:latest
+    pull_policy: always
+    container_name: ledger
+    restart: unless-stopped
+    ports:
+      - "${LEDGER_PORT:-8080}:8080"
+    environment:
+      - LEDGER_PORT=8080
+      - LEDGER_DB_PATH=/app/data/ledger.db
+      - LEDGER_ADMIN_PASSWORD=${LEDGER_ADMIN_PASSWORD:-admin123}
+      - LEDGER_TOKEN_SECRET=${LEDGER_TOKEN_SECRET:-}
+    volumes:
+      - ./data:/app/data
