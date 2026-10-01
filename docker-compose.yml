@@ -14,7 +14,7 @@ services:
     environment:
       - LEDGER_PORT=8080
       - LEDGER_DB_PATH=/app/data/ledger.db
-      - LEDGER_ADMIN_PASSWORD=${LEDGER_ADMIN_PASSWORD:-admin123}
+      - LEDGER_ADMIN_PASSWORD=${LEDGER_ADMIN_PASSWORD:?请在 .env 或环境中设置 LEDGER_ADMIN_PASSWORD}
       - LEDGER_TOKEN_SECRET=${LEDGER_TOKEN_SECRET:-}
     volumes:
       - ./data:/app/data

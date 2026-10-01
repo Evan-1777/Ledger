@@ -13,7 +13,7 @@
 
 - 编写多阶段构建 Dockerfile 与构建上下文忽略规则，生成包含前端静态资源与 Go 单二进制的 Alpine 极简镜像；
 - 提供 VPS 一键部署的 `docker-compose.yml` 编排配置；
-- 配置 GitHub Actions 工作流，在新代码推送至 master 分支时自动触发多架构构建并将镜像推送至 GHCR（`ghcr.io/evan-1777/ledger`）；
+- 配置 GitHub Actions 工作流，在新代码推送至 master 分支时自动触发 Docker 构建并将镜像推送至 GHCR（`ghcr.io/evan-1777/ledger`，amd64 架构）；
 - 使用 GitHub CLI 创建同名私有仓库 `Evan-1777/Ledger` 并推送构建镜像。
 
 ---

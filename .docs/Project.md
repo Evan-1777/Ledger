@@ -109,7 +109,7 @@ Ledger/
 - 2026-10-01 统计接口异常阻断与 CRUD 错误契约分流——统计查询全面执行 Fail-Fast，底层报错坚决返回 500，杜绝返回假零报表；CRUD 接口精准区分 400（唯一约束冲突）与 500（未预期底层故障）
 - 2026-10-01 前端时间分组跨年展示——交易流非当年记录自动补齐年份前缀（`YYYY年M月D日`），消除跨年同月同日混淆
 - 2026-10-01 前端界面严格遵循 Microsoft Fluent 2 视觉规范——Segoe UI 字阶、900px 居中流式卡片、二级级联 Flyout 选择、无界面噪声
-- 2026-10-01 容器化多阶段打包与 GitHub Actions 镜像自动化发布——采用 Node 24 编译静态资源、Golang Alpine 静态编译单二进制、Alpine 3.21 最小化运行时（含 CA 证书、时区支持与健康探针），通过 GitHub Actions 推送至 GHCR（`ghcr.io/evan-1777/ledger`），提供 `docker-compose.yml` 实现 VPS 零编译一键部署
+- 2026-10-01 容器化多阶段打包与 GitHub Actions 镜像自动化发布——采用 Node 24 编译静态资源、Golang 1.27 Alpine 静态编译单二进制、Alpine 3.21 最小化运行时（含 CA 证书、时区支持与健康探针），通过 GitHub Actions 推送至 GHCR（`ghcr.io/evan-1777/ledger`），提供 `docker-compose.yml`（强制声明 `LEDGER_ADMIN_PASSWORD` 杜绝弱默认密码）实现 VPS 零编译一键部署
 
 ## 术语
 

@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # ---- Go 后端构建阶段 ----
-FROM golang:alpine AS backend-builder
+FROM golang:1.27-alpine AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
