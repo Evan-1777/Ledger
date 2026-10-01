@@ -1,67 +1,347 @@
-import { useEffect, useState } from 'react'
-
-interface HealthData {
-  status: string
-  db: string
-  version: string
-}
+import { useState, useEffect, useCallback } from 'react';
+import { Navbar, TabType } from './components/Navbar';
+import { BottomBar, FilterType } from './components/BottomBar';
+import { AuthModal } from './components/AuthModal';
+import { RecordModal } from './components/RecordModal';
+import { Toast, ToastMessage } from './components/Toast';
+import { StreamPage } from './pages/StreamPage';
+import { StatsPage } from './pages/StatsPage';
+import { SettingsPage } from './pages/SettingsPage';
+import {
+  api,
+  Category,
+  PaymentMethod,
+  Transaction,
+  StatsSummary,
+  onAuthStateChange,
+} from './lib/api';
 
 export default function App() {
-  const [health, setHealth] = useState<HealthData | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Theme state
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('ledger_theme') === 'dark';
+  });
+
+  // Auth state
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+
+  // Tab & Filter state
+  const [currentTab, setCurrentTab] = useState<TabType>('stream');
+  const [streamFilter, setStreamFilter] = useState<FilterType>('all');
+
+  // Business Data
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState<StatsSummary | null>(null);
+
+  // Loading states
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Modals & Toasts
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (type: 'success' | 'error' | 'info', message: string) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3500);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Sync theme
+  useEffect(() => {
+    if (darkMode) {
+      document.body.classList.add('dark-mode');
+      localStorage.setItem('ledger_theme', 'dark');
+    } else {
+      document.body.classList.remove('dark-mode');
+      localStorage.setItem('ledger_theme', 'light');
+    }
+  }, [darkMode]);
+
+  // Auth check and listener
+  useEffect(() => {
+    onAuthStateChange((auth) => {
+      setIsAuthenticated(auth);
+      if (!auth) {
+        setShowAuthModal(true);
+      }
+    });
+
+    api.checkAuth().then((auth) => {
+      setIsAuthenticated(auth);
+      if (!auth) {
+        setShowAuthModal(true);
+      }
+    });
+  }, []);
+
+  // Fetch functions
+  const fetchConfigData = useCallback(async () => {
+    try {
+      const [cats, pms] = await Promise.all([
+        api.getCategories(),
+        api.getPaymentMethods(),
+      ]);
+      setCategories(cats);
+      setPaymentMethods(pms);
+    } catch {
+      // Ignored if unauthorized
+    }
+  }, []);
+
+  const fetchTransactions = useCallback(async () => {
+    setLoadingTransactions(true);
+    try {
+      const data = await api.getTransactions(streamFilter);
+      setTransactions(data);
+    } catch (err: any) {
+      if (isAuthenticated) {
+        addToast('error', err?.message || '获取流水失败');
+      }
+    } finally {
+      setLoadingTransactions(false);
+    }
+  }, [streamFilter, isAuthenticated]);
+
+  const fetchStats = useCallback(async () => {
+    setLoadingStats(true);
+    try {
+      const data = await api.getStatsSummary();
+      setStats(data);
+    } catch (err: any) {
+      if (isAuthenticated) {
+        addToast('error', err?.message || '获取统计失败');
+      }
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [isAuthenticated]);
+
+  // Trigger loads when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchConfigData();
+    }
+  }, [isAuthenticated, fetchConfigData]);
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`)
-        }
-        return res.json()
-      })
-      .then((data: HealthData) => setHealth(data))
-      .catch((err: Error) => setError(err.message))
-  }, [])
+    if (isAuthenticated && currentTab === 'stream') {
+      fetchTransactions();
+    }
+  }, [isAuthenticated, currentTab, fetchTransactions]);
+
+  useEffect(() => {
+    if (isAuthenticated && currentTab === 'stats') {
+      fetchStats();
+    }
+  }, [isAuthenticated, currentTab, fetchStats]);
+
+  // Keyboard shortcut: N to record
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.key === 'n' || e.key === 'N') &&
+        !isRecordModalOpen &&
+        !showAuthModal &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        setEditingTransaction(null);
+        setIsRecordModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isRecordModalOpen, showAuthModal]);
+
+  // Handlers for Transactions
+  const handleSaveTransaction = async (data: {
+    amount: number;
+    description: string;
+    payment_method_id: number;
+    category_id: number;
+    tag_id: number;
+    transacted_at: string;
+  }) => {
+    if (editingTransaction) {
+      await api.updateTransaction(editingTransaction.id, data);
+      addToast('success', '账单修改成功');
+    } else {
+      await api.createTransaction(data);
+      addToast('success', '记账成功');
+    }
+    fetchTransactions();
+    if (currentTab === 'stats') fetchStats();
+  };
+
+  const handleDeleteTransaction = async (id: number) => {
+    if (!window.confirm('确认删除此笔账单？')) return;
+    try {
+      await api.deleteTransaction(id);
+      addToast('success', '账单已删除');
+      fetchTransactions();
+      if (currentTab === 'stats') fetchStats();
+    } catch (err: any) {
+      addToast('error', err?.message || '删除失败');
+    }
+  };
+
+  const handleEditClick = (tx: Transaction) => {
+    setEditingTransaction(tx);
+    setIsRecordModalOpen(true);
+  };
+
+  // Handlers for Settings
+  const handleAddPaymentMethod = async (name: string) => {
+    try {
+      await api.createPaymentMethod(name, paymentMethods.length + 1);
+      addToast('success', `支付途径「${name}」已添加`);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '添加失败');
+    }
+  };
+
+  const handleDeletePaymentMethod = async (id: number) => {
+    try {
+      await api.deletePaymentMethod(id);
+      addToast('success', '支付途径已删除');
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '删除失败');
+    }
+  };
+
+  const handleAddCategory = async (name: string) => {
+    try {
+      await api.createCategory(name, categories.length + 1);
+      addToast('success', `消费类型「${name}」已创建`);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '创建失败');
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    try {
+      await api.deleteCategory(id);
+      addToast('success', '消费类型已删除');
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '删除失败');
+    }
+  };
+
+  const handleAddTag = async (categoryId: number, name: string) => {
+    try {
+      await api.createTag(categoryId, name, 0);
+      addToast('success', `细分标签「${name}」已添加`);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '添加失败');
+    }
+  };
+
+  const handleDeleteTag = async (id: number) => {
+    try {
+      await api.deleteTag(id);
+      addToast('success', '细分标签已删除');
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '删除失败');
+    }
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-stone-50 text-stone-900">
-      <main className="w-full max-w-md bg-white border border-stone-200 rounded-xl p-8 shadow-sm">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Ledger</h1>
-          <p className="text-sm text-stone-500 mt-1">轻量个性化记账 · 工程脚手架</p>
-        </header>
+    <div className="min-h-screen flex flex-col bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)]">
+      {/* Toast notifications */}
+      <Toast toasts={toasts} onDismiss={removeToast} />
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between py-2 border-b border-stone-100 text-sm">
-            <span className="text-stone-500">服务状态</span>
-            <span className="inline-flex items-center gap-1.5 font-medium">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  health?.status === 'ok'
-                    ? 'bg-emerald-500'
-                    : error
-                    ? 'bg-rose-500'
-                    : 'bg-amber-500 animate-pulse'
-                }`}
-              />
-              {health ? health.status : error ? '离线' : '检测中...'}
-            </span>
-          </div>
+      {/* Top Navbar */}
+      <Navbar
+        currentTab={currentTab}
+        onTabChange={(tab) => setCurrentTab(tab)}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
+        onLogout={() => {
+          api.logout();
+          setShowAuthModal(true);
+        }}
+      />
 
-          <div className="flex items-center justify-between py-2 border-b border-stone-100 text-sm">
-            <span className="text-stone-500">数据库</span>
-            <span className="font-mono text-xs text-stone-700">
-              {health ? health.db : error ? error : '-'}
-            </span>
-          </div>
+      {/* Main Canvas Area */}
+      <main className="flex-1 flex flex-col items-center px-5 pt-6 pb-28 w-full">
+        {currentTab === 'stream' && (
+          <StreamPage
+            transactions={transactions}
+            loading={loadingTransactions}
+            onEdit={handleEditClick}
+            onDelete={handleDeleteTransaction}
+          />
+        )}
 
-          <div className="flex items-center justify-between py-2 border-b border-stone-100 text-sm">
-            <span className="text-stone-500">技术栈</span>
-            <span className="text-xs text-stone-600">
-              Go · React · Vite · Tailwind · SQLite
-            </span>
-          </div>
-        </section>
+        {currentTab === 'stats' && <StatsPage stats={stats} loading={loadingStats} />}
+
+        {currentTab === 'settings' && (
+          <SettingsPage
+            categories={categories}
+            paymentMethods={paymentMethods}
+            onAddPaymentMethod={handleAddPaymentMethod}
+            onDeletePaymentMethod={handleDeletePaymentMethod}
+            onAddCategory={handleAddCategory}
+            onDeleteCategory={handleDeleteCategory}
+            onAddTag={handleAddTag}
+            onDeleteTag={handleDeleteTag}
+          />
+        )}
       </main>
+
+      {/* Bottom Floating Controls */}
+      <BottomBar
+        showFilter={currentTab === 'stream'}
+        filter={streamFilter}
+        onFilterChange={(f) => setStreamFilter(f)}
+        onOpenRecord={() => {
+          setEditingTransaction(null);
+          setIsRecordModalOpen(true);
+        }}
+      />
+
+      {/* Record & Edit Modal */}
+      <RecordModal
+        isOpen={isRecordModalOpen}
+        onClose={() => {
+          setIsRecordModalOpen(false);
+          setEditingTransaction(null);
+        }}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        initialTransaction={editingTransaction}
+        onSubmit={handleSaveTransaction}
+      />
+
+      {/* Auth Lock Modal */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onSuccess={() => {
+          setShowAuthModal(false);
+          setIsAuthenticated(true);
+          fetchConfigData();
+          if (currentTab === 'stream') fetchTransactions();
+          if (currentTab === 'stats') fetchStats();
+        }}
+      />
     </div>
-  )
+  );
 }

@@ -5,8 +5,8 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账 Web 应用，基于 Go + React + Vite + Tailwind + SQLite，单二进制交付。
-- **阶段**：基础脚手架已就绪，等待个性化业务与界面开发
-- **非目标**：预设记账业务模式、复杂云服务集成、重型商业账务流转
+- **阶段**：核心记账业务闭环、基础设置与 Fluent 2 统计看板已交付，支持单二进制独立运行与 Docker 部署。
+- **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
 
@@ -15,6 +15,11 @@
   - 后端：Go 1.27
   - 前端：Node.js 24 + npm 11
   - 存储：SQLite（纯 Go 驱动 `modernc.org/sqlite`，无 CGO 依赖）
+- **环境变量**：
+  - `LEDGER_PORT`：HTTP 服务监听端口（默认 `8080`）
+  - `LEDGER_DB_PATH`：SQLite 数据库路径（默认 `data/ledger.db`）
+  - `LEDGER_ADMIN_PASSWORD`：管理员密码（默认 `admin123`，未设置时控制台打印安全告警）
+  - `LEDGER_TOKEN_SECRET`：HMAC 会话签名密钥（默认自动生成 32 字节随机密钥）
 - **版本管理**：Git；Conventional Commits（英文类型前缀 + 中文详细描述）
 - **运行**：
   - 全流程构建：`make build`（生成 `bin/ledger`）
@@ -22,8 +27,8 @@
   - 单独运行前端开发服务：`make dev-web` 或 `cd web && npm run dev`
   - 启动二进制：`bin/ledger`（默认监听 `http://localhost:8080`）
 - **测试**：
-  - 全量测试：`make test`（涵盖后端 `go test ./...` 与前端 `tsc -b --noEmit`）
-- ★ 数据库默认位于 `data/ledger.db`，可通过环境变量 `LEDGER_DB_PATH` 覆盖；测试通过临时目录进行，不污染真实数据
+  - 全量测试：`make test`（涵盖后端 `go test -v ./...` 与前端 `tsc -b --noEmit`）
+- ★ 数据库默认位于 `data/ledger.db`，测试通过临时目录进行，不污染真实数据
 - ★ 前端开发服务器通过 Vite 代理将 `/api` 请求转发至后端口 `8080`
 
 ## 结构
@@ -32,61 +37,72 @@
 Ledger/
 ├─ cmd/
 │  └─ server/
-│     └─ main.go         # 应用程序唯一入口，加载配置、初始化 DB、注册路由并处理优雅退出
+│     └─ main.go             # 应用程序唯一入口，加载配置、初始化 DB、注册路由并处理优雅退出
 ├─ internal/
 │  ├─ config/
-│  │  └─ config.go       # 环境变量配置加载（LEDGER_PORT, LEDGER_DB_PATH）
+│  │  └─ config.go           # 环境变量配置加载（PORT, DB_PATH, ADMIN_PASSWORD, TOKEN_SECRET）
 │  ├─ db/
-│  │  ├─ db.go           # SQLite 连接初始化（WAL 模式、忙超时设置、连接池）
-│  │  └─ db_test.go      # 数据层初始化与 WAL 模式测试
+│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、4张核心数据表迁移与默认种子注入）
+│  │  └─ db_test.go          # 数据层初始化、种子完整性、幂等性与外键约束测试
 │  └─ server/
-│     ├─ server.go       # HTTP 路由、健康检查（/api/health）与 SPA 静态文件回退服务
-│     └─ server_test.go  # API 与 SPA 静态文件服务测试
-├─ web/                  # 前端 React + Vite + Tailwind + TypeScript 工程
+│     ├─ server.go           # HTTP 路由注册分发、健康检查与 SPA 静态文件回退服务
+│     ├─ auth.go             # 管理员密码登录、防爆破时延、HMAC Token 签发与 RequireAuth 访问守卫
+│     ├─ settings.go         # 支付途径、类型与标签 CRUD API 及 409 账单引用删除拦截
+│     ├─ transactions.go     # 单笔账单录入/更新/删除/列表查询，金额带符号分位转换与级联归属校验
+│     ├─ stats.go            # 多维收支统计汇总：本周/当月/上月花费、当月结余/储蓄率、分类下钻、渠道与月度趋势
+│     └─ server_test.go      # 全业务端点集成测试（鉴权、设置 CRUD、409 拦截、账单 CRUD、多维统计）
+├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
-│  │  ├─ App.tsx         # 极简脚手架状态展示组件（连通性检测，无业务逻辑）
-│  │  ├─ index.css       # Tailwind CSS 根样式引入
-│  │  └─ main.tsx        # React 挂载入口
-│  ├─ embed.go           # Go embed 静态资源绑定（暴露 DistFS）
-│  ├─ embed_test.go      # embed 资源可读性验证
-│  ├─ vite.config.ts     # Vite 配置（Tailwind 插件、/api 反向代理）
-│  ├─ package.json       # 前端依赖配置
-│  └─ tsconfig.json      # TypeScript 配置
-├─ Makefile              # 统一构建编排（build, test, dev, clean）
-└─ .docs/                # 项目文档与阶段归档
+│  │  ├─ components/
+│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航、主题切换、admin 徽章与登出
+│  │  │  ├─ BottomBar.tsx    # 底部居中悬浮筛选胶囊与右下角 FAB 记账按钮
+│  │  │  ├─ RecordModal.tsx  # Layer 3 居中模态卡片，Hero 金额、正负切换、二级级联分类标签 Flyout
+│  │  │  ├─ AuthModal.tsx    # 管理员密码安全解锁浮层
+│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库
+│  │  │  └─ Toast.tsx        # 轻量操作反馈悬浮通知
+│  │  ├─ pages/
+│  │  │  ├─ StreamPage.tsx   # 账目流水：900px 居中工作台、按日期倒序分组、状态色条与 hover 操作
+│  │  │  ├─ StatsPage.tsx    # 收支统计：4联 KPI 卡片、同构进度分类下钻、6个月月度趋势双柱图
+│  │  │  └─ SettingsPage.tsx # 基础设置：支付途径磁贴网格、消费类型与细分标签内嵌分组管理
+│  │  ├─ lib/
+│  │  │  └─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化与 401 拦截
+│  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N）
+│  │  ├─ index.css           # Fluent 2 视觉令牌、暗黑模式样式、全局等宽数字 tabular-nums
+│  │  └─ main.tsx            # React 挂载入口
+│  ├─ embed.go               # Go embed 静态资源绑定（暴露 DistFS）
+│  ├─ embed_test.go          # embed 资源可读性验证
+│  ├─ vite.config.ts         # Vite 配置（Tailwind 插件、/api 反向代理）
+│  ├─ package.json           # 前端依赖配置
+│  └─ tsconfig.json          # TypeScript 配置
+├─ Makefile                  # 统一构建编排（build, test, dev, clean）
+└─ .docs/                    # 项目文档与阶段归档
 ```
 
 - **数据流**：浏览器请求 → HTTP 路由分流：
-  - `/api/*` → 后端 Handler（读取/写入 SQLite） → JSON 响应
-  - 非 API 请求 → `web.DistFS`（优先匹配静态文件；未匹配则回退至 `index.html` 交付客户端路由）
+  - `/api/health` → 健康状态探针（开放端点）
+  - `/api/auth/login` → 密码校验并签发 HMAC Token
+  - `/api/*` → `RequireAuth` 中间件守卫 → 业务/统计 Handler → SQLite 读写 → JSON 响应
+  - 非 API 请求 → `web.DistFS`（匹配前端静态产物；未匹配则回退至 `index.html`）
 - **依赖方向**：`cmd/server` 组合 `internal/config`、`internal/db`、`internal/server` 与 `web`；各 `internal/*` 模块间解耦，不反向依赖 `cmd`。
 
 ## 约定
 
 - **命名**：Go 包与文件 snake_case，导出的类型与函数 PascalCase；TypeScript 组件 PascalCase，工具函数 camelCase
 - **语言**：用户可见文本用中文；代码注释、提交前缀遵循英文约定
-- **错误处理**：后端内部错误统一包装，对外返回对应 HTTP 状态码与结构化 JSON；前端通过标准化 fetch 统一捕获
+- **错误处理**：后端内部错误统一包装，对外返回对应 HTTP 状态码与结构化 JSON（引用删除严格返回 409 Conflict）；前端统一统一捕获并展示 Toast
 - **日志**：Go 标准库 `log`，输出清晰的时间戳与结构化上下文信息
 
 ## 约束与决策
 
 - 2026-10-01 采用纯 Go SQLite 驱动 `modernc.org/sqlite` 代替 `go-sqlite3`——消除 CGO 依赖，极大简化跨平台编译与轻量级 Docker 镜像构建
 - 2026-10-01 采用 Go `embed.FS` 嵌入前端 `dist` 产物——实现单个独立可执行文件的零外部依赖交付
-- 2026-10-01 纯粹脚手架交付，不内置预设记账模型——完全保留个性化业务设计的空白与灵活性
+- 2026-10-01 账单金额以带符号整数分（`amount_cents`）存储，支出为负、收入为正——彻底杜绝浮点累加漂移，API 统一转换为元单位
+- 2026-10-01 采用单一管理员密码与 HMAC 会话凭证——符合私有个人部署 YAGNI 原则；登录失败注入 500ms 强制时延防范暴力枚举
+- 2026-10-01 级联引用删除守卫——被 transactions 引用的支付途径、分类、细分标签执行删除时，应用层严格拦截并返回 409 Conflict，杜绝孤儿数据
+- 2026-10-01 前端界面严格遵循 Microsoft Fluent 2 视觉规范——Segoe UI 字阶、900px 居中流式卡片、二级级联 Flyout 选择、无界面噪声
 
 ## 术语
 
 - **单二进制 (Single Binary)** = 包含 Go 后端编译产物与内嵌前端静态资源的独立单一可执行程序
 - **SPA 回退 (SPA Fallback)** = 当浏览器请求非 API 且非静态资源的路径时，服务端返回 `index.html`，交由客户端 React 处理路由
-
-## 维护
-
-| 变更 | 同步章节 |
-|---|---|
-| 运行、测试方式或环境前提变化 | 环境与运行 |
-| 依赖增删或升级 | 环境与运行；属关键选型时同步「约束与决策」 |
-| 模块增删、重构，依赖方向变化 | 结构 |
-| 命名、语言、日志规范调整 | 约定 |
-| 新坑、新约束、选型定型 | 约束与决策 |
-| 外部服务接入或下线 | 外部集成 |
-| 新增项目特有名词 | 术语 |
+- **二级级联 (Cascading Flyout)** = 记账模态窗中在单层触发区呼出的二级菜单面板，左侧选择分类、右侧即时展示细分标签并支持一键选定回填

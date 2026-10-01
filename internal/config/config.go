@@ -1,13 +1,18 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
 	"os"
 )
 
 // Config holds application configuration.
 type Config struct {
-	Port   string
-	DBPath string
+	Port          string
+	DBPath        string
+	AdminPassword string
+	TokenSecret   string
 }
 
 // Load loads configuration from environment variables or falls back to defaults.
@@ -22,8 +27,26 @@ func Load() *Config {
 		dbPath = "data/ledger.db"
 	}
 
+	adminPassword := os.Getenv("LEDGER_ADMIN_PASSWORD")
+	if adminPassword == "" {
+		adminPassword = "admin123"
+		log.Println("[SECURITY WARNING] LEDGER_ADMIN_PASSWORD not set, using default password 'admin123'. Please set LEDGER_ADMIN_PASSWORD in production!")
+	}
+
+	tokenSecret := os.Getenv("LEDGER_TOKEN_SECRET")
+	if tokenSecret == "" {
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			tokenSecret = "ledger-fallback-secret-key-32b"
+		} else {
+			tokenSecret = hex.EncodeToString(b)
+		}
+	}
+
 	return &Config{
-		Port:   port,
-		DBPath: dbPath,
+		Port:          port,
+		DBPath:        dbPath,
+		AdminPassword: adminPassword,
+		TokenSecret:   tokenSecret,
 	}
 }

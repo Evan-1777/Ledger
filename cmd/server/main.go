@@ -31,7 +31,7 @@ func main() {
 		log.Fatalf("failed to load embedded static assets: %v", err)
 	}
 
-	appServer := server.New(database, distFS)
+	appServer := server.New(database, distFS, cfg.AdminPassword, cfg.TokenSecret)
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

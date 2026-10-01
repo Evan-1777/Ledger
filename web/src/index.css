@@ -1,1 +1,93 @@
 @import "tailwindcss";
+
+:root {
+  /* Brand Color Tokens */
+  --color-brand: #0078d4;
+  --color-brand-hover: #106ebe;
+  --color-brand-pressed: #005a9e;
+  --color-brand-light: #eff6fc;
+  --color-brand-stroke: #c7e0f4;
+
+  /* Neutral Palette */
+  --color-neutral-fg-1: #0f172a;
+  --color-neutral-fg-2: #334155;
+  --color-neutral-fg-3: #64748b;
+  --color-neutral-fg-subtle: #94a3b8;
+
+  --color-neutral-stroke: rgba(0, 0, 0, 0.06);
+  --color-neutral-stroke-strong: rgba(0, 0, 0, 0.12);
+
+  --color-canvas-bg: #f1f3f6;
+  --color-card-bg: #ffffff;
+  --color-subtle-bg: #f8fafc;
+  --color-hover-bg: #f1f5f9;
+
+  /* Semantic Status */
+  --color-expense: #ef4444;
+  --color-expense-bg: #fee2e2;
+  --color-expense-stroke: #fca5a5;
+  --color-expense-dark: #dc2626;
+
+  --color-income: #10b981;
+  --color-income-bg: #d1fae5;
+  --color-income-stroke: #6ee7b7;
+  --color-income-dark: #059669;
+
+  /* Standard Fluent Shadows */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --shadow-capsule: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-fab: 0 4px 16px rgba(0, 120, 212, 0.38), 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-flyout: 0 12px 28px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* Typography */
+  --font-family-base: "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+.dark-mode {
+  --color-neutral-fg-1: #f8fafc;
+  --color-neutral-fg-2: #e2e8f0;
+  --color-neutral-fg-3: #94a3b8;
+  --color-neutral-fg-subtle: #64748b;
+
+  --color-neutral-stroke: rgba(255, 255, 255, 0.08);
+  --color-neutral-stroke-strong: rgba(255, 255, 255, 0.16);
+
+  --color-canvas-bg: #0f172a;
+  --color-card-bg: #1e293b;
+  --color-subtle-bg: #1e293b;
+  --color-hover-bg: #334155;
+
+  --color-expense-bg: rgba(239, 68, 68, 0.15);
+  --color-income-bg: rgba(16, 185, 129, 0.15);
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-capsule: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.7);
+}
+
+body {
+  font-family: var(--font-family-base);
+  background-color: var(--color-canvas-bg);
+  color: var(--color-neutral-fg-1);
+  line-height: 1.5;
+  min-height: 100vh;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.tabular-num {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes fadeInView {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeInView 0.18s ease-out;
+}

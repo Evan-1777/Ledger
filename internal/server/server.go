@@ -11,9 +11,11 @@ import (
 
 // Server coordinates HTTP handling and application dependencies.
 type Server struct {
-	db       *sql.DB
-	staticFS fs.FS
-	mux      *http.ServeMux
+	db            *sql.DB
+	staticFS      fs.FS
+	mux           *http.ServeMux
+	adminPassword string
+	tokenSecret   string
 }
 
 // HealthResponse represents the payload returned by /api/health.
@@ -24,11 +26,13 @@ type HealthResponse struct {
 }
 
 // New creates a new Server instance.
-func New(database *sql.DB, staticFS fs.FS) *Server {
+func New(database *sql.DB, staticFS fs.FS, adminPassword, tokenSecret string) *Server {
 	s := &Server{
-		db:       database,
-		staticFS: staticFS,
-		mux:      http.NewServeMux(),
+		db:            database,
+		staticFS:      staticFS,
+		mux:           http.NewServeMux(),
+		adminPassword: adminPassword,
+		tokenSecret:   tokenSecret,
 	}
 
 	s.routes()
@@ -38,6 +42,37 @@ func New(database *sql.DB, staticFS fs.FS) *Server {
 func (s *Server) routes() {
 	// API routes
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
+
+	// Auth routes
+	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	s.mux.HandleFunc("GET /api/auth/check", s.handleAuthCheck)
+
+	// Payment Methods routes
+	s.mux.HandleFunc("GET /api/payment-methods", s.requireAuth(s.handleListPaymentMethods))
+	s.mux.HandleFunc("POST /api/payment-methods", s.requireAuth(s.handleCreatePaymentMethod))
+	s.mux.HandleFunc("PUT /api/payment-methods/{id}", s.requireAuth(s.handleUpdatePaymentMethod))
+	s.mux.HandleFunc("DELETE /api/payment-methods/{id}", s.requireAuth(s.handleDeletePaymentMethod))
+
+	// Categories routes
+	s.mux.HandleFunc("GET /api/categories", s.requireAuth(s.handleListCategories))
+	s.mux.HandleFunc("POST /api/categories", s.requireAuth(s.handleCreateCategory))
+	s.mux.HandleFunc("PUT /api/categories/{id}", s.requireAuth(s.handleUpdateCategory))
+	s.mux.HandleFunc("DELETE /api/categories/{id}", s.requireAuth(s.handleDeleteCategory))
+
+	// Tags routes
+	s.mux.HandleFunc("GET /api/tags", s.requireAuth(s.handleListTags))
+	s.mux.HandleFunc("POST /api/tags", s.requireAuth(s.handleCreateTag))
+	s.mux.HandleFunc("PUT /api/tags/{id}", s.requireAuth(s.handleUpdateTag))
+	s.mux.HandleFunc("DELETE /api/tags/{id}", s.requireAuth(s.handleDeleteTag))
+
+	// Transactions routes
+	s.mux.HandleFunc("GET /api/transactions", s.requireAuth(s.handleListTransactions))
+	s.mux.HandleFunc("POST /api/transactions", s.requireAuth(s.handleCreateTransaction))
+	s.mux.HandleFunc("PUT /api/transactions/{id}", s.requireAuth(s.handleUpdateTransaction))
+	s.mux.HandleFunc("DELETE /api/transactions/{id}", s.requireAuth(s.handleDeleteTransaction))
+
+	// Stats routes
+	s.mux.HandleFunc("GET /api/stats/summary", s.requireAuth(s.handleStatsSummary))
 
 	// Static & SPA fallback
 	if s.staticFS != nil {
