@@ -86,13 +86,51 @@ func migrateAndSeed(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_transactions_transacted_at ON transactions(transacted_at);
 	CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON transactions(category_id);
 	CREATE INDEX IF NOT EXISTS idx_transactions_payment_method_id ON transactions(payment_method_id);
+
+	CREATE TABLE IF NOT EXISTS system_meta (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
-	// Seed payment methods
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin migration transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if seed has already been initialized
+	var seedInit string
+	err = tx.QueryRow("SELECT value FROM system_meta WHERE key = 'seed_initialized'").Scan(&seedInit)
+	if err == nil && seedInit == "true" {
+		return tx.Commit()
+	}
+
+	// Check whether this is an existing database from before system_meta existed
+	var pmCount, catCount, txCount int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM payment_methods").Scan(&pmCount); err != nil {
+		return fmt.Errorf("failed to check payment_methods count: %w", err)
+	}
+	if err := tx.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
+		return fmt.Errorf("failed to check categories count: %w", err)
+	}
+	if err := tx.QueryRow("SELECT COUNT(*) FROM transactions").Scan(&txCount); err != nil {
+		return fmt.Errorf("failed to check transactions count: %w", err)
+	}
+
+	// Existing database upgrade: already has data, do not inject seeds, just mark initialized
+	if pmCount > 0 || catCount > 0 || txCount > 0 {
+		if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('seed_initialized', 'true')"); err != nil {
+			return fmt.Errorf("failed to mark seed_initialized on existing db: %w", err)
+		}
+		return tx.Commit()
+	}
+
+	// Fresh installation: Seed default payment methods
 	defaultMethods := []struct {
 		name      string
 		sortOrder int
@@ -104,7 +142,7 @@ func migrateAndSeed(db *sql.DB) error {
 	}
 
 	for _, pm := range defaultMethods {
-		_, err := db.Exec("INSERT OR IGNORE INTO payment_methods (name, sort_order) VALUES (?, ?)", pm.name, pm.sortOrder)
+		_, err := tx.Exec("INSERT OR IGNORE INTO payment_methods (name, sort_order) VALUES (?, ?)", pm.name, pm.sortOrder)
 		if err != nil {
 			return fmt.Errorf("failed to seed payment method %s: %w", pm.name, err)
 		}
@@ -124,24 +162,28 @@ func migrateAndSeed(db *sql.DB) error {
 	}
 
 	for _, cat := range defaultCategories {
-		_, err := db.Exec("INSERT OR IGNORE INTO categories (name, sort_order) VALUES (?, ?)", cat.name, cat.sortOrder)
+		_, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order) VALUES (?, ?)", cat.name, cat.sortOrder)
 		if err != nil {
 			return fmt.Errorf("failed to seed category %s: %w", cat.name, err)
 		}
 
 		var categoryID int64
-		err = db.QueryRow("SELECT id FROM categories WHERE name = ?", cat.name).Scan(&categoryID)
+		err = tx.QueryRow("SELECT id FROM categories WHERE name = ?", cat.name).Scan(&categoryID)
 		if err != nil {
 			return fmt.Errorf("failed to get category id for %s: %w", cat.name, err)
 		}
 
 		for tagOrder, tagName := range cat.tags {
-			_, err := db.Exec("INSERT OR IGNORE INTO tags (category_id, name, sort_order) VALUES (?, ?, ?)", categoryID, tagName, tagOrder+1)
+			_, err := tx.Exec("INSERT OR IGNORE INTO tags (category_id, name, sort_order) VALUES (?, ?, ?)", categoryID, tagName, tagOrder+1)
 			if err != nil {
 				return fmt.Errorf("failed to seed tag %s: %w", tagName, err)
 			}
 		}
 	}
 
-	return nil
+	if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('seed_initialized', 'true')"); err != nil {
+		return fmt.Errorf("failed to mark seed_initialized: %w", err)
+	}
+
+	return tx.Commit()
 }

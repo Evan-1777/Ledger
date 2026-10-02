@@ -42,8 +42,8 @@ Ledger/
 │  ├─ config/
 │  │  └─ config.go           # 环境变量配置加载（PORT, DB_PATH, ADMIN_PASSWORD, TOKEN_SECRET）
 │  ├─ db/
-│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、4张核心数据表迁移与默认种子注入）
-│  │  └─ db_test.go          # 数据层初始化、种子完整性、幂等性与外键约束测试
+│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、5张数据表含 system_meta 迁移与事务级智能单次种子注入）
+│  │  └─ db_test.go          # 数据层初始化、老库平滑升级、防复活幂等性与外键约束测试
 │  └─ server/
 │     ├─ server.go           # HTTP 路由注册分发、健康检查与 SPA 静态文件回退服务
 │     ├─ auth.go             # 管理员密码登录、防爆破时延、HMAC Token 签发与 RequireAuth 访问守卫
@@ -54,7 +54,7 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航、移动端自适应响应、主题切换与登出
+│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航（hidden sm:inline 移动端纯图标自适应响应）、主题切换与登出
 │  │  │  ├─ BottomBar.tsx    # 底部移动防冲突安全停靠筛选胶囊、showFilter 优雅退化与右下角 FAB 记账按钮
 │  │  │  ├─ RecordModal.tsx  # Layer 3 居中模态卡片、顶部平滑收支胶囊滑块、纯净无噪声表单与二级级联 Flyout
 │  │  │  ├─ AuthModal.tsx    # 管理员密码安全解锁浮层
@@ -63,7 +63,7 @@ Ledger/
 │  │  ├─ pages/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：900px 居中中性卡片、按日期倒序分组、无硬边框与首字图标、触控友好
 │  │  │  ├─ StatsPage.tsx    # 收支统计：4联 KPI 卡片、去噪进度分类下钻、6个月月度趋势双柱图
-│  │  │  └─ SettingsPage.tsx # 基础设置：支付途径自适应网格、消费类型手动排序、类型与标签二级上下文菜单及同构内联重命名
+│  │  │  └─ SettingsPage.tsx # 基础设置：双核心分段导航（分类与标签/支付途径）、轻量内联新增、专属细分标签管理抽屉 (Layer 3 Drawer)
 │  │  ├─ lib/
 │  │  │  └─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化与 401 拦截
 │  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N）
@@ -115,6 +115,9 @@ Ledger/
 - 2026-10-02 移动端全屏自适应与底部悬浮防重叠——底部筛选胶囊在小屏下居中靠左避让右下角 FAB，在非流水页优雅退化仅保留悬浮 FAB；顶栏导航项与支付途径网格响应式收紧，模态窗启用内部弹性滚动
 - 2026-10-02 顶栏登出断点规范化与滑块 GPU 硬件加速——顶栏登出按钮采用标准 `hidden sm:inline` 断点规范；记账模态窗收支滑块改用 `transform: translateX` 硬件加速，像素对称且消除布局 Reflow；暗黑模式补齐 `--color-expense-stroke` 与 `--color-income-stroke` 语义边框令牌
 - 2026-10-02 设置调序防竞态与重命名健壮性增强——`App.tsx` 串行执行调序并合并为单次 `fetchConfigData()` 刷新，杜绝并发网络竞态与闪烁；调序优先交换已有 `sort_order`；内联重命名增加兄弟分类与同级标签重名预校验，`try...catch` 安全兜底保留编辑状态，全流程后端冲突映射为清晰中文提示
+- 2026-10-02 数据库种子持久化与老库升级平滑纳管——在 SQLite 增加 `system_meta` 表并通过显式事务管理；全新库初始化种子并打标，已有数据老库升级自动补标且绝不重新注入默认项，彻底解决 Docker 容器重启与镜像升级时误复活已删除数据的问题
+- 2026-10-02 顶栏响应式文本折叠与移动端安全尺寸规范——顶栏中央胶囊导航文字统一采用 `hidden sm:inline` 响应式断点（移动端纯标准 SVG 语义图标彻底杜绝挤压溢出，桌面端保留文字以维持低认知负荷）；操作簇按钮尺寸统一规范（34x34px），保障 320px–414px 移动端视口单行自适应排开
+- 2026-10-02 设置页双核心业务分段与细分标签专属抽屉体系——将平铺卡片重构为「分类与标签」和「支付途径」双分段导航；分类细分标签管理收敛至专属 Layer 3 抽屉容器，基于 `activeCategoryId` 与父级 `App.tsx` 的 SSOT 实时派生同步，保留同构内联重命名与 409 拦截提示，彻底清除界面静态占位与多余教程解释
 
 ## 术语
 

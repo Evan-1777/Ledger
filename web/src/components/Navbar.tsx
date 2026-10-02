@@ -34,41 +34,47 @@ export const Navbar: FC<NavbarProps> = ({
       <nav className="bg-[var(--color-canvas-bg)] rounded-full p-[3px] inline-flex items-center gap-0.5 sm:gap-1 border border-[var(--color-neutral-stroke)]">
         <button
           type="button"
+          title="账目流水"
+          aria-label="账目流水"
           onClick={() => onTabChange('stream')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
             currentTab === 'stream'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
           }`}
         >
-          <StreamIcon size={15} />
-          <span>账目流水</span>
+          <StreamIcon size={16} />
+          <span className="hidden sm:inline">账目流水</span>
         </button>
 
         <button
           type="button"
+          title="收支统计"
+          aria-label="收支统计"
           onClick={() => onTabChange('stats')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
             currentTab === 'stats'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
           }`}
         >
-          <StatsIcon size={15} />
-          <span>收支统计</span>
+          <StatsIcon size={16} />
+          <span className="hidden sm:inline">收支统计</span>
         </button>
 
         <button
           type="button"
+          title="基础设置"
+          aria-label="基础设置"
           onClick={() => onTabChange('settings')}
-          className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
             currentTab === 'settings'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
           }`}
         >
-          <SettingsIcon size={15} />
-          <span>基础设置</span>
+          <SettingsIcon size={16} />
+          <span className="hidden sm:inline">基础设置</span>
         </button>
       </nav>
 
@@ -77,6 +83,7 @@ export const Navbar: FC<NavbarProps> = ({
         <button
           type="button"
           title={darkMode ? '切换浅色模式' : '切换暗黑模式'}
+          aria-label={darkMode ? '切换浅色模式' : '切换暗黑模式'}
           onClick={onToggleDarkMode}
           className="w-[34px] h-[34px] rounded-lg border border-transparent flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-neutral-fg-1)] hover:border-[var(--color-neutral-stroke)] cursor-pointer transition-all duration-150"
         >
@@ -96,8 +103,9 @@ export const Navbar: FC<NavbarProps> = ({
         <button
           type="button"
           title="退出登录"
+          aria-label="退出登录"
           onClick={onLogout}
-          className="flex items-center gap-1 sm:gap-1.5 text-[12.5px] sm:text-[13px] text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] px-2 sm:px-2.5 py-1.5 rounded-md cursor-pointer transition-all duration-150"
+          className="w-[34px] h-[34px] sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 text-[12.5px] sm:text-[13px] text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-md cursor-pointer transition-all duration-150"
         >
           <LogoutIcon size={15} />
           <span className="hidden sm:inline">登出</span>
