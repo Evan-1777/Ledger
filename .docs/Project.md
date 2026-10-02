@@ -54,16 +54,16 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航、主题切换、admin 徽章与登出
-│  │  │  ├─ BottomBar.tsx    # 底部居中悬浮筛选胶囊与右下角 FAB 记账按钮
-│  │  │  ├─ RecordModal.tsx  # Layer 3 居中模态卡片，Hero 金额、正负切换、二级级联分类标签 Flyout
+│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航、移动端自适应响应、主题切换与登出
+│  │  │  ├─ BottomBar.tsx    # 底部移动防冲突安全停靠筛选胶囊、showFilter 优雅退化与右下角 FAB 记账按钮
+│  │  │  ├─ RecordModal.tsx  # Layer 3 居中模态卡片、顶部平滑收支胶囊滑块、纯净无噪声表单与二级级联 Flyout
 │  │  │  ├─ AuthModal.tsx    # 管理员密码安全解锁浮层
-│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库
+│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（含调序、菜单与基础图标）
 │  │  │  └─ Toast.tsx        # 轻量操作反馈悬浮通知
 │  │  ├─ pages/
-│  │  │  ├─ StreamPage.tsx   # 账目流水：900px 居中工作台、按日期倒序分组、状态色条与 hover 操作
-│  │  │  ├─ StatsPage.tsx    # 收支统计：4联 KPI 卡片、同构进度分类下钻、6个月月度趋势双柱图
-│  │  │  └─ SettingsPage.tsx # 基础设置：支付途径磁贴网格、消费类型与细分标签内嵌分组管理
+│  │  │  ├─ StreamPage.tsx   # 账目流水：900px 居中中性卡片、按日期倒序分组、无硬边框与首字图标、触控友好
+│  │  │  ├─ StatsPage.tsx    # 收支统计：4联 KPI 卡片、去噪进度分类下钻、6个月月度趋势双柱图
+│  │  │  └─ SettingsPage.tsx # 基础设置：支付途径自适应网格、消费类型手动排序、类型与标签二级上下文菜单及同构内联重命名
 │  │  ├─ lib/
 │  │  │  └─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化与 401 拦截
 │  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N）
@@ -110,6 +110,9 @@ Ledger/
 - 2026-10-01 前端时间分组跨年展示——交易流非当年记录自动补齐年份前缀（`YYYY年M月D日`），消除跨年同月同日混淆
 - 2026-10-01 前端界面严格遵循 Microsoft Fluent 2 视觉规范——Segoe UI 字阶、900px 居中流式卡片、二级级联 Flyout 选择、无界面噪声
 - 2026-10-01 容器化多阶段打包与 GitHub Actions 镜像自动化发布——采用 Node 24 编译静态资源、Golang 1.27 Alpine 静态编译单二进制、Alpine 3.21 最小化运行时（含 CA 证书、时区支持与健康探针），通过 GitHub Actions 推送至 GHCR（`ghcr.io/evan-1777/ledger`），提供 `docker-compose.yml`（强制声明 `LEDGER_ADMIN_PASSWORD` 杜绝弱默认密码）实现 VPS 零编译一键部署
+- 2026-10-02 界面去噪与中性排版重塑——移除流水单侧彩色粗边框与首字方块图标，记账模态窗引入顶部双向胶囊滑块并移除用途快捷输入标签，统计看板彻底清理下钻引导文案
+- 2026-10-02 消费类型手动调序与二级操作菜单体系——采用基于绝对数组索引递增的防碰撞调序算法杜绝同值死锁；消费类型与细分标签统一接入二级上下文操作菜单（支持重命名与删除），重命名以同构内联表单呈现并由 App.tsx 驱动 SSOT 同步
+- 2026-10-02 移动端全屏自适应与底部悬浮防重叠——底部筛选胶囊在小屏下居中靠左避让右下角 FAB，在非流水页优雅退化仅保留悬浮 FAB；顶栏导航项与支付途径网格响应式收紧，模态窗启用内部弹性滚动
 
 ## 术语
 

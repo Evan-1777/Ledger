@@ -44,8 +44,6 @@ export const RecordModal: FC<RecordModalProps> = ({
   const flyoutRef = useRef<HTMLDivElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
 
-  const quickChips = ['商务简餐', '地铁交通', '超市买菜', '咖啡饮品', '房租水电'];
-
   // Initialize or reset when modal opens or initialTransaction changes
   useEffect(() => {
     if (!isOpen) {
@@ -207,12 +205,12 @@ export const RecordModal: FC<RecordModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-[520px] bg-[var(--color-card-bg)] rounded-2xl shadow-[var(--shadow-modal)] border border-[var(--color-neutral-stroke)] flex flex-col overflow-hidden animate-fade-in relative">
+    <div className="fixed inset-0 z-[1000] bg-black/45 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="w-full max-w-[520px] max-h-[90vh] bg-[var(--color-card-bg)] rounded-2xl shadow-[var(--shadow-modal)] border border-[var(--color-neutral-stroke)] flex flex-col overflow-hidden animate-fade-in relative">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[var(--color-neutral-stroke)] flex items-center justify-between">
+        <div className="px-5 sm:px-6 py-4 border-b border-[var(--color-neutral-stroke)] flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
-            {initialTransaction ? '编辑账单' : '记一笔账'}
+            {initialTransaction ? '编辑账单' : '记账'}
           </h3>
           <button
             type="button"
@@ -224,23 +222,45 @@ export const RecordModal: FC<RecordModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleFormSubmit} className="p-6 flex flex-col gap-4">
+        <form onSubmit={handleFormSubmit} className="p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1">
+          {/* Top Segmented Capsule Slider for Expense / Income */}
+          <div className="relative bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-1 grid grid-cols-2 select-none">
+            {/* Smooth sliding indicator */}
+            <div
+              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-200 ease-out shadow-sm ${
+                isExpense
+                  ? 'left-1 bg-[var(--color-expense-bg)] border border-[var(--color-expense-stroke)]'
+                  : 'left-[calc(50%+2px)] bg-[var(--color-income-bg)] border border-[var(--color-income-stroke)]'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setIsExpense(true)}
+              className={`relative z-10 py-2 text-center text-xs font-semibold cursor-pointer transition-colors duration-150 ${
+                isExpense
+                  ? 'text-[var(--color-expense-dark)]'
+                  : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
+              }`}
+            >
+              − 支出
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsExpense(false)}
+              className={`relative z-10 py-2 text-center text-xs font-semibold cursor-pointer transition-colors duration-150 ${
+                !isExpense
+                  ? 'text-[var(--color-income-dark)]'
+                  : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
+              }`}
+            >
+              + 收入
+            </button>
+          </div>
+
           {/* Hero Amount Box */}
           <div className="bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-3.5 focus-within:border-[var(--color-brand)] focus-within:bg-[var(--color-card-bg)] transition-colors">
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="mb-1.5">
               <span className="text-xs text-[var(--color-neutral-fg-3)]">账单金额</span>
-              {/* Sign Switcher Pill */}
-              <button
-                type="button"
-                onClick={() => setIsExpense(!isExpense)}
-                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold cursor-pointer select-none transition-colors ${
-                  isExpense
-                    ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
-                    : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
-                }`}
-              >
-                <span>{isExpense ? '− 支出' : '+ 收入'}</span>
-              </button>
             </div>
 
             <div className="flex items-baseline gap-2">
@@ -257,7 +277,7 @@ export const RecordModal: FC<RecordModalProps> = ({
             </div>
           </div>
 
-          {/* Description & Quick Chips */}
+          {/* Description */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">用途说明</label>
             <input
@@ -267,19 +287,6 @@ export const RecordModal: FC<RecordModalProps> = ({
               placeholder="如：午餐商务简餐、地铁交通等"
               className="w-full px-3.5 py-2 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-sm text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)] transition-colors"
             />
-            {/* Quick Chips */}
-            <div className="flex flex-wrap gap-1.5 mt-0.5">
-              {quickChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => setDescription(chip)}
-                  className="text-xs text-[var(--color-neutral-fg-3)] bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] px-2 py-0.5 rounded cursor-pointer transition-colors"
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Cascading Picker for Category & Tag */}
@@ -296,9 +303,6 @@ export const RecordModal: FC<RecordModalProps> = ({
               className="w-full px-3.5 py-2 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] hover:border-[var(--color-brand)] flex items-center justify-between cursor-pointer transition-colors text-left"
             >
               <div className="flex items-center gap-2 text-sm">
-                <span className="w-5 h-5 rounded bg-[var(--color-hover-bg)] text-xs font-semibold flex items-center justify-center text-[var(--color-neutral-fg-2)]">
-                  {currentCategory?.name ? currentCategory.name.charAt(0) : '未'}
-                </span>
                 <span className="font-semibold text-[var(--color-neutral-fg-1)]">
                   {currentCategory?.name || '未选择分类'}
                 </span>
@@ -328,13 +332,8 @@ export const RecordModal: FC<RecordModalProps> = ({
                             : 'text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="w-4 h-4 rounded bg-[var(--color-hover-bg)] text-[10px] font-bold flex items-center justify-center">
-                            {cat.name.charAt(0)}
-                          </span>
-                          <span>{cat.name}</span>
-                        </div>
-                        <span className="text-[10px] text-[var(--color-neutral-fg-subtle)]">
+                        <span className="truncate">{cat.name}</span>
+                        <span className="text-[10px] text-[var(--color-neutral-fg-subtle)] flex-shrink-0 ml-1">
                           {cat.tags?.length || 0}
                         </span>
                       </div>
@@ -384,7 +383,7 @@ export const RecordModal: FC<RecordModalProps> = ({
           {/* Payment Method Selector */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">支付途径</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {paymentMethods.map((pm) => {
                 const isSelected = pm.id === paymentMethodId;
                 return (

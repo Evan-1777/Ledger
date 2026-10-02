@@ -31,7 +31,7 @@ export const StreamPage: FC<StreamPageProps> = ({
           <CalendarIcon size={24} />
         </div>
         <span className="text-sm font-medium text-[var(--color-neutral-fg-2)] mb-1">暂无账单数据</span>
-        <span className="text-xs">点击右下角 “+” 开始记录第一笔收支</span>
+        <span className="text-xs">点击右下角 “+” 开始记账</span>
       </div>
     );
   }
@@ -151,52 +151,44 @@ export const StreamPage: FC<StreamPageProps> = ({
                 return (
                   <div
                     key={item.id}
-                    className={`group bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-3.5 px-4.5 flex items-center justify-between shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-[1px] transition-all duration-150 ${
-                      isExp ? 'border-l-4 border-l-[var(--color-expense)]' : 'border-l-4 border-l-[var(--color-income)]'
-                    }`}
+                    className="group bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-3.5 px-4 flex items-center justify-between shadow-[var(--shadow-card)] hover:shadow-[var(--shadow-card-hover)] hover:-translate-y-[1px] transition-all duration-150"
                   >
-                    {/* Left: Category Icon & Details */}
-                    <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-[var(--color-hover-bg)] text-[var(--color-neutral-fg-2)] text-sm font-semibold flex items-center justify-center flex-shrink-0">
-                        {item.category_name ? item.category_name.charAt(0) : '记'}
+                    {/* Left: Details */}
+                    <div className="flex flex-col gap-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="text-[14px] font-medium text-[var(--color-neutral-fg-1)] truncate">
+                          {item.description}
+                        </span>
+                        <span
+                          className={`text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
+                            isExp
+                              ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
+                              : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
+                          }`}
+                        >
+                          {item.category_name} · {item.tag_name}
+                        </span>
                       </div>
 
-                      <div className="flex flex-col gap-1 min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[14px] font-medium text-[var(--color-neutral-fg-1)] truncate">
-                            {item.description}
-                          </span>
-                          <span
-                            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
-                              isExp
-                                ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
-                                : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
-                            }`}
-                          >
-                            {item.category_name} · {item.tag_name}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 text-xs text-[var(--color-neutral-fg-3)]">
-                          <ClockIcon size={12} />
-                          <span className="tabular-num">{formatTime(item.transacted_at)}</span>
-                          <span className="opacity-40">·</span>
-                          <span>{item.payment_method_name}</span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-xs text-[var(--color-neutral-fg-3)]">
+                        <ClockIcon size={12} />
+                        <span className="tabular-num">{formatTime(item.transacted_at)}</span>
+                        <span className="opacity-40">·</span>
+                        <span>{item.payment_method_name}</span>
                       </div>
                     </div>
 
                     {/* Right: Amount & Actions */}
-                    <div className="flex items-center gap-4 flex-shrink-0 ml-3">
+                    <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-3">
                       <span
-                        className={`text-[16px] font-semibold tabular-num ${
+                        className={`text-[15px] sm:text-[16px] font-semibold tabular-num ${
                           isExp ? 'text-[var(--color-expense-dark)]' : 'text-[var(--color-income-dark)]'
                         }`}
                       >
                         {formattedAmount}
                       </span>
 
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <div className="flex items-center gap-0.5 sm:gap-1 opacity-65 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-150">
                         <button
                           type="button"
                           title="编辑账单"

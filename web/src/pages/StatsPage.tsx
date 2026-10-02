@@ -86,13 +86,10 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
 
       {/* Category Expense Distribution with Drilldown */}
       <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)]">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4">
           <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
             当月支出分类占比
           </h4>
-          <span className="text-xs text-[var(--color-neutral-fg-3)]">
-            点击分类查看细分标签下钻
-          </span>
         </div>
 
         {stats.category_distribution.length === 0 ? (

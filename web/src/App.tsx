@@ -243,6 +243,17 @@ export default function App() {
     }
   };
 
+  const handleUpdateCategory = async (id: number, name: string, sort_order: number) => {
+    try {
+      await api.updateCategory(id, name, sort_order);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '更新消费类型失败');
+      fetchConfigData();
+      throw err;
+    }
+  };
+
   const handleAddTag = async (categoryId: number, name: string) => {
     try {
       await api.createTag(categoryId, name, 0);
@@ -250,6 +261,17 @@ export default function App() {
       fetchConfigData();
     } catch (err: any) {
       addToast('error', err?.message || '添加失败');
+    }
+  };
+
+  const handleUpdateTag = async (id: number, name: string, sort_order: number) => {
+    try {
+      await api.updateTag(id, name, sort_order);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '更新细分标签失败');
+      fetchConfigData();
+      throw err;
     }
   };
 
@@ -300,8 +322,10 @@ export default function App() {
             onAddPaymentMethod={handleAddPaymentMethod}
             onDeletePaymentMethod={handleDeletePaymentMethod}
             onAddCategory={handleAddCategory}
+            onUpdateCategory={handleUpdateCategory}
             onDeleteCategory={handleDeleteCategory}
             onAddTag={handleAddTag}
+            onUpdateTag={handleUpdateTag}
             onDeleteTag={handleDeleteTag}
           />
         )}

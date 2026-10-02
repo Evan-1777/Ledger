@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FC, FormEvent } from 'react';
-import { Category, PaymentMethod } from '../lib/api';
-import { PlusIcon, TrashIcon } from '../components/Icons';
+import { Category, PaymentMethod, Tag } from '../lib/api';
+import { PlusIcon, ChevronUpIcon, ChevronDownIcon, MoreVerticalIcon, TrashIcon } from '../components/Icons';
 
 interface SettingsPageProps {
   categories: Category[];
@@ -9,8 +9,10 @@ interface SettingsPageProps {
   onAddPaymentMethod: (name: string) => Promise<void>;
   onDeletePaymentMethod: (id: number) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
+  onUpdateCategory: (id: number, name: string, sort_order: number) => Promise<void>;
   onDeleteCategory: (id: number) => Promise<void>;
   onAddTag: (categoryId: number, name: string) => Promise<void>;
+  onUpdateTag: (id: number, name: string, sort_order: number) => Promise<void>;
   onDeleteTag: (id: number) => Promise<void>;
 }
 
@@ -20,8 +22,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   onAddPaymentMethod,
   onDeletePaymentMethod,
   onAddCategory,
+  onUpdateCategory,
   onDeleteCategory,
   onAddTag,
+  onUpdateTag,
   onDeleteTag,
 }) => {
   const [newPmName, setNewPmName] = useState('');
@@ -32,6 +36,27 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
   const [activeTagInputCatId, setActiveTagInputCatId] = useState<number | null>(null);
   const [newTagName, setNewTagName] = useState('');
+
+  // Dropdown menus state
+  const [openCatMenuId, setOpenCatMenuId] = useState<number | null>(null);
+  const [openTagMenuId, setOpenTagMenuId] = useState<number | null>(null);
+
+  // Inline rename state
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editingCatName, setEditingCatName] = useState('');
+
+  const [editingTagId, setEditingTagId] = useState<number | null>(null);
+  const [editingTagName, setEditingTagName] = useState('');
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleDocumentClick = () => {
+      setOpenCatMenuId(null);
+      setOpenTagMenuId(null);
+    };
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, []);
 
   const handleCreatePaymentMethod = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,6 +80,46 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     await onAddTag(categoryId, newTagName.trim());
     setNewTagName('');
     setActiveTagInputCatId(null);
+  };
+
+  const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= categories.length) return;
+
+    const itemA = categories[index];
+    const itemB = categories[targetIndex];
+
+    const orderForA = targetIndex + 1;
+    const orderForB = index + 1;
+
+    try {
+      await Promise.all([
+        onUpdateCategory(itemA.id, itemA.name, orderForA),
+        onUpdateCategory(itemB.id, itemB.name, orderForB),
+      ]);
+    } catch {
+      // Toast and refresh handled in App.tsx
+    }
+  };
+
+  const handleSaveCatRename = async (cat: Category, e: FormEvent) => {
+    e.preventDefault();
+    if (!editingCatName.trim() || editingCatName.trim() === cat.name) {
+      setEditingCatId(null);
+      return;
+    }
+    await onUpdateCategory(cat.id, editingCatName.trim(), cat.sort_order);
+    setEditingCatId(null);
+  };
+
+  const handleSaveTagRename = async (tag: Tag, e: FormEvent) => {
+    e.preventDefault();
+    if (!editingTagName.trim() || editingTagName.trim() === tag.name) {
+      setEditingTagId(null);
+      return;
+    }
+    await onUpdateTag(tag.id, editingTagName.trim(), tag.sort_order);
+    setEditingTagId(null);
   };
 
   return (
@@ -109,7 +174,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           </form>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {paymentMethods.map((pm) => (
             <div
               key={pm.id}
@@ -187,7 +252,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
         )}
 
         <div className="flex flex-col gap-3">
-          {categories.map((cat) => (
+          {categories.map((cat, index) => (
             <div
               key={cat.id}
               className="group/card border border-[var(--color-neutral-stroke)] rounded-xl p-3.5 bg-[var(--color-card-bg)]"
@@ -195,9 +260,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
               {/* Category Header Row */}
               <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-md bg-[var(--color-hover-bg)] text-xs font-semibold flex items-center justify-center text-[var(--color-neutral-fg-2)]">
-                    {cat.name.charAt(0)}
-                  </div>
                   <span className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
                     {cat.name}
                   </span>
@@ -206,36 +268,188 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {/* Move Up */}
                   <button
                     type="button"
-                    title="删除消费类型"
-                    onClick={() => onDeleteCategory(cat.id)}
-                    className="opacity-0 group-hover/card:opacity-100 text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-all"
+                    title="上移类型"
+                    disabled={index === 0}
+                    onClick={() => handleMoveCategory(index, 'up')}
+                    className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
                   >
-                    <TrashIcon size={13} />
+                    <ChevronUpIcon size={13} />
                   </button>
+                  {/* Move Down */}
+                  <button
+                    type="button"
+                    title="下移类型"
+                    disabled={index === categories.length - 1}
+                    onClick={() => handleMoveCategory(index, 'down')}
+                    className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  >
+                    <ChevronDownIcon size={13} />
+                  </button>
+
+                  {/* Secondary Context Menu */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      title="更多操作"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenTagMenuId(null);
+                        setOpenCatMenuId(openCatMenuId === cat.id ? null : cat.id);
+                      }}
+                      className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                    >
+                      <MoreVerticalIcon size={13} />
+                    </button>
+
+                    {openCatMenuId === cat.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-full mt-1 w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCatId(cat.id);
+                            setEditingCatName(cat.name);
+                            setOpenCatMenuId(null);
+                          }}
+                          className="px-3 py-1.5 text-left text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                        >
+                          重命名类型
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenCatMenuId(null);
+                            onDeleteCategory(cat.id);
+                          }}
+                          className="px-3 py-1.5 text-left text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
+                        >
+                          删除类型
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
+              {/* Inline Category Rename Form */}
+              {editingCatId === cat.id && (
+                <form
+                  onSubmit={(e) => handleSaveCatRename(cat, e)}
+                  className="flex items-center gap-2 mb-3 p-2.5 bg-[var(--color-hover-bg)] rounded-xl border border-[var(--color-neutral-stroke)] animate-fade-in"
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    value={editingCatName}
+                    onChange={(e) => setEditingCatName(e.target.value)}
+                    className="flex-1 px-3 py-1 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingCatId(null)}
+                    className="px-2.5 py-1 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
+                  >
+                    取消
+                  </button>
+                </form>
+              )}
+
               {/* Sub-tags Chip Container */}
               <div className="flex flex-wrap gap-2 items-center">
-                {cat.tags?.map((tag) => (
-                  <div
-                    key={tag.id}
-                    className="group/chip bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] rounded-md px-2.5 py-1 text-xs text-[var(--color-neutral-fg-2)] flex items-center gap-1.5 transition-colors hover:bg-[var(--color-canvas-bg)]"
-                  >
-                    <span>{tag.name}</span>
-                    <button
-                      type="button"
-                      title="删除细分标签"
-                      onClick={() => onDeleteTag(tag.id)}
-                      className="opacity-25 hover:opacity-100 hover:text-[var(--color-expense-dark)] cursor-pointer text-[10px]"
+                {cat.tags?.map((tag) => {
+                  if (editingTagId === tag.id) {
+                    return (
+                      <form
+                        key={tag.id}
+                        onSubmit={(e) => handleSaveTagRename(tag, e)}
+                        className="inline-flex items-center gap-1"
+                      >
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingTagName}
+                          onChange={(e) => setEditingTagName(e.target.value)}
+                          className="w-24 px-2 py-0.5 rounded border border-[var(--color-brand)] bg-[var(--color-card-bg)] text-xs text-[var(--color-neutral-fg-1)] outline-none"
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-0.5 rounded bg-[var(--color-brand)] text-white text-[11px] cursor-pointer"
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTagId(null)}
+                          className="px-1.5 py-0.5 text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] text-xs cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </form>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={tag.id}
+                      className="relative group/chip bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] rounded-md px-2.5 py-1 text-xs text-[var(--color-neutral-fg-2)] flex items-center gap-1.5 transition-colors hover:bg-[var(--color-canvas-bg)]"
                     >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                      <span>{tag.name}</span>
+                      <button
+                        type="button"
+                        title="更多操作"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenCatMenuId(null);
+                          setOpenTagMenuId(openTagMenuId === tag.id ? null : tag.id);
+                        }}
+                        className="text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] cursor-pointer text-[11px] font-bold px-0.5 rounded hover:bg-[var(--color-hover-bg)]"
+                      >
+                        ···
+                      </button>
+
+                      {openTagMenuId === tag.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute left-0 top-full mt-1 w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingTagId(tag.id);
+                              setEditingTagName(tag.name);
+                              setOpenTagMenuId(null);
+                            }}
+                            className="px-3 py-1.5 text-left text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                          >
+                            重命名标签
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenTagMenuId(null);
+                              onDeleteTag(tag.id);
+                            }}
+                            className="px-3 py-1.5 text-left text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
+                          >
+                            删除标签
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 {/* Inline add tag input or button */}
                 {activeTagInputCatId === cat.id ? (
