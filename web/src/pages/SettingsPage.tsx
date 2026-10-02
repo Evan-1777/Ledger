@@ -10,10 +10,12 @@ interface SettingsPageProps {
   onDeletePaymentMethod: (id: number) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onUpdateCategory: (id: number, name: string, sort_order: number) => Promise<void>;
+  onReorderCategories?: (updates: { id: number; name: string; sort_order: number }[]) => Promise<void>;
   onDeleteCategory: (id: number) => Promise<void>;
   onAddTag: (categoryId: number, name: string) => Promise<void>;
   onUpdateTag: (id: number, name: string, sort_order: number) => Promise<void>;
   onDeleteTag: (id: number) => Promise<void>;
+  onToast?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
 export const SettingsPage: FC<SettingsPageProps> = ({
@@ -23,10 +25,12 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   onDeletePaymentMethod,
   onAddCategory,
   onUpdateCategory,
+  onReorderCategories,
   onDeleteCategory,
   onAddTag,
   onUpdateTag,
   onDeleteTag,
+  onToast,
 }) => {
   const [newPmName, setNewPmName] = useState('');
   const [showAddPmInput, setShowAddPmInput] = useState(false);
@@ -89,37 +93,83 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     const itemA = categories[index];
     const itemB = categories[targetIndex];
 
-    const orderForA = targetIndex + 1;
-    const orderForB = index + 1;
+    let orderForA: number;
+    let orderForB: number;
+
+    if (itemA.sort_order !== itemB.sort_order) {
+      orderForA = itemB.sort_order;
+      orderForB = itemA.sort_order;
+    } else {
+      orderForA = targetIndex + 1;
+      orderForB = index + 1;
+    }
 
     try {
-      await Promise.all([
-        onUpdateCategory(itemA.id, itemA.name, orderForA),
-        onUpdateCategory(itemB.id, itemB.name, orderForB),
-      ]);
+      if (onReorderCategories) {
+        await onReorderCategories([
+          { id: itemA.id, name: itemA.name, sort_order: orderForA },
+          { id: itemB.id, name: itemB.name, sort_order: orderForB },
+        ]);
+      } else {
+        await Promise.all([
+          onUpdateCategory(itemA.id, itemA.name, orderForA),
+          onUpdateCategory(itemB.id, itemB.name, orderForB),
+        ]);
+      }
     } catch {
-      // Toast and refresh handled in App.tsx
+      // Toast and refresh handled in parent
     }
   };
 
   const handleSaveCatRename = async (cat: Category, e: FormEvent) => {
     e.preventDefault();
-    if (!editingCatName.trim() || editingCatName.trim() === cat.name) {
+    const trimmed = editingCatName.trim();
+    if (!trimmed || trimmed === cat.name) {
       setEditingCatId(null);
       return;
     }
-    await onUpdateCategory(cat.id, editingCatName.trim(), cat.sort_order);
-    setEditingCatId(null);
+
+    // Pre-check duplicate in sibling categories
+    const isDuplicate = categories.some(
+      (c) => c.id !== cat.id && c.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      onToast?.('error', '该消费类型已存在');
+      return;
+    }
+
+    try {
+      await onUpdateCategory(cat.id, trimmed, cat.sort_order);
+      setEditingCatId(null);
+    } catch {
+      // Keep edit state open so user can adjust name
+    }
   };
 
-  const handleSaveTagRename = async (tag: Tag, e: FormEvent) => {
+  const handleSaveTagRename = async (tag: Tag, e: FormEvent, currentCategory?: Category) => {
     e.preventDefault();
-    if (!editingTagName.trim() || editingTagName.trim() === tag.name) {
+    const trimmed = editingTagName.trim();
+    if (!trimmed || trimmed === tag.name) {
       setEditingTagId(null);
       return;
     }
-    await onUpdateTag(tag.id, editingTagName.trim(), tag.sort_order);
-    setEditingTagId(null);
+
+    // Pre-check duplicate in same category tags
+    const parentCategory = currentCategory || categories.find((c) => c.id === tag.category_id);
+    const isDuplicate = parentCategory?.tags?.some(
+      (t) => t.id !== tag.id && t.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      onToast?.('error', '该分类下已存在同名标签');
+      return;
+    }
+
+    try {
+      await onUpdateTag(tag.id, trimmed, tag.sort_order);
+      setEditingTagId(null);
+    } catch {
+      // Keep edit state open so user can adjust name
+    }
   };
 
   return (
@@ -373,7 +423,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     return (
                       <form
                         key={tag.id}
-                        onSubmit={(e) => handleSaveTagRename(tag, e)}
+                        onSubmit={(e) => handleSaveTagRename(tag, e, cat)}
                         className="inline-flex items-center gap-1"
                       >
                         <input

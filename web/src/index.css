@@ -60,7 +60,9 @@
   --color-hover-bg: #334155;
 
   --color-expense-bg: rgba(239, 68, 68, 0.15);
+  --color-expense-stroke: rgba(239, 68, 68, 0.3);
   --color-income-bg: rgba(16, 185, 129, 0.15);
+  --color-income-stroke: rgba(16, 185, 129, 0.3);
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.5);

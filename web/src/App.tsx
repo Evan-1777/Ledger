@@ -248,8 +248,26 @@ export default function App() {
       await api.updateCategory(id, name, sort_order);
       fetchConfigData();
     } catch (err: any) {
-      addToast('error', err?.message || '更新消费类型失败');
+      const msg = err?.message?.includes('category already exists')
+        ? '消费类型名称已存在'
+        : err?.message || '更新消费类型失败';
+      addToast('error', msg);
       fetchConfigData();
+      throw err;
+    }
+  };
+
+  const handleReorderCategories = async (
+    updates: { id: number; name: string; sort_order: number }[]
+  ) => {
+    try {
+      for (const item of updates) {
+        await api.updateCategory(item.id, item.name, item.sort_order);
+      }
+      await fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '调整分类顺序失败');
+      await fetchConfigData();
       throw err;
     }
   };
@@ -269,7 +287,10 @@ export default function App() {
       await api.updateTag(id, name, sort_order);
       fetchConfigData();
     } catch (err: any) {
-      addToast('error', err?.message || '更新细分标签失败');
+      const msg = err?.message?.includes('tag already exists')
+        ? '该分类下已存在同名标签'
+        : err?.message || '更新细分标签失败';
+      addToast('error', msg);
       fetchConfigData();
       throw err;
     }
@@ -323,10 +344,12 @@ export default function App() {
             onDeletePaymentMethod={handleDeletePaymentMethod}
             onAddCategory={handleAddCategory}
             onUpdateCategory={handleUpdateCategory}
+            onReorderCategories={handleReorderCategories}
             onDeleteCategory={handleDeleteCategory}
             onAddTag={handleAddTag}
             onUpdateTag={handleUpdateTag}
             onDeleteTag={handleDeleteTag}
+            onToast={addToast}
           />
         )}
       </main>

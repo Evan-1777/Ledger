@@ -100,7 +100,7 @@ export const Navbar: FC<NavbarProps> = ({
           className="flex items-center gap-1 sm:gap-1.5 text-[12.5px] sm:text-[13px] text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] px-2 sm:px-2.5 py-1.5 rounded-md cursor-pointer transition-all duration-150"
         >
           <LogoutIcon size={15} />
-          <span className="hidden xs:inline">登出</span>
+          <span className="hidden sm:inline">登出</span>
         </button>
       </div>
     </header>

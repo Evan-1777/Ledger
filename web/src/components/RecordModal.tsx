@@ -227,10 +227,10 @@ export const RecordModal: FC<RecordModalProps> = ({
           <div className="relative bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-1 grid grid-cols-2 select-none">
             {/* Smooth sliding indicator */}
             <div
-              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-200 ease-out shadow-sm ${
+              className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-lg transition-transform duration-200 ease-out shadow-sm ${
                 isExpense
-                  ? 'left-1 bg-[var(--color-expense-bg)] border border-[var(--color-expense-stroke)]'
-                  : 'left-[calc(50%+2px)] bg-[var(--color-income-bg)] border border-[var(--color-income-stroke)]'
+                  ? 'translate-x-0 bg-[var(--color-expense-bg)] border border-[var(--color-expense-stroke)]'
+                  : 'translate-x-full bg-[var(--color-income-bg)] border border-[var(--color-income-stroke)]'
               }`}
             />
             <button
