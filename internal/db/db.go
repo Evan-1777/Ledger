@@ -69,6 +69,9 @@ func migrateAndSeed(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT UNIQUE NOT NULL,
 		sort_order INTEGER DEFAULT 0,
+		type TEXT NOT NULL DEFAULT 'asset',
+		initial_balance_cents INTEGER NOT NULL DEFAULT 0,
+		credit_limit_cents INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -103,6 +106,11 @@ func migrateAndSeed(db *sql.DB) error {
 	}
 	defer tx.Rollback()
 
+	// Hot migration: probe and add columns if missing (always executed before seed check)
+	if err := migratePaymentMethodsColumns(tx); err != nil {
+		return fmt.Errorf("failed to migrate payment methods columns: %w", err)
+	}
+
 	// Check if seed has already been initialized
 	var seedInit string
 	err = tx.QueryRow("SELECT value FROM system_meta WHERE key = 'seed_initialized'").Scan(&seedInit)
@@ -132,17 +140,22 @@ func migrateAndSeed(db *sql.DB) error {
 
 	// Fresh installation: Seed default payment methods
 	defaultMethods := []struct {
-		name      string
-		sortOrder int
+		name                string
+		sortOrder           int
+		channelType         string
+		initialBalanceCents int64
+		creditLimitCents    int64
 	}{
-		{"微信支付", 1},
-		{"支付宝", 2},
-		{"招商银行卡", 3},
-		{"现金钞票", 4},
+		{"微信支付", 1, "asset", 0, 0},
+		{"支付宝", 2, "asset", 0, 0},
+		{"招商银行卡", 3, "asset", 0, 0},
+		{"现金钞票", 4, "asset", 0, 0},
+		{"招商信用卡", 5, "liability", 0, 2000000},
 	}
 
 	for _, pm := range defaultMethods {
-		_, err := tx.Exec("INSERT OR IGNORE INTO payment_methods (name, sort_order) VALUES (?, ?)", pm.name, pm.sortOrder)
+		_, err := tx.Exec("INSERT OR IGNORE INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES (?, ?, ?, ?, ?)",
+			pm.name, pm.sortOrder, pm.channelType, pm.initialBalanceCents, pm.creditLimitCents)
 		if err != nil {
 			return fmt.Errorf("failed to seed payment method %s: %w", pm.name, err)
 		}
@@ -187,3 +200,55 @@ func migrateAndSeed(db *sql.DB) error {
 
 	return tx.Commit()
 }
+
+func migratePaymentMethodsColumns(tx *sql.Tx) error {
+	rows, err := tx.Query("PRAGMA table_info(payment_methods)")
+	if err != nil {
+		return fmt.Errorf("failed to inspect payment_methods table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasType := false
+	hasInitialBalance := false
+	hasCreditLimit := false
+
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("failed to scan table_info: %w", err)
+		}
+		switch name {
+		case "type":
+			hasType = true
+		case "initial_balance_cents":
+			hasInitialBalance = true
+		case "credit_limit_cents":
+			hasCreditLimit = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating table_info: %w", err)
+	}
+
+	if !hasType {
+		if _, err := tx.Exec("ALTER TABLE payment_methods ADD COLUMN type TEXT NOT NULL DEFAULT 'asset'"); err != nil {
+			return fmt.Errorf("failed to add column type: %w", err)
+		}
+	}
+	if !hasInitialBalance {
+		if _, err := tx.Exec("ALTER TABLE payment_methods ADD COLUMN initial_balance_cents INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add column initial_balance_cents: %w", err)
+		}
+	}
+	if !hasCreditLimit {
+		if _, err := tx.Exec("ALTER TABLE payment_methods ADD COLUMN credit_limit_cents INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add column credit_limit_cents: %w", err)
+		}
+	}
+
+	return nil
+}
+

@@ -3,16 +3,20 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
 type PaymentMethod struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
-	CreatedAt string `json:"created_at"`
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	SortOrder      int     `json:"sort_order"`
+	Type           string  `json:"type"`
+	InitialBalance float64 `json:"initial_balance"`
+	CreditLimit    float64 `json:"credit_limit"`
+	CreatedAt      string  `json:"created_at"`
 }
 
 type Tag struct {
@@ -34,7 +38,7 @@ type Category struct {
 // Payment Methods Handlers
 
 func (s *Server) handleListPaymentMethods(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods ORDER BY sort_order ASC, id ASC")
+	rows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, type, initial_balance_cents, credit_limit_cents, created_at FROM payment_methods ORDER BY sort_order ASC, id ASC")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -44,10 +48,13 @@ func (s *Server) handleListPaymentMethods(w http.ResponseWriter, r *http.Request
 	list := make([]PaymentMethod, 0)
 	for rows.Next() {
 		var pm PaymentMethod
-		if err := rows.Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt); err != nil {
+		var initBalCents, creditLimitCents int64
+		if err := rows.Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.Type, &initBalCents, &creditLimitCents, &pm.CreatedAt); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		pm.InitialBalance = float64(initBalCents) / 100.0
+		pm.CreditLimit = float64(creditLimitCents) / 100.0
 		list = append(list, pm)
 	}
 
@@ -56,8 +63,11 @@ func (s *Server) handleListPaymentMethods(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleCreatePaymentMethod(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string `json:"name"`
-		SortOrder int    `json:"sort_order"`
+		Name           string   `json:"name"`
+		SortOrder      int      `json:"sort_order"`
+		Type           *string  `json:"type"`
+		InitialBalance *float64 `json:"initial_balance"`
+		CreditLimit    *float64 `json:"credit_limit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -69,7 +79,26 @@ func (s *Server) handleCreatePaymentMethod(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "INSERT INTO payment_methods (name, sort_order) VALUES (?, ?)", req.Name, req.SortOrder)
+	chType := "asset"
+	if req.Type != nil && strings.TrimSpace(*req.Type) != "" {
+		chType = strings.TrimSpace(*req.Type)
+		if chType != "asset" && chType != "liability" {
+			writeJSONError(w, http.StatusBadRequest, "invalid channel type, must be 'asset' or 'liability'")
+			return
+		}
+	}
+
+	var initBalCents int64
+	if req.InitialBalance != nil {
+		initBalCents = int64(math.Round(*req.InitialBalance * 100))
+	}
+
+	var creditLimitCents int64
+	if req.CreditLimit != nil {
+		creditLimitCents = int64(math.Round(*req.CreditLimit * 100))
+	}
+
+	res, err := s.db.ExecContext(r.Context(), "INSERT INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES (?, ?, ?, ?, ?)", req.Name, req.SortOrder, chType, initBalCents, creditLimitCents)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "payment method already exists")
@@ -85,11 +114,14 @@ func (s *Server) handleCreatePaymentMethod(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var pm PaymentMethod
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
-		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt); err != nil {
+	var outInitBal, outLimit int64
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, initial_balance_cents, credit_limit_cents, created_at FROM payment_methods WHERE id = ?", id).
+		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.Type, &outInitBal, &outLimit, &pm.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read payment method: "+err.Error())
 		return
 	}
+	pm.InitialBalance = float64(outInitBal) / 100.0
+	pm.CreditLimit = float64(outLimit) / 100.0
 
 	writeJSON(w, http.StatusCreated, pm)
 }
@@ -103,20 +135,71 @@ func (s *Server) handleUpdatePaymentMethod(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req struct {
-		Name      string `json:"name"`
-		SortOrder int    `json:"sort_order"`
+		Name           *string  `json:"name"`
+		SortOrder      *int     `json:"sort_order"`
+		Type           *string  `json:"type"`
+		InitialBalance *float64 `json:"initial_balance"`
+		CreditLimit    *float64 `json:"credit_limit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeJSONError(w, http.StatusBadRequest, "name cannot be empty")
+
+	var existing struct {
+		name      string
+		sortOrder int
+		chType    string
+		initBal   int64
+		limit     int64
+	}
+	err = s.db.QueryRowContext(r.Context(), "SELECT name, sort_order, type, initial_balance_cents, credit_limit_cents FROM payment_methods WHERE id = ?", id).
+		Scan(&existing.name, &existing.sortOrder, &existing.chType, &existing.initBal, &existing.limit)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			writeJSONError(w, http.StatusNotFound, "payment method not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to read existing payment method: "+err.Error())
 		return
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "UPDATE payment_methods SET name = ?, sort_order = ? WHERE id = ?", req.Name, req.SortOrder, id)
+	newName := existing.name
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		if trimmed == "" {
+			writeJSONError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		newName = trimmed
+	}
+
+	newSortOrder := existing.sortOrder
+	if req.SortOrder != nil {
+		newSortOrder = *req.SortOrder
+	}
+
+	newType := existing.chType
+	if req.Type != nil {
+		trimmed := strings.TrimSpace(*req.Type)
+		if trimmed != "asset" && trimmed != "liability" {
+			writeJSONError(w, http.StatusBadRequest, "invalid channel type, must be 'asset' or 'liability'")
+			return
+		}
+		newType = trimmed
+	}
+
+	newInitBal := existing.initBal
+	if req.InitialBalance != nil {
+		newInitBal = int64(math.Round(*req.InitialBalance * 100))
+	}
+
+	newLimit := existing.limit
+	if req.CreditLimit != nil {
+		newLimit = int64(math.Round(*req.CreditLimit * 100))
+	}
+
+	res, err := s.db.ExecContext(r.Context(), "UPDATE payment_methods SET name = ?, sort_order = ?, type = ?, initial_balance_cents = ?, credit_limit_cents = ? WHERE id = ?", newName, newSortOrder, newType, newInitBal, newLimit, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "payment method already exists")
@@ -132,11 +215,14 @@ func (s *Server) handleUpdatePaymentMethod(w http.ResponseWriter, r *http.Reques
 	}
 
 	var pm PaymentMethod
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM payment_methods WHERE id = ?", id).
-		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.CreatedAt); err != nil {
+	var outInitBal, outLimit int64
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, initial_balance_cents, credit_limit_cents, created_at FROM payment_methods WHERE id = ?", id).
+		Scan(&pm.ID, &pm.Name, &pm.SortOrder, &pm.Type, &outInitBal, &outLimit, &pm.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read payment method: "+err.Error())
 		return
 	}
+	pm.InitialBalance = float64(outInitBal) / 100.0
+	pm.CreditLimit = float64(outLimit) / 100.0
 
 	writeJSON(w, http.StatusOK, pm)
 }

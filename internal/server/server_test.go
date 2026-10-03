@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -579,3 +580,210 @@ func TestErrorHandlingAndStatsFailFast(t *testing.T) {
 		t.Fatalf("expected 500 for transaction validation on broken DB, got %d", recBrokenTx.Code)
 	}
 }
+
+func TestPaymentMethodsAssetAndLiability(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// 1. Create asset channel with initial balance
+	assetBody := strings.NewReader(`{"name":"招商储蓄卡","sort_order":10,"type":"asset","initial_balance":5000.0,"credit_limit":0}`)
+	req := httptest.NewRequest("POST", "/api/payment-methods", assetBody)
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for asset channel creation, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var assetPM PaymentMethod
+	if err := json.NewDecoder(rec.Body).Decode(&assetPM); err != nil {
+		t.Fatalf("decode assetPM failed: %v", err)
+	}
+	if assetPM.Type != "asset" || assetPM.InitialBalance != 5000.0 || assetPM.CreditLimit != 0 {
+		t.Errorf("unexpected assetPM: %+v", assetPM)
+	}
+
+	// 2. Create liability channel with credit limit and initial debt
+	liabBody := strings.NewReader(`{"name":"京东白条","sort_order":11,"type":"liability","initial_balance":200.0,"credit_limit":6000.0}`)
+	req = httptest.NewRequest("POST", "/api/payment-methods", liabBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for liability channel creation, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var liabPM PaymentMethod
+	if err := json.NewDecoder(rec.Body).Decode(&liabPM); err != nil {
+		t.Fatalf("decode liabPM failed: %v", err)
+	}
+	if liabPM.Type != "liability" || liabPM.InitialBalance != 200.0 || liabPM.CreditLimit != 6000.0 {
+		t.Errorf("unexpected liabPM: %+v", liabPM)
+	}
+
+	// 3. Test invalid channel type returns 400
+	invalidBody := strings.NewReader(`{"name":"非法渠道","sort_order":12,"type":"invalid_type"}`)
+	req = httptest.NewRequest("POST", "/api/payment-methods", invalidBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid channel type, got %d", rec.Code)
+	}
+
+	// 4. Update liability channel credit limit and initial balance
+	updateBody := strings.NewReader(`{"name":"京东白条金卡","sort_order":11,"type":"liability","initial_balance":0.0,"credit_limit":10000.0}`)
+	req = httptest.NewRequest("PUT", "/api/payment-methods/"+strconv.FormatInt(liabPM.ID, 10), updateBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for update liability channel, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var updatedPM PaymentMethod
+	if err := json.NewDecoder(rec.Body).Decode(&updatedPM); err != nil {
+		t.Fatalf("decode updatedPM failed: %v", err)
+	}
+	if updatedPM.Name != "京东白条金卡" || updatedPM.CreditLimit != 10000.0 || updatedPM.InitialBalance != 0.0 {
+		t.Errorf("unexpected updatedPM: %+v", updatedPM)
+	}
+
+	// 5. List payment methods and check presence
+	reqList := httptest.NewRequest("GET", "/api/payment-methods", nil)
+	reqList.Header.Set("Authorization", authHeader)
+	recList := httptest.NewRecorder()
+	s.ServeHTTP(recList, reqList)
+	if recList.Code != http.StatusOK {
+		t.Fatalf("expected 200 for list payment methods, got %d", recList.Code)
+	}
+	var list []PaymentMethod
+	if err := json.NewDecoder(recList.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list failed: %v", err)
+	}
+	foundAsset := false
+	foundLiab := false
+	for _, it := range list {
+		if it.ID == assetPM.ID && it.Type == "asset" && it.InitialBalance == 5000.0 {
+			foundAsset = true
+		}
+		if it.ID == liabPM.ID && it.Type == "liability" && it.CreditLimit == 10000.0 {
+			foundLiab = true
+		}
+	}
+	if !foundAsset || !foundLiab {
+		t.Errorf("expected to find both created channels in list, foundAsset=%v, foundLiab=%v", foundAsset, foundLiab)
+	}
+}
+
+func TestStatsSummaryWithAssetsAndLiabilities(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// Clear pre-seeded payment methods to have clean deterministic totals
+	if _, err := s.db.Exec("DELETE FROM payment_methods;"); err != nil {
+		t.Fatalf("failed to clear payment methods: %v", err)
+	}
+
+	// Create Bank Card: Asset with initial balance 5000.00
+	pmAssetRes, err := s.db.Exec("INSERT INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES ('招行储蓄卡', 1, 'asset', 500000, 0)")
+	if err != nil {
+		t.Fatalf("failed to insert asset pm: %v", err)
+	}
+	assetPMID, _ := pmAssetRes.LastInsertId()
+
+	// Create Credit Card: Liability with initial debt 0.00, credit limit 20000.00
+	pmLiabRes, err := s.db.Exec("INSERT INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES ('招行信用卡', 2, 'liability', 0, 2000000)")
+	if err != nil {
+		t.Fatalf("failed to insert liability pm: %v", err)
+	}
+	liabPMID, _ := pmLiabRes.LastInsertId()
+
+	// Get existing category and tag
+	var catID, tagID int64
+	err = s.db.QueryRow("SELECT id FROM categories LIMIT 1").Scan(&catID)
+	if err != nil {
+		t.Fatalf("failed to get category: %v", err)
+	}
+	err = s.db.QueryRow("SELECT id FROM tags WHERE category_id = ? LIMIT 1", catID).Scan(&tagID)
+	if err != nil {
+		t.Fatalf("failed to get tag: %v", err)
+	}
+
+	nowISO := time.Now().UTC().Format(time.RFC3339)
+
+	// 1. Bank card income: +10,000.00 (1,000,000 cents)
+	_, err = s.db.Exec("INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at) VALUES (1000000, '主业薪资', ?, ?, ?, ?)", assetPMID, catID, tagID, nowISO)
+	if err != nil {
+		t.Fatalf("failed to insert income: %v", err)
+	}
+
+	// 2. Bank card expense: -2,000.00 (-200,000 cents)
+	_, err = s.db.Exec("INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at) VALUES (-200000, '数码采购', ?, ?, ?, ?)", assetPMID, catID, tagID, nowISO)
+	if err != nil {
+		t.Fatalf("failed to insert bank expense: %v", err)
+	}
+
+	// 3. Credit card expense: -3,000.00 (-300,000 cents)
+	_, err = s.db.Exec("INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at) VALUES (-300000, '机票预订', ?, ?, ?, ?)", liabPMID, catID, tagID, nowISO)
+	if err != nil {
+		t.Fatalf("failed to insert cc expense: %v", err)
+	}
+
+	// Request stats summary
+	req := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for stats summary, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var stats StatsSummaryResponse
+	if err := json.NewDecoder(rec.Body).Decode(&stats); err != nil {
+		t.Fatalf("failed to decode stats: %v", err)
+	}
+
+	// Assert asset summary
+	// Bank Card balance: 5000 + 10000 - 2000 = 13000.00
+	if stats.AssetSummary.TotalAssets != 13000.00 {
+		t.Errorf("expected TotalAssets 13000.00, got %v", stats.AssetSummary.TotalAssets)
+	}
+
+	// Credit Card debt: 0 - (-3000) = 3000.00
+	if stats.AssetSummary.TotalLiabilities != 3000.00 {
+		t.Errorf("expected TotalLiabilities 3000.00, got %v", stats.AssetSummary.TotalLiabilities)
+	}
+
+	// Net Assets: 13000 - 3000 = 10000.00
+	if stats.AssetSummary.NetAssets != 10000.00 {
+		t.Errorf("expected NetAssets 10000.00, got %v", stats.AssetSummary.NetAssets)
+	}
+
+	if len(stats.AssetSummary.AssetChannels) != 1 {
+		t.Fatalf("expected 1 asset channel, got %d", len(stats.AssetSummary.AssetChannels))
+	}
+	ac := stats.AssetSummary.AssetChannels[0]
+	if ac.RemainingBalance != 13000.00 || ac.Percentage != 100.0 {
+		t.Errorf("unexpected asset channel stat: %+v", ac)
+	}
+
+	if len(stats.AssetSummary.LiabilityChannels) != 1 {
+		t.Fatalf("expected 1 liability channel, got %d", len(stats.AssetSummary.LiabilityChannels))
+	}
+	lc := stats.AssetSummary.LiabilityChannels[0]
+	if lc.CurrentDebt != 3000.00 || lc.RemainingCredit != 17000.00 || lc.CreditLimit != 20000.00 || lc.UsageRate != 15.0 {
+		t.Errorf("unexpected liability channel stat: %+v", lc)
+	}
+
+	// Verify 409 guard on deleting channel with transaction reference
+	reqDel := httptest.NewRequest("DELETE", "/api/payment-methods/"+strconv.FormatInt(liabPMID, 10), nil)
+	reqDel.Header.Set("Authorization", authHeader)
+	recDel := httptest.NewRecorder()
+	s.ServeHTTP(recDel, reqDel)
+	if recDel.Code != http.StatusConflict {
+		t.Errorf("expected 409 Conflict when deleting referenced channel, got %d", recDel.Code)
+	}
+}
+

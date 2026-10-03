@@ -2,6 +2,9 @@ export interface PaymentMethod {
   id: number;
   name: string;
   sort_order: number;
+  type: 'asset' | 'liability';
+  initial_balance: number;
+  credit_limit: number;
   created_at: string;
 }
 
@@ -64,6 +67,34 @@ export interface MonthlyTrend {
   income: number;
 }
 
+export interface AssetChannelStat {
+  id: number;
+  name: string;
+  type: string;
+  remaining_balance: number;
+  initial_balance: number;
+  percentage: number;
+}
+
+export interface LiabilityChannelStat {
+  id: number;
+  name: string;
+  type: string;
+  current_debt: number;
+  initial_debt: number;
+  credit_limit: number;
+  remaining_credit: number;
+  usage_rate: number;
+}
+
+export interface AssetSummary {
+  total_assets: number;
+  total_liabilities: number;
+  net_assets: number;
+  asset_channels: AssetChannelStat[];
+  liability_channels: LiabilityChannelStat[];
+}
+
 export interface StatsSummary {
   week_expense: number;
   month_expense: number;
@@ -74,6 +105,7 @@ export interface StatsSummary {
   category_distribution: CategoryStat[];
   payment_distribution: PaymentMethodStat[];
   monthly_trends: MonthlyTrend[];
+  asset_summary: AssetSummary;
 }
 
 type AuthCallback = (authenticated: boolean) => void;
@@ -161,17 +193,30 @@ export const api = {
     return request<PaymentMethod[]>('/api/payment-methods');
   },
 
-  createPaymentMethod(name: string, sort_order: number): Promise<PaymentMethod> {
+  createPaymentMethod(
+    name: string,
+    sort_order: number,
+    type: 'asset' | 'liability' = 'asset',
+    initial_balance: number = 0,
+    credit_limit: number = 0
+  ): Promise<PaymentMethod> {
     return request<PaymentMethod>('/api/payment-methods', {
       method: 'POST',
-      body: JSON.stringify({ name, sort_order }),
+      body: JSON.stringify({ name, sort_order, type, initial_balance, credit_limit }),
     });
   },
 
-  updatePaymentMethod(id: number, name: string, sort_order: number): Promise<PaymentMethod> {
+  updatePaymentMethod(
+    id: number,
+    name: string,
+    sort_order: number,
+    type?: 'asset' | 'liability',
+    initial_balance?: number,
+    credit_limit?: number
+  ): Promise<PaymentMethod> {
     return request<PaymentMethod>(`/api/payment-methods/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, sort_order }),
+      body: JSON.stringify({ name, sort_order, type, initial_balance, credit_limit }),
     });
   },
 

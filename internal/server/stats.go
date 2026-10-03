@@ -34,6 +34,34 @@ type MonthlyTrend struct {
 	Income  float64 `json:"income"`
 }
 
+type AssetChannelStat struct {
+	ID               int64   `json:"id"`
+	Name             string  `json:"name"`
+	Type             string  `json:"type"`
+	RemainingBalance float64 `json:"remaining_balance"`
+	InitialBalance   float64 `json:"initial_balance"`
+	Percentage       float64 `json:"percentage"`
+}
+
+type LiabilityChannelStat struct {
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	Type            string  `json:"type"`
+	CurrentDebt     float64 `json:"current_debt"`
+	InitialDebt     float64 `json:"initial_debt"`
+	CreditLimit     float64 `json:"credit_limit"`
+	RemainingCredit float64 `json:"remaining_credit"`
+	UsageRate       float64 `json:"usage_rate"`
+}
+
+type AssetSummary struct {
+	TotalAssets       float64                `json:"total_assets"`
+	TotalLiabilities  float64                `json:"total_liabilities"`
+	NetAssets         float64                `json:"net_assets"`
+	AssetChannels     []AssetChannelStat     `json:"asset_channels"`
+	LiabilityChannels []LiabilityChannelStat `json:"liability_channels"`
+}
+
 type StatsSummaryResponse struct {
 	WeekExpense          float64             `json:"week_expense"`
 	MonthExpense         float64             `json:"month_expense"`
@@ -44,6 +72,7 @@ type StatsSummaryResponse struct {
 	CategoryDistribution []CategoryStat      `json:"category_distribution"`
 	PaymentDistribution  []PaymentMethodStat `json:"payment_distribution"`
 	MonthlyTrends        []MonthlyTrend      `json:"monthly_trends"`
+	AssetSummary         AssetSummary        `json:"asset_summary"`
 }
 
 func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +314,109 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// 8. Asset and Liability Portfolio Summary
+	portfolioRows, err := s.db.QueryContext(r.Context(), `
+		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents, COALESCE(SUM(t.amount_cents), 0)
+		FROM payment_methods pm
+		LEFT JOIN transactions t ON t.payment_method_id = pm.id
+		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents, pm.sort_order
+		ORDER BY pm.sort_order ASC, pm.id ASC
+	`)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query asset summary: "+err.Error())
+		return
+	}
+	defer portfolioRows.Close()
+
+	type rawAssetItem struct {
+		id             int64
+		name           string
+		chType         string
+		initBalCents   int64
+		remainingCents int64
+	}
+
+	assetItems := make([]rawAssetItem, 0)
+	liabilityStats := make([]LiabilityChannelStat, 0)
+	var totalAssetsCents int64
+	var totalLiabilitiesCents int64
+
+	for portfolioRows.Next() {
+		var id int64
+		var name, chType string
+		var initBalCents, creditLimitCents, txSumCents int64
+		if err := portfolioRows.Scan(&id, &name, &chType, &initBalCents, &creditLimitCents, &txSumCents); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to scan asset row: "+err.Error())
+			return
+		}
+
+		if chType == "liability" {
+			currentDebtCents := initBalCents - txSumCents
+			totalLiabilitiesCents += currentDebtCents
+
+			var remainingCreditCents int64
+			var usageRate float64
+			if creditLimitCents > 0 {
+				remainingCreditCents = creditLimitCents - currentDebtCents
+				usageRate = math.Round((float64(currentDebtCents)/float64(creditLimitCents))*1000) / 10
+				if usageRate < 0 {
+					usageRate = 0
+				}
+			}
+
+			liabilityStats = append(liabilityStats, LiabilityChannelStat{
+				ID:              id,
+				Name:            name,
+				Type:            chType,
+				CurrentDebt:     float64(currentDebtCents) / 100.0,
+				InitialDebt:     float64(initBalCents) / 100.0,
+				CreditLimit:     float64(creditLimitCents) / 100.0,
+				RemainingCredit: float64(remainingCreditCents) / 100.0,
+				UsageRate:       usageRate,
+			})
+		} else {
+			// Asset channel (default)
+			remainingCents := initBalCents + txSumCents
+			totalAssetsCents += remainingCents
+			assetItems = append(assetItems, rawAssetItem{
+				id:             id,
+				name:           name,
+				chType:         chType,
+				initBalCents:   initBalCents,
+				remainingCents: remainingCents,
+			})
+		}
+	}
+	if err := portfolioRows.Err(); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "error reading asset rows: "+err.Error())
+		return
+	}
+
+	assetStats := make([]AssetChannelStat, 0, len(assetItems))
+	for _, it := range assetItems {
+		var pct float64
+		if totalAssetsCents > 0 && it.remainingCents > 0 {
+			pct = math.Round((float64(it.remainingCents)/float64(totalAssetsCents))*1000) / 10
+		}
+		assetStats = append(assetStats, AssetChannelStat{
+			ID:               it.id,
+			Name:             it.name,
+			Type:             it.chType,
+			RemainingBalance: float64(it.remainingCents) / 100.0,
+			InitialBalance:   float64(it.initBalCents) / 100.0,
+			Percentage:       pct,
+		})
+	}
+
+	netAssetsCents := totalAssetsCents - totalLiabilitiesCents
+	assetSummary := AssetSummary{
+		TotalAssets:       float64(totalAssetsCents) / 100.0,
+		TotalLiabilities:  float64(totalLiabilitiesCents) / 100.0,
+		NetAssets:         float64(netAssetsCents) / 100.0,
+		AssetChannels:     assetStats,
+		LiabilityChannels: liabilityStats,
+	}
+
 	resp := StatsSummaryResponse{
 		WeekExpense:          weekExpense,
 		MonthExpense:         monthExpense,
@@ -295,6 +427,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		CategoryDistribution: catDist,
 		PaymentDistribution:  pmDist,
 		MonthlyTrends:        monthlyTrends,
+		AssetSummary:         assetSummary,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

@@ -203,20 +203,44 @@ export default function App() {
   };
 
   // Handlers for Settings
-  const handleAddPaymentMethod = async (name: string) => {
+  const handleAddPaymentMethod = async (
+    name: string,
+    type: 'asset' | 'liability' = 'asset',
+    initialBalance: number = 0,
+    creditLimit: number = 0
+  ) => {
     try {
-      await api.createPaymentMethod(name, paymentMethods.length + 1);
-      addToast('success', `支付途径「${name}」已添加`);
+      await api.createPaymentMethod(name, paymentMethods.length + 1, type, initialBalance, creditLimit);
+      addToast('success', `${type === 'liability' ? '负债渠道' : '资产渠道'}「${name}」已添加`);
       fetchConfigData();
     } catch (err: any) {
       addToast('error', err?.message || '添加失败');
+      throw err;
+    }
+  };
+
+  const handleUpdatePaymentMethod = async (
+    id: number,
+    name: string,
+    sortOrder: number,
+    type: 'asset' | 'liability',
+    initialBalance: number,
+    creditLimit: number
+  ) => {
+    try {
+      await api.updatePaymentMethod(id, name, sortOrder, type, initialBalance, creditLimit);
+      addToast('success', `渠道「${name}」已更新`);
+      fetchConfigData();
+    } catch (err: any) {
+      addToast('error', err?.message || '更新失败');
+      throw err;
     }
   };
 
   const handleDeletePaymentMethod = async (id: number) => {
     try {
       await api.deletePaymentMethod(id);
-      addToast('success', '支付途径已删除');
+      addToast('success', '渠道已删除');
       fetchConfigData();
     } catch (err: any) {
       addToast('error', err?.message || '删除失败');
@@ -341,6 +365,7 @@ export default function App() {
             categories={categories}
             paymentMethods={paymentMethods}
             onAddPaymentMethod={handleAddPaymentMethod}
+            onUpdatePaymentMethod={handleUpdatePaymentMethod}
             onDeletePaymentMethod={handleDeletePaymentMethod}
             onAddCategory={handleAddCategory}
             onUpdateCategory={handleUpdateCategory}

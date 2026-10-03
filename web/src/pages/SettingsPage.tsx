@@ -14,7 +14,8 @@ import {
 interface SettingsPageProps {
   categories: Category[];
   paymentMethods: PaymentMethod[];
-  onAddPaymentMethod: (name: string) => Promise<void>;
+  onAddPaymentMethod: (name: string, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
+  onUpdatePaymentMethod?: (id: number, name: string, sort_order: number, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onDeletePaymentMethod: (id: number) => Promise<void>;
   onAddCategory: (name: string) => Promise<void>;
   onUpdateCategory: (id: number, name: string, sort_order: number) => Promise<void>;
@@ -30,6 +31,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   categories,
   paymentMethods,
   onAddPaymentMethod,
+  onUpdatePaymentMethod,
   onDeletePaymentMethod,
   onAddCategory,
   onUpdateCategory,
@@ -43,9 +45,22 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Navigation tab state: 2 core business sections
   const [activeTab, setActiveTab] = useState<'categories' | 'paymentMethods'>('categories');
 
-  // Payment method inline add state
-  const [newPmName, setNewPmName] = useState('');
-  const [showAddPmInput, setShowAddPmInput] = useState(false);
+  // Channel inline add states
+  const [showAddAssetInput, setShowAddAssetInput] = useState(false);
+  const [newAssetName, setNewAssetName] = useState('');
+  const [newAssetBalance, setNewAssetBalance] = useState('');
+
+  const [showAddLiabilityInput, setShowAddLiabilityInput] = useState(false);
+  const [newLiabilityName, setNewLiabilityName] = useState('');
+  const [newLiabilityDebt, setNewLiabilityDebt] = useState('');
+  const [newLiabilityLimit, setNewLiabilityLimit] = useState('');
+
+  // Channel inline edit states
+  const [editingPmId, setEditingPmId] = useState<number | null>(null);
+  const [editingPmName, setEditingPmName] = useState('');
+  const [editingPmInitBal, setEditingPmInitBal] = useState('');
+  const [editingPmLimit, setEditingPmLimit] = useState('');
+  const [editingPmType, setEditingPmType] = useState<'asset' | 'liability'>('asset');
 
   // Category inline add state
   const [newCatName, setNewCatName] = useState('');
@@ -85,25 +100,107 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           setDrawerNewTagName('');
         } else if (editingCatId !== null) {
           setEditingCatId(null);
+        } else if (editingPmId !== null) {
+          setEditingPmId(null);
         } else if (showAddCatInput) {
           setShowAddCatInput(false);
           setNewCatName('');
-        } else if (showAddPmInput) {
-          setShowAddPmInput(false);
-          setNewPmName('');
+        } else if (showAddAssetInput) {
+          setShowAddAssetInput(false);
+          setNewAssetName('');
+          setNewAssetBalance('');
+        } else if (showAddLiabilityInput) {
+          setShowAddLiabilityInput(false);
+          setNewLiabilityName('');
+          setNewLiabilityDebt('');
+          setNewLiabilityLimit('');
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeDrawerCategoryId, editingTagId, editingCatId, showAddCatInput, showAddPmInput]);
+  }, [
+    activeDrawerCategoryId,
+    editingTagId,
+    editingCatId,
+    editingPmId,
+    showAddCatInput,
+    showAddAssetInput,
+    showAddLiabilityInput,
+  ]);
 
-  const handleCreatePaymentMethod = async (e: FormEvent) => {
+  const handleCreateAssetChannel = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newPmName.trim()) return;
-    await onAddPaymentMethod(newPmName.trim());
-    setNewPmName('');
-    setShowAddPmInput(false);
+    const trimmed = newAssetName.trim();
+    if (!trimmed) return;
+    if (paymentMethods.some((pm) => pm.name.toLowerCase() === trimmed.toLowerCase())) {
+      onToast?.('error', '该渠道名称已存在');
+      return;
+    }
+    const balance = parseFloat(newAssetBalance) || 0;
+    try {
+      await onAddPaymentMethod(trimmed, 'asset', balance, 0);
+      setNewAssetName('');
+      setNewAssetBalance('');
+      setShowAddAssetInput(false);
+    } catch {
+      // Handled in parent
+    }
+  };
+
+  const handleCreateLiabilityChannel = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = newLiabilityName.trim();
+    if (!trimmed) return;
+    if (paymentMethods.some((pm) => pm.name.toLowerCase() === trimmed.toLowerCase())) {
+      onToast?.('error', '该渠道名称已存在');
+      return;
+    }
+    const debt = parseFloat(newLiabilityDebt) || 0;
+    const limit = parseFloat(newLiabilityLimit) || 0;
+    try {
+      await onAddPaymentMethod(trimmed, 'liability', debt, limit);
+      setNewLiabilityName('');
+      setNewLiabilityDebt('');
+      setNewLiabilityLimit('');
+      setShowAddLiabilityInput(false);
+    } catch {
+      // Handled in parent
+    }
+  };
+
+  const handleStartEditPm = (pm: PaymentMethod) => {
+    setEditingPmId(pm.id);
+    setEditingPmName(pm.name);
+    setEditingPmInitBal(String(pm.initial_balance));
+    setEditingPmLimit(String(pm.credit_limit));
+    setEditingPmType(pm.type || 'asset');
+  };
+
+  const handleSavePmEdit = async (pm: PaymentMethod, e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = editingPmName.trim();
+    if (!trimmed) {
+      onToast?.('error', '渠道名称不能为空');
+      return;
+    }
+    const isDuplicate = paymentMethods.some(
+      (p) => p.id !== pm.id && p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      onToast?.('error', '该渠道名称已存在');
+      return;
+    }
+    const initBal = parseFloat(editingPmInitBal) || 0;
+    const limit = parseFloat(editingPmLimit) || 0;
+    if (onUpdatePaymentMethod) {
+      try {
+        await onUpdatePaymentMethod(pm.id, trimmed, pm.sort_order, editingPmType, initBal, limit);
+        setEditingPmId(null);
+      } catch {
+        // Keep edit state open
+      }
+    }
   };
 
   const handleCreateCategory = async (e: FormEvent) => {
@@ -222,6 +319,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Derive active category directly from SSOT
   const activeDrawerCategory = categories.find((c) => c.id === activeDrawerCategoryId);
 
+  // Derive asset and liability channels
+  const assetChannels = paymentMethods.filter((pm) => pm.type === 'asset' || !pm.type);
+  const liabilityChannels = paymentMethods.filter((pm) => pm.type === 'liability');
+
   return (
     <div className="w-full max-w-[900px] flex flex-col gap-5 animate-fade-in pb-16">
       {/* Header with Title and Segmented Tabs */}
@@ -252,7 +353,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)]'
             }`}
           >
-            支付途径
+            渠道与账户
           </button>
         </div>
       </div>
@@ -445,81 +546,333 @@ export const SettingsPage: FC<SettingsPageProps> = ({
         </div>
       )}
 
-      {/* Section 2: Payment Methods Channel Management */}
+      {/* Section 2: Channels & Accounts (Assets & Liabilities Workbench) */}
       {activeTab === 'paymentMethods' && (
-        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)] flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
-              支付途径
-            </h4>
-            {!showAddPmInput && (
-              <button
-                type="button"
-                onClick={() => setShowAddPmInput(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] text-xs font-semibold text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
-              >
-                <PlusIcon size={14} />
-                <span>添加途径</span>
-              </button>
-            )}
-          </div>
-
-          {/* Lightweight Inline Creation Form */}
-          {showAddPmInput && (
-            <form
-              onSubmit={handleCreatePaymentMethod}
-              className="flex items-center gap-2 p-3 bg-[var(--color-hover-bg)] rounded-xl border border-[var(--color-neutral-stroke)] animate-fade-in"
-            >
-              <input
-                type="text"
-                autoFocus
-                value={newPmName}
-                onChange={(e) => setNewPmName(e.target.value)}
-                placeholder="途径名称 (如：交通卡、美团月付)"
-                className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
-              />
-              <button
-                type="submit"
-                className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
-              >
-                确定
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAddPmInput(false);
-                  setNewPmName('');
-                }}
-                className="px-3 py-1.5 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
-              >
-                取消
-              </button>
-            </form>
-          )}
-
-          {/* Channel Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {paymentMethods.map((pm) => (
-              <div
-                key={pm.id}
-                className="group bg-[var(--color-subtle-bg)] hover:bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] hover:border-[var(--color-neutral-stroke-strong)] rounded-xl p-3 flex items-center justify-between transition-all"
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <span className="w-2 h-2 rounded-full bg-[var(--color-brand)] flex-shrink-0" />
-                  <span className="text-xs font-medium text-[var(--color-neutral-fg-1)] truncate">
-                    {pm.name}
-                  </span>
-                </div>
+        <div className="flex flex-col gap-5">
+          {/* Subsection 2.1: Asset Channels */}
+          <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)] flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
+                  资产渠道
+                </h4>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-3)]">
+                  {assetChannels.length}
+                </span>
+              </div>
+              {!showAddAssetInput && (
                 <button
                   type="button"
-                  title="删除途径"
-                  onClick={() => onDeletePaymentMethod(pm.id)}
-                  className="opacity-0 group-hover:opacity-100 text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-all"
+                  onClick={() => setShowAddAssetInput(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] text-xs font-semibold text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
                 >
-                  <TrashIcon size={13} />
+                  <PlusIcon size={14} />
+                  <span>添加资产渠道</span>
                 </button>
+              )}
+            </div>
+
+            {/* Inline Creation Form (Asset) */}
+            {showAddAssetInput && (
+              <form
+                onSubmit={handleCreateAssetChannel}
+                className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-hover-bg)] rounded-xl border border-[var(--color-neutral-stroke)] animate-fade-in"
+              >
+                <input
+                  type="text"
+                  autoFocus
+                  value={newAssetName}
+                  onChange={(e) => setNewAssetName(e.target.value)}
+                  placeholder="渠道名称 (如: 工商银行卡、微信零钱)"
+                  className="flex-2 min-w-[150px] px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newAssetBalance}
+                  onChange={(e) => setNewAssetBalance(e.target.value)}
+                  placeholder="初始余额 (元)"
+                  className="flex-1 min-w-[110px] px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                />
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddAssetInput(false);
+                    setNewAssetName('');
+                    setNewAssetBalance('');
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
+                >
+                  取消
+                </button>
+              </form>
+            )}
+
+            {/* Asset Channel Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {assetChannels.map((pm) => {
+                if (editingPmId === pm.id) {
+                  return (
+                    <form
+                      key={pm.id}
+                      onSubmit={(e) => handleSavePmEdit(pm, e)}
+                      className="col-span-1 p-3 rounded-xl border border-[var(--color-brand)] bg-[var(--color-card-bg)] flex flex-col gap-2 shadow-sm"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingPmName}
+                        onChange={(e) => setEditingPmName(e.target.value)}
+                        placeholder="渠道名称"
+                        className="px-2.5 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-[var(--color-neutral-fg-3)] flex-shrink-0">底账:</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editingPmInitBal}
+                          onChange={(e) => setEditingPmInitBal(e.target.value)}
+                          placeholder="初始底账"
+                          className="w-full px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end mt-1">
+                        <button
+                          type="submit"
+                          className="px-3 py-1 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPmId(null)}
+                          className="px-2.5 py-1 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)] cursor-pointer"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  );
+                }
+
+                return (
+                  <div
+                    key={pm.id}
+                    className="group bg-[var(--color-subtle-bg)] hover:bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] hover:border-[var(--color-neutral-stroke-strong)] rounded-xl p-3 flex flex-col gap-1.5 transition-all shadow-[var(--shadow-card)]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="w-2 h-2 rounded-full bg-[var(--color-brand)] flex-shrink-0" />
+                        <span className="text-xs font-semibold text-[var(--color-neutral-fg-1)] truncate">
+                          {pm.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          title="编辑渠道"
+                          onClick={() => handleStartEditPm(pm)}
+                          className="text-[var(--color-neutral-fg-3)] hover:text-[var(--color-brand)] hover:bg-[var(--color-brand-light)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-colors"
+                        >
+                          <EditIcon size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          title="删除渠道"
+                          onClick={() => onDeletePaymentMethod(pm.id)}
+                          className="text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-colors"
+                        >
+                          <TrashIcon size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-[var(--color-neutral-fg-3)] pl-4 tabular-num">
+                      底账: ¥{pm.initial_balance.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Subsection 2.2: Liability Channels */}
+          <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)] flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
+                  负债渠道
+                </h4>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-3)]">
+                  {liabilityChannels.length}
+                </span>
               </div>
-            ))}
+              {!showAddLiabilityInput && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddLiabilityInput(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] text-xs font-semibold text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
+                >
+                  <PlusIcon size={14} />
+                  <span>添加负债渠道</span>
+                </button>
+              )}
+            </div>
+
+            {/* Inline Creation Form (Liability) */}
+            {showAddLiabilityInput && (
+              <form
+                onSubmit={handleCreateLiabilityChannel}
+                className="flex flex-wrap items-center gap-2 p-3 bg-[var(--color-hover-bg)] rounded-xl border border-[var(--color-neutral-stroke)] animate-fade-in"
+              >
+                <input
+                  type="text"
+                  autoFocus
+                  value={newLiabilityName}
+                  onChange={(e) => setNewLiabilityName(e.target.value)}
+                  placeholder="渠道名称 (如: 招商信用卡、花呗)"
+                  className="flex-2 min-w-[150px] px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newLiabilityDebt}
+                  onChange={(e) => setNewLiabilityDebt(e.target.value)}
+                  placeholder="初始欠款 (元)"
+                  className="flex-1 min-w-[100px] px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newLiabilityLimit}
+                  onChange={(e) => setNewLiabilityLimit(e.target.value)}
+                  placeholder="授信额度 (0为不限)"
+                  className="flex-1 min-w-[110px] px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                />
+                <button
+                  type="submit"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddLiabilityInput(false);
+                    setNewLiabilityName('');
+                    setNewLiabilityDebt('');
+                    setNewLiabilityLimit('');
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
+                >
+                  取消
+                </button>
+              </form>
+            )}
+
+            {/* Liability Channel Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {liabilityChannels.map((pm) => {
+                if (editingPmId === pm.id) {
+                  return (
+                    <form
+                      key={pm.id}
+                      onSubmit={(e) => handleSavePmEdit(pm, e)}
+                      className="col-span-1 p-3 rounded-xl border border-[var(--color-brand)] bg-[var(--color-card-bg)] flex flex-col gap-2 shadow-sm"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingPmName}
+                        onChange={(e) => setEditingPmName(e.target.value)}
+                        placeholder="渠道名称"
+                        className="px-2.5 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] text-[var(--color-neutral-fg-3)]">初始欠款</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editingPmInitBal}
+                            onChange={(e) => setEditingPmInitBal(e.target.value)}
+                            className="px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] text-[var(--color-neutral-fg-3)]">授信额度</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editingPmLimit}
+                            onChange={(e) => setEditingPmLimit(e.target.value)}
+                            className="px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end mt-1">
+                        <button
+                          type="submit"
+                          className="px-3 py-1 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPmId(null)}
+                          className="px-2.5 py-1 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)] cursor-pointer"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  );
+                }
+
+                return (
+                  <div
+                    key={pm.id}
+                    className="group bg-[var(--color-subtle-bg)] hover:bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] hover:border-[var(--color-neutral-stroke-strong)] rounded-xl p-3 flex flex-col gap-1.5 transition-all shadow-[var(--shadow-card)]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="w-2 h-2 rounded-full bg-[var(--color-expense-dark)] flex-shrink-0" />
+                        <span className="text-xs font-semibold text-[var(--color-neutral-fg-1)] truncate">
+                          {pm.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          title="编辑渠道"
+                          onClick={() => handleStartEditPm(pm)}
+                          className="text-[var(--color-neutral-fg-3)] hover:text-[var(--color-brand)] hover:bg-[var(--color-brand-light)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-colors"
+                        >
+                          <EditIcon size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          title="删除渠道"
+                          onClick={() => onDeletePaymentMethod(pm.id)}
+                          className="text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] w-6 h-6 rounded flex items-center justify-center cursor-pointer transition-colors"
+                        >
+                          <TrashIcon size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-[var(--color-neutral-fg-3)] pl-4 tabular-num">
+                      {pm.credit_limit > 0 ? `额度: ¥${pm.credit_limit.toFixed(2)}` : '额度: 不限'} · 初始欠款: ¥{pm.initial_balance.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

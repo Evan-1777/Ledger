@@ -27,9 +27,59 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
 
   const selectedCategory = stats.category_distribution.find((c) => c.id === selectedCatId);
 
+  const assetSummary = stats.asset_summary || {
+    total_assets: 0,
+    total_liabilities: 0,
+    net_assets: 0,
+    asset_channels: [],
+    liability_channels: [],
+  };
+
   return (
     <div className="w-full max-w-[900px] flex flex-col gap-5 animate-fade-in pb-16">
-      {/* 4 KPI Cards */}
+      {/* Macro Portfolio Overview KPI Cluster */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        {/* KPI 1: Net Assets */}
+        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-brand-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">净资产</span>
+          </div>
+          <span
+            className={`text-2xl font-bold tabular-num tracking-tight ${
+              assetSummary.net_assets >= 0
+                ? 'text-[var(--color-neutral-fg-1)]'
+                : 'text-[var(--color-expense-dark)]'
+            }`}
+          >
+            {assetSummary.net_assets < 0 ? '-' : ''}¥{Math.abs(assetSummary.net_assets).toFixed(2)}
+          </span>
+          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">总资产扣减全部未清负债</span>
+        </div>
+
+        {/* KPI 2: Total Assets */}
+        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">资产总计</span>
+          <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
+            ¥{assetSummary.total_assets.toFixed(2)}
+          </span>
+          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">
+            {assetSummary.asset_channels.length} 个资产渠道实时结余累加
+          </span>
+        </div>
+
+        {/* KPI 3: Total Liabilities */}
+        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
+          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">负债总计</span>
+          <span className="text-2xl font-bold tabular-num text-[var(--color-expense-dark)]">
+            ¥{assetSummary.total_liabilities.toFixed(2)}
+          </span>
+          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">
+            {assetSummary.liability_channels.length} 个负债渠道未还欠款总额
+          </span>
+        </div>
+      </div>
+
+      {/* 4 Regular Flow KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
         {/* KPI 1: Week Expense */}
         <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
@@ -81,6 +131,110 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
               储蓄率 {stats.savings_rate.toFixed(1)}%
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Channels Breakdown Grid (Remaining Balance & Credit Usage) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Asset Channels Remaining Balance Panel */}
+        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)] flex flex-col gap-3.5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
+              资产渠道剩余金额
+            </h4>
+            <span className="text-xs font-semibold tabular-num text-[var(--color-neutral-fg-2)]">
+              ¥{assetSummary.total_assets.toFixed(2)}
+            </span>
+          </div>
+
+          {assetSummary.asset_channels.length === 0 ? (
+            <div className="text-center py-6 text-xs text-[var(--color-neutral-fg-3)]">
+              暂无资产渠道
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {assetSummary.asset_channels.map((ac) => (
+                <div
+                  key={ac.id}
+                  className="flex flex-col gap-1.5 p-2.5 px-3 rounded-xl bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)]"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[var(--color-neutral-fg-1)] flex items-center gap-2 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-brand)] flex-shrink-0" />
+                      <span className="truncate">{ac.name}</span>
+                    </span>
+                    <span className="font-bold tabular-num text-[var(--color-neutral-fg-1)] ml-2 flex-shrink-0">
+                      ¥{ac.remaining_balance.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-[var(--color-neutral-fg-subtle)]">
+                    <span>底账: ¥{ac.initial_balance.toFixed(2)}</span>
+                    <span className="tabular-num">占总资产 {ac.percentage.toFixed(1)}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Liability Channels Remaining Credit & Debt Panel */}
+        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)] flex flex-col gap-3.5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
+              负债渠道与欠款
+            </h4>
+            <span className="text-xs font-semibold tabular-num text-[var(--color-expense-dark)]">
+              ¥{assetSummary.total_liabilities.toFixed(2)}
+            </span>
+          </div>
+
+          {assetSummary.liability_channels.length === 0 ? (
+            <div className="text-center py-6 text-xs text-[var(--color-neutral-fg-3)]">
+              暂无负债渠道
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {assetSummary.liability_channels.map((lc) => (
+                <div
+                  key={lc.id}
+                  className="flex flex-col gap-1.5 p-2.5 px-3 rounded-xl bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)]"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[var(--color-neutral-fg-1)] flex items-center gap-2 truncate">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-expense-dark)] flex-shrink-0" />
+                      <span className="truncate">{lc.name}</span>
+                    </span>
+                    <span className="font-bold tabular-num text-[var(--color-expense-dark)] ml-2 flex-shrink-0">
+                      ¥{lc.current_debt.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* 4px Micro Progress Bar for Credit Limit Usage */}
+                  {lc.credit_limit > 0 && (
+                    <div className="w-full h-1 bg-[var(--color-canvas-bg)] rounded-full overflow-hidden my-0.5">
+                      <div
+                        className="h-full bg-[var(--color-expense-dark)] rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(lc.usage_rate, 100)}%` }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-[11px] text-[var(--color-neutral-fg-subtle)]">
+                    <span>
+                      {lc.credit_limit > 0
+                        ? `剩余可用: ¥${lc.remaining_credit.toFixed(2)}`
+                        : '不设额度上限'}
+                    </span>
+                    <span className="tabular-num">
+                      {lc.credit_limit > 0
+                        ? `额度: ¥${lc.credit_limit.toFixed(2)} (${lc.usage_rate.toFixed(1)}%)`
+                        : `初始欠款: ¥${lc.initial_debt.toFixed(2)}`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
