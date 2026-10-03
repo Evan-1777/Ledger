@@ -370,6 +370,13 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var isSysCat int
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_category_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
+	if isSysCat > 0 {
+		writeJSONError(w, http.StatusBadRequest, "系统内置还款分类不可修改或删除")
+		return
+	}
+
 	var req struct {
 		Name      string `json:"name"`
 		SortOrder int    `json:"sort_order"`
@@ -415,6 +422,13 @@ func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var isSysCat int
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_category_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
+	if isSysCat > 0 {
+		writeJSONError(w, http.StatusBadRequest, "系统内置还款分类不可修改或删除")
 		return
 	}
 
@@ -564,6 +578,13 @@ func (s *Server) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var isSysTag int
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_tag_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
+	if isSysTag > 0 {
+		writeJSONError(w, http.StatusBadRequest, "系统内置还款标签不可修改或删除")
+		return
+	}
+
 	var req struct {
 		Name      string `json:"name"`
 		SortOrder int    `json:"sort_order"`
@@ -608,6 +629,13 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	var isSysTag int
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_tag_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
+	if isSysTag > 0 {
+		writeJSONError(w, http.StatusBadRequest, "系统内置还款标签不可修改或删除")
 		return
 	}
 

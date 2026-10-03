@@ -13,27 +13,32 @@ import (
 )
 
 type Transaction struct {
-	ID                int64   `json:"id"`
-	AmountCents       int64   `json:"amount_cents"`
-	Amount            float64 `json:"amount"`
-	Description       string  `json:"description"`
-	PaymentMethodID   int64   `json:"payment_method_id"`
-	PaymentMethodName string  `json:"payment_method_name"`
-	CategoryID        int64   `json:"category_id"`
-	CategoryName      string  `json:"category_name"`
-	TagID             int64   `json:"tag_id"`
-	TagName           string  `json:"tag_name"`
-	TransactedAt      string  `json:"transacted_at"`
-	CreatedAt         string  `json:"created_at"`
+	ID                      int64   `json:"id"`
+	Type                    string  `json:"type"`
+	AmountCents             int64   `json:"amount_cents"`
+	Amount                  float64 `json:"amount"`
+	Description             string  `json:"description"`
+	PaymentMethodID         int64   `json:"payment_method_id"`
+	PaymentMethodName       string  `json:"payment_method_name"`
+	SourcePaymentMethodID   *int64  `json:"source_payment_method_id,omitempty"`
+	SourcePaymentMethodName string  `json:"source_payment_method_name,omitempty"`
+	CategoryID              int64   `json:"category_id"`
+	CategoryName            string  `json:"category_name"`
+	TagID                   int64   `json:"tag_id"`
+	TagName                 string  `json:"tag_name"`
+	TransactedAt            string  `json:"transacted_at"`
+	CreatedAt               string  `json:"created_at"`
 }
 
 type TransactionRequest struct {
-	Amount          float64 `json:"amount"`
-	Description     string  `json:"description"`
-	PaymentMethodID int64   `json:"payment_method_id"`
-	CategoryID      int64   `json:"category_id"`
-	TagID           int64   `json:"tag_id"`
-	TransactedAt    string  `json:"transacted_at"`
+	Type                  string  `json:"type"`
+	Amount                float64 `json:"amount"`
+	Description           string  `json:"description"`
+	PaymentMethodID       int64   `json:"payment_method_id"`
+	SourcePaymentMethodID *int64  `json:"source_payment_method_id"`
+	CategoryID            int64   `json:"category_id"`
+	TagID                 int64   `json:"tag_id"`
+	TransactedAt          string  `json:"transacted_at"`
 }
 
 func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) {
@@ -59,22 +64,26 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	typeFilter := strings.ToLower(r.URL.Query().Get("type"))
 	var query strings.Builder
 	query.WriteString(`
-		SELECT t.id, t.amount_cents, t.description,
+		SELECT t.id, t.type, t.amount_cents, t.description,
 		       t.payment_method_id, COALESCE(pm.name, ''),
+		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
 		       t.tag_id, COALESCE(tg.name, ''),
 		       t.transacted_at, t.created_at
 		FROM transactions t
 		LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
+		LEFT JOIN payment_methods spm ON t.source_payment_method_id = spm.id
 		LEFT JOIN categories c ON t.category_id = c.id
 		LEFT JOIN tags tg ON t.tag_id = tg.id
 	`)
 
 	args := make([]any, 0)
 	if typeFilter == "expense" {
-		query.WriteString(" WHERE t.amount_cents < 0")
+		query.WriteString(" WHERE t.type = 'expense'")
 	} else if typeFilter == "income" {
-		query.WriteString(" WHERE t.amount_cents > 0")
+		query.WriteString(" WHERE t.type = 'income'")
+	} else if typeFilter == "repayment" {
+		query.WriteString(" WHERE t.type = 'repayment'")
 	}
 
 	query.WriteString(" ORDER BY t.transacted_at DESC, t.id DESC LIMIT ? OFFSET ?")
@@ -90,9 +99,12 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	list := make([]Transaction, 0)
 	for rows.Next() {
 		var item Transaction
+		var srcPMID sql.NullInt64
+		var srcPMName sql.NullString
 		err := rows.Scan(
-			&item.ID, &item.AmountCents, &item.Description,
+			&item.ID, &item.Type, &item.AmountCents, &item.Description,
 			&item.PaymentMethodID, &item.PaymentMethodName,
+			&srcPMID, &srcPMName,
 			&item.CategoryID, &item.CategoryName,
 			&item.TagID, &item.TagName,
 			&item.TransactedAt, &item.CreatedAt,
@@ -100,6 +112,13 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if srcPMID.Valid {
+			val := srcPMID.Int64
+			item.SourcePaymentMethodID = &val
+		}
+		if srcPMName.Valid {
+			item.SourcePaymentMethodName = srcPMName.String
 		}
 		item.Amount = float64(item.AmountCents) / 100.0
 		list = append(list, item)
@@ -115,7 +134,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	amountCents, transactedAt, err := s.validateTransactionInput(r, &req)
+	amountCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
 		var brErr *badRequestError
 		if errors.As(err, &brErr) {
@@ -128,9 +147,9 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 
 	res, err := s.db.ExecContext(
 		r.Context(),
-		`INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		amountCents, req.Description, req.PaymentMethodID, req.CategoryID, req.TagID, transactedAt,
+		`INSERT INTO transactions (amount_cents, description, payment_method_id, source_payment_method_id, category_id, tag_id, transacted_at, type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		amountCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType,
 	)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to insert transaction: "+err.Error())
@@ -161,7 +180,7 @@ func (s *Server) handleUpdateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	amountCents, transactedAt, err := s.validateTransactionInput(r, &req)
+	amountCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
 		var brErr *badRequestError
 		if errors.As(err, &brErr) {
@@ -175,9 +194,9 @@ func (s *Server) handleUpdateTransaction(w http.ResponseWriter, r *http.Request)
 	res, err := s.db.ExecContext(
 		r.Context(),
 		`UPDATE transactions
-		 SET amount_cents = ?, description = ?, payment_method_id = ?, category_id = ?, tag_id = ?, transacted_at = ?
+		 SET amount_cents = ?, description = ?, payment_method_id = ?, source_payment_method_id = ?, category_id = ?, tag_id = ?, transacted_at = ?, type = ?
 		 WHERE id = ?`,
-		amountCents, req.Description, req.PaymentMethodID, req.CategoryID, req.TagID, transactedAt, id,
+		amountCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType, id,
 	)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to update transaction: "+err.Error())
@@ -221,45 +240,106 @@ func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, string, error) {
-	amountCents := int64(math.Round(req.Amount * 100))
-	if amountCents == 0 {
-		return 0, "", badRequest("amount must not be 0")
+func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, string, string, error) {
+	txType := strings.ToLower(strings.TrimSpace(req.Type))
+	if txType == "" {
+		if req.Amount < 0 {
+			txType = "expense"
+		} else {
+			txType = "income"
+		}
+	}
+	if txType != "expense" && txType != "income" && txType != "repayment" {
+		return 0, "", "", badRequest("invalid transaction type, must be 'expense', 'income', or 'repayment'")
+	}
+
+	var amountCents int64
+	if txType == "repayment" {
+		if req.Amount <= 0 {
+			return 0, "", "", badRequest("repayment amount must be greater than 0")
+		}
+		amountCents = int64(math.Round(req.Amount * 100))
+	} else if txType == "expense" {
+		amountCents = -int64(math.Round(math.Abs(req.Amount) * 100))
+		if amountCents == 0 {
+			return 0, "", "", badRequest("amount must not be 0")
+		}
+	} else {
+		amountCents = int64(math.Round(math.Abs(req.Amount) * 100))
+		if amountCents == 0 {
+			return 0, "", "", badRequest("amount must not be 0")
+		}
 	}
 
 	req.Description = strings.TrimSpace(req.Description)
 	if req.Description == "" {
-		return 0, "", badRequest("description cannot be empty")
+		return 0, "", "", badRequest("description cannot be empty")
 	}
 
-	// Validate payment method exists
-	var pmExists int
-	err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM payment_methods WHERE id = ?", req.PaymentMethodID).Scan(&pmExists)
+	// Validate target payment method exists
+	var pmType string
+	err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", req.PaymentMethodID).Scan(&pmType)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to query payment method: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, "", "", badRequest("payment method does not exist")
+		}
+		return 0, "", "", fmt.Errorf("failed to query payment method: %w", err)
 	}
-	if pmExists == 0 {
-		return 0, "", badRequest("payment method does not exist")
+
+	if txType == "repayment" {
+		if pmType != "liability" {
+			return 0, "", "", badRequest("repayment target must be a liability channel")
+		}
+		if req.SourcePaymentMethodID != nil && *req.SourcePaymentMethodID > 0 {
+			var srcType string
+			err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", *req.SourcePaymentMethodID).Scan(&srcType)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return 0, "", "", badRequest("source payment method does not exist")
+				}
+				return 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
+			}
+			if srcType != "asset" {
+				return 0, "", "", badRequest("source payment method must be an asset channel")
+			}
+		} else {
+			req.SourcePaymentMethodID = nil
+		}
+
+		// Auto-bind system repayment category & tag if not specified
+		if req.CategoryID <= 0 || req.TagID <= 0 {
+			var sysCatStr, sysTagStr string
+			_ = s.db.QueryRowContext(r.Context(), "SELECT value FROM system_meta WHERE key = 'system_category_repayment_id'").Scan(&sysCatStr)
+			_ = s.db.QueryRowContext(r.Context(), "SELECT value FROM system_meta WHERE key = 'system_tag_repayment_id'").Scan(&sysTagStr)
+			if catID, err := strconv.ParseInt(sysCatStr, 10, 64); err == nil && catID > 0 {
+				req.CategoryID = catID
+			}
+			if tagID, err := strconv.ParseInt(sysTagStr, 10, 64); err == nil && tagID > 0 {
+				req.TagID = tagID
+			}
+		}
+	} else {
+		req.SourcePaymentMethodID = nil
 	}
 
 	// Validate category exists
 	var catExists int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM categories WHERE id = ?", req.CategoryID).Scan(&catExists)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to query category: %w", err)
+		return 0, "", "", fmt.Errorf("failed to query category: %w", err)
 	}
 	if catExists == 0 {
-		return 0, "", badRequest("category does not exist")
+		return 0, "", "", badRequest("category does not exist")
 	}
 
 	// Validate tag exists and belongs to the given category
 	var tagBelongs int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM tags WHERE id = ? AND category_id = ?", req.TagID, req.CategoryID).Scan(&tagBelongs)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to query tag: %w", err)
+		return 0, "", "", fmt.Errorf("failed to query tag: %w", err)
 	}
 	if tagBelongs == 0 {
-		return 0, "", badRequest("tag does not belong to specified category")
+		return 0, "", "", badRequest("tag does not belong to specified category")
 	}
 
 	// Validate/standardize transacted_at
@@ -270,31 +350,36 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 	} else {
 		parsedTime, err := parseFlexibleTime(transactedAtStr)
 		if err != nil {
-			return 0, "", badRequest(fmt.Sprintf("invalid transacted_at: %v", err))
+			return 0, "", "", badRequest(fmt.Sprintf("invalid transacted_at: %v", err))
 		}
 		finalTransactedAt = parsedTime.UTC().Format(time.RFC3339)
 	}
 
-	return amountCents, finalTransactedAt, nil
+	return amountCents, txType, finalTransactedAt, nil
 }
 
 func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, error) {
 	var item Transaction
 	query := `
-		SELECT t.id, t.amount_cents, t.description,
+		SELECT t.id, t.type, t.amount_cents, t.description,
 		       t.payment_method_id, COALESCE(pm.name, ''),
+		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
 		       t.tag_id, COALESCE(tg.name, ''),
 		       t.transacted_at, t.created_at
 		FROM transactions t
 		LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
+		LEFT JOIN payment_methods spm ON t.source_payment_method_id = spm.id
 		LEFT JOIN categories c ON t.category_id = c.id
 		LEFT JOIN tags tg ON t.tag_id = tg.id
 		WHERE t.id = ?
 	`
+	var srcPMID sql.NullInt64
+	var srcPMName sql.NullString
 	err := s.db.QueryRowContext(r.Context(), query, id).Scan(
-		&item.ID, &item.AmountCents, &item.Description,
+		&item.ID, &item.Type, &item.AmountCents, &item.Description,
 		&item.PaymentMethodID, &item.PaymentMethodName,
+		&srcPMID, &srcPMName,
 		&item.CategoryID, &item.CategoryName,
 		&item.TagID, &item.TagName,
 		&item.TransactedAt, &item.CreatedAt,
@@ -304,6 +389,13 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 			return nil, errors.New("transaction not found")
 		}
 		return nil, err
+	}
+	if srcPMID.Valid {
+		val := srcPMID.Int64
+		item.SourcePaymentMethodID = &val
+	}
+	if srcPMName.Valid {
+		item.SourcePaymentMethodName = srcPMName.String
 	}
 	item.Amount = float64(item.AmountCents) / 100.0
 	return &item, nil

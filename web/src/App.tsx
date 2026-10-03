@@ -167,9 +167,11 @@ export default function App() {
 
   // Handlers for Transactions
   const handleSaveTransaction = async (data: {
+    type?: 'expense' | 'income' | 'repayment';
     amount: number;
     description: string;
     payment_method_id: number;
+    source_payment_method_id?: number;
     category_id: number;
     tag_id: number;
     transacted_at: string;

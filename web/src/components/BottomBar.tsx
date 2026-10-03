@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { PlusIcon } from './Icons';
 
-export type FilterType = 'all' | 'expense' | 'income';
+export type FilterType = 'all' | 'expense' | 'income' | 'repayment';
 
 interface BottomBarProps {
   showFilter: boolean;
@@ -53,6 +53,17 @@ export const BottomBar: FC<BottomBarProps> = ({
             }`}
           >
             收入
+          </button>
+          <button
+            type="button"
+            onClick={() => onFilterChange('repayment')}
+            className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center ${
+              filter === 'repayment'
+                ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
+                : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
+            }`}
+          >
+            还款
           </button>
         </div>
       )}

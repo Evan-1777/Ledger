@@ -52,22 +52,22 @@ func TestInitDB(t *testing.T) {
 		t.Errorf("unexpected credit card config: type=%s, initBal=%d, limit=%d", ccType, ccInitBal, ccLimit)
 	}
 
-	// Verify categories seeded
+	// Verify categories seeded (5 defaults + 1 system repayment category)
 	var catCount int
 	if err := database.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to query categories count: %v", err)
 	}
-	if catCount != 5 {
-		t.Errorf("expected 5 categories, got %d", catCount)
+	if catCount != 6 {
+		t.Errorf("expected 6 categories (5 default + 1 repayment), got %d", catCount)
 	}
 
-	// Verify tags seeded
+	// Verify tags seeded (16 defaults + 1 system repayment tag)
 	var tagCount int
 	if err := database.QueryRow("SELECT COUNT(*) FROM tags").Scan(&tagCount); err != nil {
 		t.Fatalf("failed to query tags count: %v", err)
 	}
-	if tagCount != 16 {
-		t.Errorf("expected 16 tags, got %d", tagCount)
+	if tagCount != 17 {
+		t.Errorf("expected 17 tags (16 default + 1 repayment), got %d", tagCount)
 	}
 
 	// Verify idempotency on second InitDB call
@@ -104,8 +104,8 @@ func TestInitDB(t *testing.T) {
 	if err := database3.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to query categories count after re-init: %v", err)
 	}
-	if catCount != 4 {
-		t.Errorf("anti-resurrection check failed: expected 4 categories after delete, got %d", catCount)
+	if catCount != 5 {
+		t.Errorf("anti-resurrection check failed: expected 5 categories after delete (6 - 1), got %d", catCount)
 	}
 
 	// Verify foreign key restriction on transactions
@@ -217,8 +217,16 @@ func TestOldDatabaseUpgrade(t *testing.T) {
 	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to count categories: %v", err)
 	}
-	if catCount != 1 {
-		t.Errorf("expected only 1 custom category, got %d (defaults were wrongly reinjected)", catCount)
+	// 1 custom user category + 1 system repayment category ('债务偿还') = 2
+	if catCount != 2 {
+		t.Errorf("expected 2 categories (1 custom + 1 repayment), got %d", catCount)
+	}
+	var defaultCatCount int
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories WHERE name IN ('餐饮美食', '交通出行', '居家生活', '休闲娱乐', '职业收入')").Scan(&defaultCatCount); err != nil {
+		t.Fatalf("failed to count default categories: %v", err)
+	}
+	if defaultCatCount != 0 {
+		t.Errorf("expected 0 default categories reinjected, got %d", defaultCatCount)
 	}
 }
 
@@ -332,4 +340,129 @@ func TestPaymentMethodsMigration(t *testing.T) {
 		t.Errorf("expected only 1 payment method, got %d (seeds were wrongly reinjected)", pmCount)
 	}
 }
+
+func TestTransactionsMigration(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ledger-tx-migration-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "migration.db")
+
+	// Construct an old database manually with transactions schema without type and source_payment_method_id
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open raw db: %v", err)
+	}
+
+	oldSchema := `
+	CREATE TABLE categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE tags (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		name TEXT NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE payment_methods (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		type TEXT NOT NULL DEFAULT 'asset',
+		initial_balance_cents INTEGER NOT NULL DEFAULT 0,
+		credit_limit_cents INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		amount_cents INTEGER NOT NULL,
+		description TEXT NOT NULL,
+		payment_method_id INTEGER NOT NULL REFERENCES payment_methods(id),
+		category_id INTEGER NOT NULL REFERENCES categories(id),
+		tag_id INTEGER NOT NULL REFERENCES tags(id),
+		transacted_at TEXT NOT NULL,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	INSERT INTO categories (name, sort_order) VALUES ('餐饮', 1);
+	INSERT INTO tags (category_id, name, sort_order) VALUES (1, '午餐', 1);
+	INSERT INTO payment_methods (name, sort_order) VALUES ('招商银行', 1);
+	INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at)
+	VALUES (-5000, '旧支出', 1, 1, 1, '2026-09-01T12:00:00Z');
+	INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at)
+	VALUES (8000, '旧收入', 1, 1, 1, '2026-09-02T12:00:00Z');
+	`
+	if _, err := rawDB.Exec(oldSchema); err != nil {
+		t.Fatalf("failed to create old schema: %v", err)
+	}
+	rawDB.Close()
+
+	// Upgrade via InitDB
+	upgradedDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed to upgrade: %v", err)
+	}
+	defer upgradedDB.Close()
+
+	// Verify columns exist
+	rows, err := upgradedDB.Query("PRAGMA table_info(transactions)")
+	if err != nil {
+		t.Fatalf("failed to query table_info: %v", err)
+	}
+	defer rows.Close()
+
+	hasType := false
+	hasSourcePM := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			t.Fatalf("failed to scan table_info: %v", err)
+		}
+		if name == "type" {
+			hasType = true
+		}
+		if name == "source_payment_method_id" {
+			hasSourcePM = true
+		}
+	}
+	if !hasType || !hasSourcePM {
+		t.Fatalf("transactions columns missing: hasType=%v, hasSourcePM=%v", hasType, hasSourcePM)
+	}
+
+	// Verify backfilled type values
+	var expType, incType string
+	if err := upgradedDB.QueryRow("SELECT type FROM transactions WHERE description = '旧支出'").Scan(&expType); err != nil {
+		t.Fatalf("failed to query old expense: %v", err)
+	}
+	if expType != "expense" {
+		t.Errorf("expected 'expense' for negative amount, got '%s'", expType)
+	}
+	if err := upgradedDB.QueryRow("SELECT type FROM transactions WHERE description = '旧收入'").Scan(&incType); err != nil {
+		t.Fatalf("failed to query old income: %v", err)
+	}
+	if incType != "income" {
+		t.Errorf("expected 'income' for positive amount, got '%s'", incType)
+	}
+
+	// Verify system repayment category and tag injected
+	var sysCatID, sysTagID string
+	if err := upgradedDB.QueryRow("SELECT value FROM system_meta WHERE key = 'system_category_repayment_id'").Scan(&sysCatID); err != nil {
+		t.Fatalf("failed to query system_category_repayment_id: %v", err)
+	}
+	if err := upgradedDB.QueryRow("SELECT value FROM system_meta WHERE key = 'system_tag_repayment_id'").Scan(&sysTagID); err != nil {
+		t.Fatalf("failed to query system_tag_repayment_id: %v", err)
+	}
+	if sysCatID == "" || sysTagID == "" {
+		t.Errorf("system IDs empty: catID=%s, tagID=%s", sysCatID, sysTagID)
+	}
+}
+
 

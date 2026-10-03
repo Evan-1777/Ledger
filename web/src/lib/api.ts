@@ -26,11 +26,14 @@ export interface Category {
 
 export interface Transaction {
   id: number;
+  type: 'expense' | 'income' | 'repayment';
   amount_cents: number;
   amount: number;
   description: string;
   payment_method_id: number;
   payment_method_name: string;
+  source_payment_method_id?: number;
+  source_payment_method_name?: string;
   category_id: number;
   category_name: string;
   tag_id: number;
@@ -278,7 +281,7 @@ export const api = {
   },
 
   // Transactions
-  getTransactions(type?: 'all' | 'expense' | 'income', limit = 100): Promise<Transaction[]> {
+  getTransactions(type?: 'all' | 'expense' | 'income' | 'repayment', limit = 100): Promise<Transaction[]> {
     const params = new URLSearchParams();
     if (type && type !== 'all') {
       params.set('type', type);
@@ -288,9 +291,11 @@ export const api = {
   },
 
   createTransaction(data: {
+    type?: 'expense' | 'income' | 'repayment';
     amount: number;
     description: string;
     payment_method_id: number;
+    source_payment_method_id?: number;
     category_id: number;
     tag_id: number;
     transacted_at?: string;
@@ -304,9 +309,11 @@ export const api = {
   updateTransaction(
     id: number,
     data: {
+      type?: 'expense' | 'income' | 'repayment';
       amount: number;
       description: string;
       payment_method_id: number;
+      source_payment_method_id?: number;
       category_id: number;
       tag_id: number;
       transacted_at?: string;

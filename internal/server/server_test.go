@@ -845,3 +845,357 @@ func TestStatsSummaryWithAssetsAndLiabilities(t *testing.T) {
 	}
 }
 
+func TestRepaymentFullFlowAndInvariants(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// 1. Check system repayment category and tag mutation guards
+	var sysCatID, sysTagID string
+	err := s.db.QueryRow("SELECT value FROM system_meta WHERE key = 'system_category_repayment_id'").Scan(&sysCatID)
+	if err != nil {
+		t.Fatalf("failed to query system repayment category id: %v", err)
+	}
+	err = s.db.QueryRow("SELECT value FROM system_meta WHERE key = 'system_tag_repayment_id'").Scan(&sysTagID)
+	if err != nil {
+		t.Fatalf("failed to query system repayment tag id: %v", err)
+	}
+
+	// Try to update system category -> 400
+	req := httptest.NewRequest("PUT", "/api/categories/"+sysCatID, strings.NewReader(`{"name":"试图重命名"}`))
+	req.Header.Set("Authorization", authHeader)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when updating system category, got %d", rec.Code)
+	}
+
+	// Try to delete system category -> 400
+	req = httptest.NewRequest("DELETE", "/api/categories/"+sysCatID, nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when deleting system category, got %d", rec.Code)
+	}
+
+	// Try to update system tag -> 400
+	req = httptest.NewRequest("PUT", "/api/tags/"+sysTagID, strings.NewReader(`{"name":"试图重命名标签"}`))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when updating system tag, got %d", rec.Code)
+	}
+
+	// Try to delete system tag -> 400
+	req = httptest.NewRequest("DELETE", "/api/tags/"+sysTagID, nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 when deleting system tag, got %d", rec.Code)
+	}
+
+	// 2. Query payment methods for asset and liability channels
+	var assetPMID, liabPMID int64
+	err = s.db.QueryRow("SELECT id FROM payment_methods WHERE type = 'asset' AND name = '招商银行卡'").Scan(&assetPMID)
+	if err != nil {
+		t.Fatalf("failed to query asset channel: %v", err)
+	}
+	err = s.db.QueryRow("SELECT id FROM payment_methods WHERE type = 'liability' AND name = '招商信用卡'").Scan(&liabPMID)
+	if err != nil {
+		t.Fatalf("failed to query liability channel: %v", err)
+	}
+
+	// 3. Validation checks for repayment
+	// Repayment with negative amount -> 400
+	repayNeg, _ := json.Marshal(map[string]any{
+		"type":              "repayment",
+		"amount":            -100.0,
+		"payment_method_id": liabPMID,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayNeg)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative repayment amount, got %d", rec.Code)
+	}
+
+	// Repayment with target payment method being asset -> 400
+	repayWrongTarget, _ := json.Marshal(map[string]any{
+		"type":              "repayment",
+		"amount":            100.0,
+		"payment_method_id": assetPMID,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayWrongTarget)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-liability target channel, got %d", rec.Code)
+	}
+
+	// Repayment with source payment method being liability -> 400
+	repayWrongSource, _ := json.Marshal(map[string]any{
+		"type":                      "repayment",
+		"amount":                    100.0,
+		"payment_method_id":         liabPMID,
+		"source_payment_method_id": liabPMID,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayWrongSource)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-asset source channel, got %d", rec.Code)
+	}
+
+	// 4. Initial state: add an income to asset channel and expense to credit card
+	nowISO := time.Now().UTC().Format(time.RFC3339)
+	var normalCatID, normalTagID int64
+	err = s.db.QueryRow("SELECT id FROM categories WHERE name = '餐饮美食'").Scan(&normalCatID)
+	if err != nil {
+		t.Fatalf("failed to query category 餐饮美食: %v", err)
+	}
+	err = s.db.QueryRow("SELECT id FROM tags WHERE category_id = ? LIMIT 1", normalCatID).Scan(&normalTagID)
+	if err != nil {
+		t.Fatalf("failed to query tag: %v", err)
+	}
+
+	// Income 10,000.00 to asset channel (招商银行卡)
+	incJSON, _ := json.Marshal(map[string]any{
+		"type":              "income",
+		"amount":            10000.0,
+		"description":       "工资收入",
+		"payment_method_id": assetPMID,
+		"category_id":       normalCatID,
+		"tag_id":            normalTagID,
+		"transacted_at":     nowISO,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(incJSON)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("failed to insert initial income: %d", rec.Code)
+	}
+
+	// Expense 2,000.00 on credit card
+	expJSON, _ := json.Marshal(map[string]any{
+		"type":              "expense",
+		"amount":            -2000.0,
+		"description":       "数码消费",
+		"payment_method_id": liabPMID,
+		"category_id":       normalCatID,
+		"tag_id":            normalTagID,
+		"transacted_at":     nowISO,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(expJSON)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("failed to insert initial expense: %d", rec.Code)
+	}
+
+	// 5. Create a valid repayment of 500.00 (from 招商银行卡 to 招商信用卡)
+	repayJSON, _ := json.Marshal(map[string]any{
+		"type":                      "repayment",
+		"amount":                    500.0,
+		"description":               "偿还信用卡",
+		"payment_method_id":         liabPMID,
+		"source_payment_method_id": assetPMID,
+		"transacted_at":             nowISO,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayJSON)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("failed to create repayment: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var createdRepay Transaction
+	if err := json.NewDecoder(rec.Body).Decode(&createdRepay); err != nil {
+		t.Fatalf("failed to decode created repayment: %v", err)
+	}
+
+	if createdRepay.Type != "repayment" {
+		t.Errorf("expected type 'repayment', got '%s'", createdRepay.Type)
+	}
+	if createdRepay.Amount != 500.0 {
+		t.Errorf("expected amount 500.0, got %v", createdRepay.Amount)
+	}
+	if createdRepay.SourcePaymentMethodID == nil || *createdRepay.SourcePaymentMethodID != assetPMID {
+		t.Errorf("expected source_payment_method_id %d, got %v", assetPMID, createdRepay.SourcePaymentMethodID)
+	}
+	if createdRepay.SourcePaymentMethodName != "招商银行卡" {
+		t.Errorf("expected source_payment_method_name '招商银行卡', got %v", createdRepay.SourcePaymentMethodName)
+	}
+
+	// 6. Test PUT update on the repayment transaction
+	updateRepayJSON, _ := json.Marshal(map[string]any{
+		"type":                      "repayment",
+		"amount":                    600.0,
+		"description":               "偿还信用卡(更新为600)",
+		"payment_method_id":         liabPMID,
+		"source_payment_method_id": assetPMID,
+		"category_id":               createdRepay.CategoryID,
+		"tag_id":                    createdRepay.TagID,
+		"transacted_at":             nowISO,
+	})
+	req = httptest.NewRequest("PUT", "/api/transactions/"+strconv.FormatInt(createdRepay.ID, 10), strings.NewReader(string(updateRepayJSON)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to update repayment: %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var updatedRepay Transaction
+	if err := json.NewDecoder(rec.Body).Decode(&updatedRepay); err != nil {
+		t.Fatalf("failed to decode updated repayment: %v", err)
+	}
+	if updatedRepay.Amount != 600.0 || updatedRepay.Description != "偿还信用卡(更新为600)" {
+		t.Errorf("unexpected updated repayment: %+v", updatedRepay)
+	}
+
+	// 7. Verify filtering & list isolation
+	// GET /api/transactions?type=income
+	req = httptest.NewRequest("GET", "/api/transactions?type=income", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	var incList []Transaction
+	_ = json.NewDecoder(rec.Body).Decode(&incList)
+	for _, item := range incList {
+		if item.Type == "repayment" {
+			t.Errorf("repayment transaction leaked into ?type=income: %+v", item)
+		}
+	}
+
+	// GET /api/transactions?type=repayment
+	req = httptest.NewRequest("GET", "/api/transactions?type=repayment", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	var repayList []Transaction
+	_ = json.NewDecoder(rec.Body).Decode(&repayList)
+	if len(repayList) != 1 || repayList[0].ID != createdRepay.ID {
+		t.Errorf("expected exactly 1 repayment in ?type=repayment, got %d", len(repayList))
+	}
+
+	// 8. Verify macro assets, liabilities, and net asset conservation
+	req = httptest.NewRequest("GET", "/api/stats/summary", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to query stats summary: %d", rec.Code)
+	}
+	var stats StatsSummaryResponse
+	_ = json.NewDecoder(rec.Body).Decode(&stats)
+
+	// Stat isolation check:
+	// MonthExpense must be exactly 2000.00
+	if stats.MonthExpense != 2000.00 {
+		t.Errorf("expected MonthExpense 2000.00, got %v", stats.MonthExpense)
+	}
+	// MonthIncome must be exactly 10000.00 (NOT 10600.00)
+	if stats.MonthIncome != 10000.00 {
+		t.Errorf("expected MonthIncome 10000.00, got %v", stats.MonthIncome)
+	}
+
+	// Category distribution must NOT contain the repayment category
+	for _, catDist := range stats.CategoryDistribution {
+		if catDist.Name == "债务偿还" {
+			t.Errorf("repayment category leaked into category distribution: %+v", catDist)
+		}
+	}
+
+	// Asset balance check:
+	// 招商银行卡: init(0) + income(10000) - source_repayment(600) = 9400.00
+	// 招商信用卡 debt: init(0) - [expense(-2000) + repayment(600)] = 0 - (-1400) = 1400.00
+	// Total Assets: 9400.00
+	// Total Liabilities: 1400.00
+	// Net Assets: 9400.00 - 1400.00 = 8000.00 (Prior to repayment: Assets 10000, Liabilities 2000, Net Assets 8000)
+	var actualAssetBal, actualLiabDebt float64
+	for _, a := range stats.AssetSummary.AssetChannels {
+		if a.Name == "招商银行卡" {
+			actualAssetBal = a.RemainingBalance
+		}
+	}
+	for _, l := range stats.AssetSummary.LiabilityChannels {
+		if l.Name == "招商信用卡" {
+			actualLiabDebt = l.CurrentDebt
+		}
+	}
+
+	if actualAssetBal != 9400.00 {
+		t.Errorf("expected 招商银行卡 balance 9400.00, got %v", actualAssetBal)
+	}
+	if actualLiabDebt != 1400.00 {
+		t.Errorf("expected 招商信用卡 debt 1400.00, got %v", actualLiabDebt)
+	}
+	if stats.AssetSummary.TotalAssets != 9400.00 {
+		t.Errorf("expected TotalAssets 9400.00, got %v", stats.AssetSummary.TotalAssets)
+	}
+	if stats.AssetSummary.TotalLiabilities != 1400.00 {
+		t.Errorf("expected TotalLiabilities 1400.00, got %v", stats.AssetSummary.TotalLiabilities)
+	}
+	if stats.AssetSummary.NetAssets != 8000.00 {
+		t.Errorf("expected NetAssets 8000.00, got %v", stats.AssetSummary.NetAssets)
+	}
+
+	// 9. Test External Source Repayment (source_payment_method_id = nil / external)
+	repayExtJSON, _ := json.Marshal(map[string]any{
+		"type":              "repayment",
+		"amount":            400.0,
+		"description":       "外部资金偿还信用卡",
+		"payment_method_id": liabPMID,
+		"transacted_at":     nowISO,
+	})
+	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayExtJSON)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("failed to create external repayment: %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify stats after external repayment:
+	// Debt reduces by another 400.00 -> 1000.00
+	// 招商银行卡 balance stays at 9400.00
+	// Total assets stays at 9400.00, Total liabilities becomes 1000.00, Net Assets becomes 8400.00
+	req = httptest.NewRequest("GET", "/api/stats/summary", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to query stats summary after external repayment: %d", rec.Code)
+	}
+	var statsExt StatsSummaryResponse
+	_ = json.NewDecoder(rec.Body).Decode(&statsExt)
+
+	actualLiabDebt = 0
+	for _, l := range statsExt.AssetSummary.LiabilityChannels {
+		if l.Name == "招商信用卡" {
+			actualLiabDebt = l.CurrentDebt
+		}
+	}
+	if actualLiabDebt != 1000.00 {
+		t.Errorf("expected 招商信用卡 debt 1000.00 after external repayment, got %v", actualLiabDebt)
+	}
+	if statsExt.AssetSummary.TotalAssets != 9400.00 {
+		t.Errorf("expected TotalAssets 9400.00, got %v", statsExt.AssetSummary.TotalAssets)
+	}
+	if statsExt.AssetSummary.TotalLiabilities != 1000.00 {
+		t.Errorf("expected TotalLiabilities 1000.00, got %v", statsExt.AssetSummary.TotalLiabilities)
+	}
+	if statsExt.AssetSummary.NetAssets != 8400.00 {
+		t.Errorf("expected NetAssets 8400.00, got %v", statsExt.AssetSummary.NetAssets)
+	}
+}
+
+

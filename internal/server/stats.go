@@ -107,7 +107,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	// 1. Week expense
 	var weekExpenseCents int64
 	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents < 0",
+		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
 		weekStartUTC, weekEndUTC,
 	).Scan(&weekExpenseCents); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query week expense: "+err.Error())
@@ -118,7 +118,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	// 2. Month expense
 	var monthExpenseCents int64
 	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents < 0",
+		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
 		monthStartUTC, monthEndUTC,
 	).Scan(&monthExpenseCents); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month expense: "+err.Error())
@@ -129,7 +129,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	// 3. Last month expense
 	var lastMonthExpenseCents int64
 	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents < 0",
+		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
 		lastMonthStartUTC, lastMonthEndUTC,
 	).Scan(&lastMonthExpenseCents); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query last month expense: "+err.Error())
@@ -140,7 +140,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	// 4. Month income
 	var monthIncomeCents int64
 	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents > 0",
+		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'income'",
 		monthStartUTC, monthEndUTC,
 	).Scan(&monthIncomeCents); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month income: "+err.Error())
@@ -162,7 +162,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT c.id, c.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM categories c
 		JOIN transactions t ON t.category_id = c.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.amount_cents < 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
 		GROUP BY c.id, c.name
 		ORDER BY SUM(t.amount_cents) ASC
 	`, monthStartUTC, monthEndUTC)
@@ -204,7 +204,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT t.category_id, tg.id, tg.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM tags tg
 		JOIN transactions t ON t.tag_id = tg.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.amount_cents < 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
 		GROUP BY t.category_id, tg.id, tg.name
 		ORDER BY SUM(t.amount_cents) ASC
 	`, monthStartUTC, monthEndUTC)
@@ -247,7 +247,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT pm.id, pm.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM payment_methods pm
 		JOIN transactions t ON t.payment_method_id = pm.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.amount_cents < 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
 		GROUP BY pm.id, pm.name
 		ORDER BY SUM(t.amount_cents) ASC
 	`, monthStartUTC, monthEndUTC)
@@ -292,7 +292,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 
 		var expCents, incCents int64
 		if err := s.db.QueryRowContext(r.Context(),
-			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents < 0",
+			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
 			mStartUTC, mEndUTC,
 		).Scan(&expCents); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend expense: "+err.Error())
@@ -300,7 +300,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := s.db.QueryRowContext(r.Context(),
-			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND amount_cents > 0",
+			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'income'",
 			mStartUTC, mEndUTC,
 		).Scan(&incCents); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend income: "+err.Error())
@@ -316,7 +316,9 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 
 	// 8. Asset and Liability Portfolio Summary
 	portfolioRows, err := s.db.QueryContext(r.Context(), `
-		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents, COALESCE(SUM(t.amount_cents), 0)
+		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents,
+		       COALESCE(SUM(t.amount_cents), 0) AS tx_sum,
+		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'repayment'), 0) AS source_repayment_sum
 		FROM payment_methods pm
 		LEFT JOIN transactions t ON t.payment_method_id = pm.id
 		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents
@@ -344,8 +346,8 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	for portfolioRows.Next() {
 		var id int64
 		var name, chType string
-		var initBalCents, creditLimitCents, txSumCents int64
-		if err := portfolioRows.Scan(&id, &name, &chType, &initBalCents, &creditLimitCents, &txSumCents); err != nil {
+		var initBalCents, creditLimitCents, txSumCents, sourceRepaymentCents int64
+		if err := portfolioRows.Scan(&id, &name, &chType, &initBalCents, &creditLimitCents, &txSumCents, &sourceRepaymentCents); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to scan asset row: "+err.Error())
 			return
 		}
@@ -381,8 +383,8 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 				UsageRate:       usageRate,
 			})
 		} else {
-			// Asset channel (default)
-			remainingCents := initBalCents + txSumCents
+			// Asset channel (default): subtract repayments funded by this asset channel
+			remainingCents := initBalCents + txSumCents - sourceRepaymentCents
 			totalAssetsCents += remainingCents
 			assetItems = append(assetItems, rawAssetItem{
 				id:             id,

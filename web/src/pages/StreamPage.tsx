@@ -100,13 +100,13 @@ export const StreamPage: FC<StreamPageProps> = ({
         const items = groups[dateKey];
         const dayLabel = getDayLabel(dateKey);
 
-        // Sum group expense & income
+        // Sum group expense & income (strictly exclude repayment to prevent pollution)
         let groupExpense = 0;
         let groupIncome = 0;
         items.forEach((item) => {
-          if (item.amount_cents < 0) {
+          if (item.type === 'expense' || (!item.type && item.amount_cents < 0)) {
             groupExpense += Math.abs(item.amount);
-          } else {
+          } else if (item.type === 'income' || (!item.type && item.amount_cents > 0)) {
             groupIncome += item.amount;
           }
         });
@@ -145,8 +145,11 @@ export const StreamPage: FC<StreamPageProps> = ({
             {/* List of cards */}
             <div className="flex flex-col gap-2">
               {items.map((item) => {
-                const isExp = item.amount_cents < 0;
-                const formattedAmount = `${isExp ? '-' : '+'}${Math.abs(item.amount).toFixed(2)}`;
+                const isRepayment = item.type === 'repayment';
+                const isExp = item.type === 'expense' || (!item.type && item.amount_cents < 0);
+                const formattedAmount = isRepayment
+                  ? `¥ ${Math.abs(item.amount).toFixed(2)}`
+                  : `${isExp ? '-' : '+'}${Math.abs(item.amount).toFixed(2)}`;
 
                 return (
                   <div
@@ -161,7 +164,9 @@ export const StreamPage: FC<StreamPageProps> = ({
                         </span>
                         <span
                           className={`text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
-                            isExp
+                            isRepayment
+                              ? 'bg-[rgba(0,120,212,0.08)] text-[var(--color-brand)] border border-[rgba(0,120,212,0.2)]'
+                              : isExp
                               ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
                               : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
                           }`}
@@ -174,7 +179,15 @@ export const StreamPage: FC<StreamPageProps> = ({
                         <ClockIcon size={12} />
                         <span className="tabular-num">{formatTime(item.transacted_at)}</span>
                         <span className="opacity-40">·</span>
-                        <span>{item.payment_method_name}</span>
+                        {isRepayment ? (
+                          item.source_payment_method_name ? (
+                            <span>{item.source_payment_method_name} → {item.payment_method_name}</span>
+                          ) : (
+                            <span>还入 {item.payment_method_name}</span>
+                          )
+                        ) : (
+                          <span>{item.payment_method_name}</span>
+                        )}
                       </div>
                     </div>
 
@@ -182,7 +195,11 @@ export const StreamPage: FC<StreamPageProps> = ({
                     <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-3">
                       <span
                         className={`text-[15px] sm:text-[16px] font-semibold tabular-num ${
-                          isExp ? 'text-[var(--color-expense-dark)]' : 'text-[var(--color-income-dark)]'
+                          isRepayment
+                            ? 'text-[var(--color-brand)]'
+                            : isExp
+                            ? 'text-[var(--color-expense-dark)]'
+                            : 'text-[var(--color-income-dark)]'
                         }`}
                       >
                         {formattedAmount}
