@@ -9,6 +9,7 @@ interface RecordModalProps {
   categories: Category[];
   paymentMethods: PaymentMethod[];
   initialTransaction?: Transaction | null;
+  onNavigateToSettings?: () => void;
   onSubmit: (data: {
     type?: 'expense' | 'income' | 'repayment';
     amount: number;
@@ -24,6 +25,7 @@ interface RecordModalProps {
 export const RecordModal: FC<RecordModalProps> = ({
   isOpen,
   onClose,
+  onNavigateToSettings,
   categories,
   paymentMethods,
   initialTransaction,
@@ -508,8 +510,17 @@ export const RecordModal: FC<RecordModalProps> = ({
                   还入负债账户
                 </label>
                 {liabilityMethods.length === 0 ? (
-                  <div className="px-3.5 py-2.5 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] text-xs text-[var(--color-expense-dark)]">
-                    暂无负债渠道，请先在基础设置中添加信用卡等负债渠道
+                  <div className="px-3.5 py-2.5 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] text-xs text-[var(--color-expense-dark)] flex items-center justify-between">
+                    <span>暂无负债渠道，无法记录还款</span>
+                    {onNavigateToSettings && (
+                      <button
+                        type="button"
+                        onClick={onNavigateToSettings}
+                        className="text-xs font-semibold text-[var(--color-brand)] hover:underline cursor-pointer ml-2 flex-shrink-0"
+                      >
+                        前往设置添加 →
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -626,8 +637,8 @@ export const RecordModal: FC<RecordModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={submitting}
-              className="px-5 py-2 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors shadow-[0_2px_8px_rgba(0,120,212,0.3)]"
+              disabled={submitting || (recordType === 'repayment' && liabilityMethods.length === 0)}
+              className="px-5 py-2 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_2px_8px_rgba(0,120,212,0.3)]"
             >
               {submitting ? '保存中...' : initialTransaction ? '保存修改' : '记录此账单'}
             </button>

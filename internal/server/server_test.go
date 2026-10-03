@@ -276,8 +276,6 @@ func TestSettingsCRUDAndGuards(t *testing.T) {
 	_ = json.NewDecoder(rec.Body).Decode(&txItem)
 
 	// 5. Test 409 guard: Delete payment method while referenced
-	req = httptest.NewRequest("DELETE", "/api/payment-methods/"+strings.TrimSpace(string(rune(pm.ID+'0'))), nil)
-	// format properly
 	req = httptest.NewRequest("DELETE", strings.ReplaceAll("/api/payment-methods/ID", "ID", strings.TrimSpace(jsonNumber(pm.ID))), nil)
 	req.Header.Set("Authorization", authHeader)
 	rec = httptest.NewRecorder()
@@ -1195,6 +1193,44 @@ func TestRepaymentFullFlowAndInvariants(t *testing.T) {
 	}
 	if statsExt.AssetSummary.NetAssets != 8400.00 {
 		t.Errorf("expected NetAssets 8400.00, got %v", statsExt.AssetSummary.NetAssets)
+	}
+
+	// 10. Verify 409 guard when channel is ONLY referenced as source_payment_method_id
+	createPMBody := strings.NewReader(`{"name":"专属转出卡","type":"asset","initial_balance":0,"sort_order":99}`)
+	reqNewPM := httptest.NewRequest("POST", "/api/payment-methods", createPMBody)
+	reqNewPM.Header.Set("Authorization", authHeader)
+	recNewPM := httptest.NewRecorder()
+	s.ServeHTTP(recNewPM, reqNewPM)
+	if recNewPM.Code != http.StatusCreated {
+		t.Fatalf("failed to create test asset channel: %d", recNewPM.Code)
+	}
+	var testPM PaymentMethod
+	_ = json.NewDecoder(recNewPM.Body).Decode(&testPM)
+
+	// Create repayment solely referencing testPM as source_payment_method_id
+	repaySrcOnlyJSON, _ := json.Marshal(map[string]any{
+		"type":                     "repayment",
+		"amount":                   100.0,
+		"description":              "测试仅转出删除守卫",
+		"payment_method_id":        liabPMID,
+		"source_payment_method_id": testPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqSrcRepay := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repaySrcOnlyJSON)))
+	reqSrcRepay.Header.Set("Authorization", authHeader)
+	recSrcRepay := httptest.NewRecorder()
+	s.ServeHTTP(recSrcRepay, reqSrcRepay)
+	if recSrcRepay.Code != http.StatusCreated {
+		t.Fatalf("failed to create repayment referencing testPM as source: %d", recSrcRepay.Code)
+	}
+
+	// Attempt to delete testPM - must return 409 Conflict, NOT 500 FK error
+	reqDelSrcPM := httptest.NewRequest("DELETE", "/api/payment-methods/"+strconv.FormatInt(testPM.ID, 10), nil)
+	reqDelSrcPM.Header.Set("Authorization", authHeader)
+	recDelSrcPM := httptest.NewRecorder()
+	s.ServeHTTP(recDelSrcPM, reqDelSrcPM)
+	if recDelSrcPM.Code != http.StatusConflict {
+		t.Errorf("expected 409 Conflict when deleting channel referenced as source_payment_method_id, got %d (body: %s)", recDelSrcPM.Code, recDelSrcPM.Body.String())
 	}
 }
 

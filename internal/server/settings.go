@@ -252,7 +252,7 @@ func (s *Server) handleDeletePaymentMethod(w http.ResponseWriter, r *http.Reques
 	}
 
 	var count int
-	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM transactions WHERE payment_method_id = ?", id).Scan(&count)
+	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM transactions WHERE payment_method_id = ? OR source_payment_method_id = ?", id, id).Scan(&count)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return

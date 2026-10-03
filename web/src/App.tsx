@@ -399,6 +399,11 @@ export default function App() {
           setIsRecordModalOpen(false);
           setEditingTransaction(null);
         }}
+        onNavigateToSettings={() => {
+          setIsRecordModalOpen(false);
+          setEditingTransaction(null);
+          setCurrentTab('settings');
+        }}
         categories={categories}
         paymentMethods={paymentMethods}
         initialTransaction={editingTransaction}
