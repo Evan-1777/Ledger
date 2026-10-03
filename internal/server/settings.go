@@ -90,11 +90,19 @@ func (s *Server) handleCreatePaymentMethod(w http.ResponseWriter, r *http.Reques
 
 	var initBalCents int64
 	if req.InitialBalance != nil {
+		if *req.InitialBalance < 0 {
+			writeJSONError(w, http.StatusBadRequest, "initial balance cannot be negative")
+			return
+		}
 		initBalCents = int64(math.Round(*req.InitialBalance * 100))
 	}
 
 	var creditLimitCents int64
 	if req.CreditLimit != nil {
+		if *req.CreditLimit < 0 {
+			writeJSONError(w, http.StatusBadRequest, "credit limit cannot be negative")
+			return
+		}
 		creditLimitCents = int64(math.Round(*req.CreditLimit * 100))
 	}
 
@@ -191,11 +199,19 @@ func (s *Server) handleUpdatePaymentMethod(w http.ResponseWriter, r *http.Reques
 
 	newInitBal := existing.initBal
 	if req.InitialBalance != nil {
+		if *req.InitialBalance < 0 {
+			writeJSONError(w, http.StatusBadRequest, "initial balance cannot be negative")
+			return
+		}
 		newInitBal = int64(math.Round(*req.InitialBalance * 100))
 	}
 
 	newLimit := existing.limit
 	if req.CreditLimit != nil {
+		if *req.CreditLimit < 0 {
+			writeJSONError(w, http.StatusBadRequest, "credit limit cannot be negative")
+			return
+		}
 		newLimit = int64(math.Round(*req.CreditLimit * 100))
 	}
 

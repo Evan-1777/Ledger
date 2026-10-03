@@ -319,7 +319,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents, COALESCE(SUM(t.amount_cents), 0)
 		FROM payment_methods pm
 		LEFT JOIN transactions t ON t.payment_method_id = pm.id
-		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents, pm.sort_order
+		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents
 		ORDER BY pm.sort_order ASC, pm.id ASC
 	`)
 	if err != nil {
@@ -358,6 +358,12 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 			var usageRate float64
 			if creditLimitCents > 0 {
 				remainingCreditCents = creditLimitCents - currentDebtCents
+				if remainingCreditCents > creditLimitCents {
+					remainingCreditCents = creditLimitCents
+				}
+				if remainingCreditCents < 0 {
+					remainingCreditCents = 0
+				}
 				usageRate = math.Round((float64(currentDebtCents)/float64(creditLimitCents))*1000) / 10
 				if usageRate < 0 {
 					usageRate = 0

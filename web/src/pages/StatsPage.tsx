@@ -53,7 +53,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           >
             {assetSummary.net_assets < 0 ? '-' : ''}¥{Math.abs(assetSummary.net_assets).toFixed(2)}
           </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">总资产扣减全部未清负债</span>
         </div>
 
         {/* KPI 2: Total Assets */}
@@ -62,9 +61,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
             ¥{assetSummary.total_assets.toFixed(2)}
           </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">
-            {assetSummary.asset_channels.length} 个资产渠道实时结余累加
-          </span>
         </div>
 
         {/* KPI 3: Total Liabilities */}
@@ -72,9 +68,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">负债总计</span>
           <span className="text-2xl font-bold tabular-num text-[var(--color-expense-dark)]">
             ¥{assetSummary.total_liabilities.toFixed(2)}
-          </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">
-            {assetSummary.liability_channels.length} 个负债渠道未还欠款总额
           </span>
         </div>
       </div>
@@ -168,7 +161,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-[11px] text-[var(--color-neutral-fg-subtle)]">
-                    <span>底账: ¥{ac.initial_balance.toFixed(2)}</span>
+                    <span>初始余额: ¥{ac.initial_balance.toFixed(2)}</span>
                     <span className="tabular-num">占总资产 {ac.percentage.toFixed(1)}%</span>
                   </div>
                 </div>

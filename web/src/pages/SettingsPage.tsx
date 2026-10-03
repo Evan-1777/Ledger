@@ -138,6 +138,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       return;
     }
     const balance = parseFloat(newAssetBalance) || 0;
+    if (balance < 0) {
+      onToast?.('error', '初始余额不能为负数');
+      return;
+    }
     try {
       await onAddPaymentMethod(trimmed, 'asset', balance, 0);
       setNewAssetName('');
@@ -158,6 +162,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     }
     const debt = parseFloat(newLiabilityDebt) || 0;
     const limit = parseFloat(newLiabilityLimit) || 0;
+    if (debt < 0) {
+      onToast?.('error', '初始欠款不能为负数');
+      return;
+    }
+    if (limit < 0) {
+      onToast?.('error', '授信额度不能为负数');
+      return;
+    }
     try {
       await onAddPaymentMethod(trimmed, 'liability', debt, limit);
       setNewLiabilityName('');
@@ -193,6 +205,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     }
     const initBal = parseFloat(editingPmInitBal) || 0;
     const limit = parseFloat(editingPmLimit) || 0;
+    if (initBal < 0) {
+      onToast?.('error', editingPmType === 'liability' ? '初始欠款不能为负数' : '初始余额不能为负数');
+      return;
+    }
+    if (limit < 0) {
+      onToast?.('error', '授信额度不能为负数');
+      return;
+    }
     if (onUpdatePaymentMethod) {
       try {
         await onUpdatePaymentMethod(pm.id, trimmed, pm.sort_order, editingPmType, initBal, limit);
@@ -589,6 +609,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={newAssetBalance}
                   onChange={(e) => setNewAssetBalance(e.target.value)}
                   placeholder="初始余额 (元)"
@@ -633,13 +654,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                         className="px-2.5 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
                       />
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-[var(--color-neutral-fg-3)] flex-shrink-0">底账:</span>
+                        <span className="text-[11px] text-[var(--color-neutral-fg-3)] flex-shrink-0">初始余额:</span>
                         <input
                           type="number"
                           step="0.01"
+                          min="0"
                           value={editingPmInitBal}
                           onChange={(e) => setEditingPmInitBal(e.target.value)}
-                          placeholder="初始底账"
+                          placeholder="初始余额"
                           className="w-full px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
                         />
                       </div>
@@ -694,7 +716,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                       </div>
                     </div>
                     <span className="text-[11px] text-[var(--color-neutral-fg-3)] pl-4 tabular-num">
-                      底账: ¥{pm.initial_balance.toFixed(2)}
+                      初始余额: ¥{pm.initial_balance.toFixed(2)}
                     </span>
                   </div>
                 );
@@ -742,6 +764,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={newLiabilityDebt}
                   onChange={(e) => setNewLiabilityDebt(e.target.value)}
                   placeholder="初始欠款 (元)"
@@ -750,6 +773,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   value={newLiabilityLimit}
                   onChange={(e) => setNewLiabilityLimit(e.target.value)}
                   placeholder="授信额度 (0为不限)"
@@ -800,6 +824,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             value={editingPmInitBal}
                             onChange={(e) => setEditingPmInitBal(e.target.value)}
                             className="px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
@@ -810,6 +835,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             value={editingPmLimit}
                             onChange={(e) => setEditingPmLimit(e.target.value)}
                             className="px-2 py-1 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"

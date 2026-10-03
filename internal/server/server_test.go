@@ -631,6 +631,34 @@ func TestPaymentMethodsAssetAndLiability(t *testing.T) {
 		t.Errorf("expected 400 for invalid channel type, got %d", rec.Code)
 	}
 
+	// 3b. Test rejection of negative balance or negative credit limit
+	negBalBody := strings.NewReader(`{"name":"负余额渠道","sort_order":13,"type":"asset","initial_balance":-100.0}`)
+	req = httptest.NewRequest("POST", "/api/payment-methods", negBalBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative initial balance, got %d", rec.Code)
+	}
+
+	negLimitBody := strings.NewReader(`{"name":"负额度渠道","sort_order":14,"type":"liability","initial_balance":0.0,"credit_limit":-5000.0}`)
+	req = httptest.NewRequest("POST", "/api/payment-methods", negLimitBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative credit limit, got %d", rec.Code)
+	}
+
+	negUpdateBody := strings.NewReader(`{"name":"京东白条金卡","sort_order":11,"type":"liability","credit_limit":-10.0}`)
+	req = httptest.NewRequest("PUT", "/api/payment-methods/"+strconv.FormatInt(liabPM.ID, 10), negUpdateBody)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for updating negative credit limit, got %d", rec.Code)
+	}
+
 	// 4. Update liability channel credit limit and initial balance
 	updateBody := strings.NewReader(`{"name":"京东白条金卡","sort_order":11,"type":"liability","initial_balance":0.0,"credit_limit":10000.0}`)
 	req = httptest.NewRequest("PUT", "/api/payment-methods/"+strconv.FormatInt(liabPM.ID, 10), updateBody)
@@ -775,6 +803,36 @@ func TestStatsSummaryWithAssetsAndLiabilities(t *testing.T) {
 	lc := stats.AssetSummary.LiabilityChannels[0]
 	if lc.CurrentDebt != 3000.00 || lc.RemainingCredit != 17000.00 || lc.CreditLimit != 20000.00 || lc.UsageRate != 15.0 {
 		t.Errorf("unexpected liability channel stat: %+v", lc)
+	}
+
+	// Overpayment test: Add 4000.00 repayment/income to the liability channel so current debt becomes -1000.00
+	_, err = s.db.Exec("INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at) VALUES (400000, '多还款', ?, ?, ?, ?)", liabPMID, catID, tagID, nowISO)
+	if err != nil {
+		t.Fatalf("failed to insert overpayment: %v", err)
+	}
+
+	reqOver := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqOver.Header.Set("Authorization", authHeader)
+	recOver := httptest.NewRecorder()
+	s.ServeHTTP(recOver, reqOver)
+	if recOver.Code != http.StatusOK {
+		t.Fatalf("expected 200 for stats summary with overpayment, got %d", recOver.Code)
+	}
+	var statsOver StatsSummaryResponse
+	_ = json.NewDecoder(recOver.Body).Decode(&statsOver)
+	if len(statsOver.AssetSummary.LiabilityChannels) > 0 {
+		overLC := statsOver.AssetSummary.LiabilityChannels[0]
+		// Debt should be 3000 - 4000 = -1000
+		if overLC.CurrentDebt != -1000.00 {
+			t.Errorf("expected CurrentDebt -1000.00, got %v", overLC.CurrentDebt)
+		}
+		// Remaining credit must clamp to credit limit (20000.00), NOT 21000.00
+		if overLC.RemainingCredit != 20000.00 {
+			t.Errorf("expected clamped RemainingCredit 20000.00, got %v", overLC.RemainingCredit)
+		}
+		if overLC.UsageRate != 0.0 {
+			t.Errorf("expected clamped UsageRate 0.0, got %v", overLC.UsageRate)
+		}
 	}
 
 	// Verify 409 guard on deleting channel with transaction reference
