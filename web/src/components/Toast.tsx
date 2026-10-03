@@ -19,7 +19,7 @@ export const Toast: FC<ToastProps> = ({ toasts, onDismiss }) => {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-center justify-between p-3.5 rounded-xl shadow-[var(--shadow-modal)] border text-[13.5px] font-medium transition-all duration-200 animate-fade-in ${
+          className={`pointer-events-auto flex items-center justify-between p-3.5 rounded-xl shadow-[var(--shadow-modal)] border text-sm font-medium transition-all duration-200 animate-fade-in ${
             t.type === 'error'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-expense-dark)] border-[var(--color-expense-stroke)]'
               : t.type === 'success'

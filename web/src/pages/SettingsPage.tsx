@@ -916,7 +916,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           }}
         >
           <div
-            className="w-full max-w-[420px] h-full bg-[var(--color-card-bg)] border-l border-[var(--color-neutral-stroke)] shadow-[var(--shadow-modal)] flex flex-col overflow-hidden"
+            className="w-full max-w-[420px] h-full bg-[var(--color-card-bg)] border-l border-[var(--color-neutral-stroke)] shadow-[var(--shadow-modal)] flex flex-col overflow-hidden animate-slide-in-right"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}

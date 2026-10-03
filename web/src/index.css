@@ -63,6 +63,8 @@
   --color-expense-stroke: rgba(239, 68, 68, 0.3);
   --color-income-bg: rgba(16, 185, 129, 0.15);
   --color-income-stroke: rgba(16, 185, 129, 0.3);
+  --color-brand-light: rgba(0, 120, 212, 0.16);
+  --color-brand-stroke: rgba(71, 158, 245, 0.4);
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -92,4 +94,13 @@ body {
 
 .animate-fade-in {
   animation: fadeInView 0.18s ease-out;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

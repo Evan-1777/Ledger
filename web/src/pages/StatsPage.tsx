@@ -80,7 +80,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
             ¥{stats.week_expense.toFixed(2)}
           </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">自然周统计</span>
         </div>
 
         {/* KPI 2: Month Expense */}
@@ -89,7 +88,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <span className="text-2xl font-bold tabular-num text-[var(--color-expense-dark)]">
             ¥{stats.month_expense.toFixed(2)}
           </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">当月累计支出</span>
         </div>
 
         {/* KPI 3: Last Month Expense */}
@@ -98,7 +96,6 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
             ¥{stats.last_month_expense.toFixed(2)}
           </span>
-          <span className="text-[11px] text-[var(--color-neutral-fg-subtle)]">上一自然月全量</span>
         </div>
 
         {/* KPI 4: Month Balance */}
@@ -115,7 +112,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           </span>
           <div className="flex items-center gap-1.5">
             <span
-              className={`text-[11px] font-semibold px-1.5 py-0.2 rounded ${
+              className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
                 stats.savings_rate >= 0
                   ? 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
                   : 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
@@ -206,7 +203,11 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                   {lc.credit_limit > 0 && (
                     <div className="w-full h-1 bg-[var(--color-canvas-bg)] rounded-full overflow-hidden my-0.5">
                       <div
-                        className="h-full bg-[var(--color-expense-dark)] rounded-full transition-all duration-300"
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          lc.usage_rate >= 80
+                            ? 'bg-[var(--color-expense-dark)]'
+                            : 'bg-[var(--color-neutral-fg-subtle)]'
+                        }`}
                         style={{ width: `${Math.min(lc.usage_rate, 100)}%` }}
                       />
                     </div>

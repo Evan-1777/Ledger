@@ -10,6 +10,13 @@ interface BottomBarProps {
   onOpenRecord: () => void;
 }
 
+const FILTER_OPTIONS: { key: FilterType; label: string }[] = [
+  { key: 'all', label: '全部' },
+  { key: 'expense', label: '支出' },
+  { key: 'income', label: '收入' },
+  { key: 'repayment', label: '还款' },
+];
+
 export const BottomBar: FC<BottomBarProps> = ({
   showFilter,
   filter,
@@ -20,51 +27,21 @@ export const BottomBar: FC<BottomBarProps> = ({
     <>
       {/* Bottom Floating Filter Capsule (Desktop centered, Mobile safe left-aligned) */}
       {showFilter && (
-        <div className="fixed bottom-6 left-4 sm:left-1/2 sm:-translate-x-1/2 z-40 bg-[var(--color-card-bg)] rounded-full p-1 inline-flex items-center gap-1 shadow-[var(--shadow-capsule)] border border-[var(--color-neutral-stroke)] transition-all duration-200">
-          <button
-            type="button"
-            onClick={() => onFilterChange('all')}
-            className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center ${
-              filter === 'all'
-                ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
-                : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-            }`}
-          >
-            全部
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange('expense')}
-            className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center ${
-              filter === 'expense'
-                ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
-                : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-            }`}
-          >
-            支出
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange('income')}
-            className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center ${
-              filter === 'income'
-                ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
-                : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-            }`}
-          >
-            收入
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange('repayment')}
-            className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center ${
-              filter === 'repayment'
-                ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
-                : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-            }`}
-          >
-            还款
-          </button>
+        <div className="fixed bottom-6 left-4 sm:left-1/2 sm:-translate-x-1/2 z-40 backdrop-blur-md bg-[var(--color-card-bg)]/85 rounded-full p-1 inline-flex items-center gap-1 shadow-[var(--shadow-capsule)] border border-[var(--color-neutral-stroke)] transition-all duration-200">
+          {FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => onFilterChange(opt.key)}
+              className={`min-h-[40px] px-3.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
+                filter === opt.key
+                  ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
+                  : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -73,7 +50,7 @@ export const BottomBar: FC<BottomBarProps> = ({
         type="button"
         title="记账 (快捷键 N)"
         onClick={onOpenRecord}
-        className="fixed bottom-6 right-4 sm:right-8 z-40 w-[52px] h-[52px] rounded-full bg-[var(--color-brand)] text-white border-none cursor-pointer flex items-center justify-center shadow-[var(--shadow-fab)] hover:scale-105 hover:bg-[var(--color-brand-hover)] active:scale-95 transition-all duration-150"
+        className="fixed bottom-6 right-4 sm:right-8 z-40 w-[52px] h-[52px] rounded-full bg-[var(--color-brand)] text-white border-none cursor-pointer flex items-center justify-center shadow-[var(--shadow-fab)] hover:scale-105 hover:bg-[var(--color-brand-hover)] active:scale-95 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-brand)]"
       >
         <PlusIcon size={22} />
       </button>

@@ -306,7 +306,7 @@ export const RecordModal: FC<RecordModalProps> = ({
                   ? 'translate-x-0 bg-[var(--color-expense-bg)] border border-[var(--color-expense-stroke)]'
                   : recordType === 'income'
                   ? 'translate-x-full bg-[var(--color-income-bg)] border border-[var(--color-income-stroke)]'
-                  : 'translate-x-[200%] bg-[rgba(0,120,212,0.12)] border border-[rgba(0,120,212,0.35)]'
+                  : 'translate-x-[200%] bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)]'
               }`}
             />
             <button

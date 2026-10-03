@@ -19,7 +19,7 @@ export const Navbar: FC<NavbarProps> = ({
   onLogout,
 }) => {
   return (
-    <header className="sticky top-0 z-50 h-[60px] bg-[var(--color-card-bg)] border-b border-[var(--color-neutral-stroke)] flex items-center justify-between px-3 sm:px-8 transition-colors duration-200">
+    <header className="sticky top-0 z-50 h-[60px] backdrop-blur-md bg-[var(--color-card-bg)]/85 border-b border-[var(--color-neutral-stroke)] flex items-center justify-between px-3 sm:px-8 transition-colors duration-200">
       {/* Left: Brand */}
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="w-8 h-8 rounded-lg bg-[var(--color-brand)] flex items-center justify-center text-white shadow-[0_2px_6px_rgba(0,120,212,0.28)] flex-shrink-0">
@@ -37,7 +37,7 @@ export const Navbar: FC<NavbarProps> = ({
           title="账目流水"
           aria-label="账目流水"
           onClick={() => onTabChange('stream')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
             currentTab === 'stream'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
@@ -52,7 +52,7 @@ export const Navbar: FC<NavbarProps> = ({
           title="收支统计"
           aria-label="收支统计"
           onClick={() => onTabChange('stats')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
             currentTab === 'stats'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
@@ -67,7 +67,7 @@ export const Navbar: FC<NavbarProps> = ({
           title="基础设置"
           aria-label="基础设置"
           onClick={() => onTabChange('settings')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-[12.5px] sm:text-[13.5px] cursor-pointer transition-all duration-150 ${
+          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
             currentTab === 'settings'
               ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
               : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
@@ -105,7 +105,7 @@ export const Navbar: FC<NavbarProps> = ({
           title="退出登录"
           aria-label="退出登录"
           onClick={onLogout}
-          className="w-[34px] h-[34px] sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 text-[12.5px] sm:text-[13px] text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-md cursor-pointer transition-all duration-150"
+          className="w-[34px] h-[34px] sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 text-xs text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-md cursor-pointer transition-all duration-150"
         >
           <LogoutIcon size={15} />
           <span className="hidden sm:inline">登出</span>

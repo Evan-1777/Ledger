@@ -159,13 +159,13 @@ export const StreamPage: FC<StreamPageProps> = ({
                     {/* Left: Details */}
                     <div className="flex flex-col gap-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
-                        <span className="text-[14px] font-medium text-[var(--color-neutral-fg-1)] truncate">
+                        <span className="text-sm font-medium text-[var(--color-neutral-fg-1)] truncate">
                           {item.description}
                         </span>
                         <span
                           className={`text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
                             isRepayment
-                              ? 'bg-[rgba(0,120,212,0.08)] text-[var(--color-brand)] border border-[rgba(0,120,212,0.2)]'
+                              ? 'bg-[var(--color-brand-light)] text-[var(--color-brand)] border border-[var(--color-brand-stroke)]'
                               : isExp
                               ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
                               : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
@@ -194,7 +194,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                     {/* Right: Amount & Actions */}
                     <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-3">
                       <span
-                        className={`text-[15px] sm:text-[16px] font-semibold tabular-num ${
+                        className={`text-sm sm:text-base font-semibold tabular-num ${
                           isRepayment
                             ? 'text-[var(--color-brand)]'
                             : isExp
@@ -210,7 +210,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                           type="button"
                           title="编辑账单"
                           onClick={() => onEdit(item)}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                          className="w-8 h-8 sm:w-7 sm:h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
                         >
                           <EditIcon size={14} />
                         </button>
@@ -218,7 +218,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                           type="button"
                           title="删除账单"
                           onClick={() => onDelete(item.id)}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
+                          className="w-8 h-8 sm:w-7 sm:h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
                         >
                           <TrashIcon size={14} />
                         </button>
