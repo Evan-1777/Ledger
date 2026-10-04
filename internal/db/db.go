@@ -54,6 +54,7 @@ func migrateAndSeed(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT UNIQUE NOT NULL,
 		sort_order INTEGER DEFAULT 0,
+		type TEXT NOT NULL DEFAULT 'expense',
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -110,6 +111,9 @@ func migrateAndSeed(db *sql.DB) error {
 	defer tx.Rollback()
 
 	// Hot migration: probe and add columns if missing (always executed before seed check)
+	if err := migrateCategoriesColumns(tx); err != nil {
+		return fmt.Errorf("failed to migrate categories columns: %w", err)
+	}
 	if err := migratePaymentMethodsColumns(tx); err != nil {
 		return fmt.Errorf("failed to migrate payment methods columns: %w", err)
 	}
@@ -122,6 +126,9 @@ func migrateAndSeed(db *sql.DB) error {
 	if err == nil && seedInit == "true" {
 		if err := ensureSystemRepaymentCategory(tx); err != nil {
 			return fmt.Errorf("failed to ensure system repayment category: %w", err)
+		}
+		if err := ensureSystemTransferCategory(tx); err != nil {
+			return fmt.Errorf("failed to ensure system transfer category: %w", err)
 		}
 		return tx.Commit()
 	}
@@ -138,10 +145,13 @@ func migrateAndSeed(db *sql.DB) error {
 		return fmt.Errorf("failed to check transactions count: %w", err)
 	}
 
-	// Existing database upgrade: already has data, do not inject seeds, just mark initialized and ensure repayment category
+	// Existing database upgrade: already has data, do not inject seeds, just mark initialized and ensure repayment & transfer categories
 	if pmCount > 0 || catCount > 0 || txCount > 0 {
 		if err := ensureSystemRepaymentCategory(tx); err != nil {
 			return fmt.Errorf("failed to ensure system repayment category on existing db: %w", err)
+		}
+		if err := ensureSystemTransferCategory(tx); err != nil {
+			return fmt.Errorf("failed to ensure system transfer category on existing db: %w", err)
 		}
 		if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('seed_initialized', 'true')"); err != nil {
 			return fmt.Errorf("failed to mark seed_initialized on existing db: %w", err)
@@ -176,17 +186,18 @@ func migrateAndSeed(db *sql.DB) error {
 	defaultCategories := []struct {
 		name      string
 		sortOrder int
+		catType   string
 		tags      []string
 	}{
-		{"餐饮美食", 1, []string{"午餐", "晚餐", "咖啡奶茶", "超市买菜"}},
-		{"交通出行", 2, []string{"地铁", "打车出租", "公交"}},
-		{"居家生活", 3, []string{"房租月供", "物业水暖", "日用百货"}},
-		{"休闲娱乐", 4, []string{"电影演出", "数字游戏", "运动健身"}},
-		{"职业收入", 5, []string{"主业工资", "年终奖金", "兼职报酬"}},
+		{"餐饮美食", 1, "expense", []string{"午餐", "晚餐", "咖啡奶茶", "超市买菜"}},
+		{"交通出行", 2, "expense", []string{"地铁", "打车出租", "公交"}},
+		{"居家生活", 3, "expense", []string{"房租月供", "物业水暖", "日用百货"}},
+		{"休闲娱乐", 4, "expense", []string{"电影演出", "数字游戏", "运动健身"}},
+		{"职业收入", 5, "income", []string{"主业工资", "年终奖金", "兼职报酬"}},
 	}
 
 	for _, cat := range defaultCategories {
-		_, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order) VALUES (?, ?)", cat.name, cat.sortOrder)
+		_, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order, type) VALUES (?, ?, ?)", cat.name, cat.sortOrder, cat.catType)
 		if err != nil {
 			return fmt.Errorf("failed to seed category %s: %w", cat.name, err)
 		}
@@ -208,12 +219,56 @@ func migrateAndSeed(db *sql.DB) error {
 	if err := ensureSystemRepaymentCategory(tx); err != nil {
 		return fmt.Errorf("failed to ensure system repayment category: %w", err)
 	}
+	if err := ensureSystemTransferCategory(tx); err != nil {
+		return fmt.Errorf("failed to ensure system transfer category: %w", err)
+	}
 
 	if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('seed_initialized', 'true')"); err != nil {
 		return fmt.Errorf("failed to mark seed_initialized: %w", err)
 	}
 
 	return tx.Commit()
+}
+
+func migrateCategoriesColumns(tx *sql.Tx) error {
+	rows, err := tx.Query("PRAGMA table_info(categories)")
+	if err != nil {
+		return fmt.Errorf("failed to inspect categories table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasType := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("failed to scan table_info: %w", err)
+		}
+		if name == "type" {
+			hasType = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating table_info: %w", err)
+	}
+
+	if !hasType {
+		if _, err := tx.Exec("ALTER TABLE categories ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'"); err != nil {
+			return fmt.Errorf("failed to add column type to categories: %w", err)
+		}
+	}
+
+	// Atomic backfill for known category types
+	if _, err := tx.Exec("UPDATE categories SET type = 'income' WHERE name = '职业收入' AND type != 'income'"); err != nil {
+		return fmt.Errorf("failed to backfill 职业收入 type: %w", err)
+	}
+	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE name = '债务偿还' AND type != 'system'"); err != nil {
+		return fmt.Errorf("failed to backfill 债务偿还 type: %w", err)
+	}
+
+	return nil
 }
 
 func migratePaymentMethodsColumns(tx *sql.Tx) error {
@@ -314,7 +369,7 @@ func migrateTransactionsColumns(tx *sql.Tx) error {
 }
 
 func ensureSystemRepaymentCategory(tx *sql.Tx) error {
-	if _, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order) VALUES ('债务偿还', 999)"); err != nil {
+	if _, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order, type) VALUES ('债务偿还', 999, 'system')"); err != nil {
 		return fmt.Errorf("failed to ensure system repayment category: %w", err)
 	}
 	var catID int64
@@ -335,6 +390,33 @@ func ensureSystemRepaymentCategory(tx *sql.Tx) error {
 	}
 	if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('system_tag_repayment_id', ?)", strconv.FormatInt(tagID, 10)); err != nil {
 		return fmt.Errorf("failed to persist system_tag_repayment_id: %w", err)
+	}
+
+	return nil
+}
+
+func ensureSystemTransferCategory(tx *sql.Tx) error {
+	if _, err := tx.Exec("INSERT OR IGNORE INTO categories (name, sort_order, type) VALUES ('账户转账', 998, 'system')"); err != nil {
+		return fmt.Errorf("failed to ensure system transfer category: %w", err)
+	}
+	var catID int64
+	if err := tx.QueryRow("SELECT id FROM categories WHERE name = '账户转账'").Scan(&catID); err != nil {
+		return fmt.Errorf("failed to get system transfer category id: %w", err)
+	}
+
+	if _, err := tx.Exec("INSERT OR IGNORE INTO tags (category_id, name, sort_order) VALUES (?, '资金互转', 1)", catID); err != nil {
+		return fmt.Errorf("failed to ensure system transfer tag: %w", err)
+	}
+	var tagID int64
+	if err := tx.QueryRow("SELECT id FROM tags WHERE category_id = ? AND name = '资金互转'", catID).Scan(&tagID); err != nil {
+		return fmt.Errorf("failed to get system transfer tag id: %w", err)
+	}
+
+	if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('system_category_transfer_id', ?)", strconv.FormatInt(catID, 10)); err != nil {
+		return fmt.Errorf("failed to persist system_category_transfer_id: %w", err)
+	}
+	if _, err := tx.Exec("INSERT OR REPLACE INTO system_meta (key, value) VALUES ('system_tag_transfer_id', ?)", strconv.FormatInt(tagID, 10)); err != nil {
+		return fmt.Errorf("failed to persist system_tag_transfer_id: %w", err)
 	}
 
 	return nil

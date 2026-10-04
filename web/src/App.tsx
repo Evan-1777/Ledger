@@ -167,7 +167,7 @@ export default function App() {
 
   // Handlers for Transactions
   const handleSaveTransaction = async (data: {
-    type?: 'expense' | 'income' | 'repayment';
+    type?: 'expense' | 'income' | 'repayment' | 'transfer';
     amount: number;
     description: string;
     payment_method_id: number;
@@ -249,10 +249,10 @@ export default function App() {
     }
   };
 
-  const handleAddCategory = async (name: string) => {
+  const handleAddCategory = async (name: string, type: 'expense' | 'income' = 'expense') => {
     try {
-      await api.createCategory(name, categories.length + 1);
-      addToast('success', `消费类型「${name}」已创建`);
+      await api.createCategory(name, categories.length + 1, type);
+      addToast('success', `${type === 'income' ? '收入分类' : '消费类型'}「${name}」已创建`);
       fetchConfigData();
     } catch (err: any) {
       addToast('error', err?.message || '创建失败');
@@ -269,14 +269,14 @@ export default function App() {
     }
   };
 
-  const handleUpdateCategory = async (id: number, name: string, sort_order: number) => {
+  const handleUpdateCategory = async (id: number, name: string, sort_order: number, type?: 'expense' | 'income') => {
     try {
-      await api.updateCategory(id, name, sort_order);
+      await api.updateCategory(id, name, sort_order, type);
       fetchConfigData();
     } catch (err: any) {
       const msg = err?.message?.includes('category already exists')
-        ? '消费类型名称已存在'
-        : err?.message || '更新消费类型失败';
+        ? '分类名称已存在'
+        : err?.message || '更新分类失败';
       addToast('error', msg);
       fetchConfigData();
       throw err;

@@ -20,13 +20,14 @@ export interface Category {
   id: number;
   name: string;
   sort_order: number;
+  type: 'expense' | 'income' | 'system';
   created_at: string;
   tags: Tag[];
 }
 
 export interface Transaction {
   id: number;
-  type: 'expense' | 'income' | 'repayment';
+  type: 'expense' | 'income' | 'repayment' | 'transfer';
   amount_cents: number;
   amount: number;
   description: string;
@@ -234,17 +235,17 @@ export const api = {
     return request<Category[]>('/api/categories');
   },
 
-  createCategory(name: string, sort_order: number): Promise<Category> {
+  createCategory(name: string, sort_order: number, type: 'expense' | 'income' = 'expense'): Promise<Category> {
     return request<Category>('/api/categories', {
       method: 'POST',
-      body: JSON.stringify({ name, sort_order }),
+      body: JSON.stringify({ name, sort_order, type }),
     });
   },
 
-  updateCategory(id: number, name: string, sort_order: number): Promise<Category> {
+  updateCategory(id: number, name: string, sort_order: number, type?: 'expense' | 'income'): Promise<Category> {
     return request<Category>(`/api/categories/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, sort_order }),
+      body: JSON.stringify({ name, sort_order, type }),
     });
   },
 
@@ -281,7 +282,7 @@ export const api = {
   },
 
   // Transactions
-  getTransactions(type?: 'all' | 'expense' | 'income' | 'repayment', limit = 100): Promise<Transaction[]> {
+  getTransactions(type?: 'all' | 'expense' | 'income' | 'repayment' | 'transfer', limit = 100): Promise<Transaction[]> {
     const params = new URLSearchParams();
     if (type && type !== 'all') {
       params.set('type', type);
@@ -291,7 +292,7 @@ export const api = {
   },
 
   createTransaction(data: {
-    type?: 'expense' | 'income' | 'repayment';
+    type?: 'expense' | 'income' | 'repayment' | 'transfer';
     amount: number;
     description: string;
     payment_method_id: number;
@@ -309,7 +310,7 @@ export const api = {
   updateTransaction(
     id: number,
     data: {
-      type?: 'expense' | 'income' | 'repayment';
+      type?: 'expense' | 'income' | 'repayment' | 'transfer';
       amount: number;
       description: string;
       payment_method_id: number;

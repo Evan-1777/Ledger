@@ -84,6 +84,8 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		query.WriteString(" WHERE t.type = 'income'")
 	} else if typeFilter == "repayment" {
 		query.WriteString(" WHERE t.type = 'repayment'")
+	} else if typeFilter == "transfer" {
+		query.WriteString(" WHERE t.type = 'transfer'")
 	}
 
 	query.WriteString(" ORDER BY t.transacted_at DESC, t.id DESC LIMIT ? OFFSET ?")
@@ -249,14 +251,14 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 			txType = "income"
 		}
 	}
-	if txType != "expense" && txType != "income" && txType != "repayment" {
-		return 0, "", "", badRequest("invalid transaction type, must be 'expense', 'income', or 'repayment'")
+	if txType != "expense" && txType != "income" && txType != "repayment" && txType != "transfer" {
+		return 0, "", "", badRequest("invalid transaction type, must be 'expense', 'income', 'repayment', or 'transfer'")
 	}
 
 	var amountCents int64
-	if txType == "repayment" {
+	if txType == "repayment" || txType == "transfer" {
 		if req.Amount <= 0 {
-			return 0, "", "", badRequest("repayment amount must be greater than 0")
+			return 0, "", "", badRequest(txType + " amount must be greater than 0")
 		}
 		amountCents = int64(math.Round(req.Amount * 100))
 	} else if txType == "expense" {
@@ -286,7 +288,41 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 		return 0, "", "", fmt.Errorf("failed to query payment method: %w", err)
 	}
 
-	if txType == "repayment" {
+	if txType == "transfer" {
+		if pmType != "asset" {
+			return 0, "", "", badRequest("transfer target must be an asset channel")
+		}
+		if req.SourcePaymentMethodID == nil || *req.SourcePaymentMethodID <= 0 {
+			return 0, "", "", badRequest("source payment method is required for transfer")
+		}
+		if req.PaymentMethodID == *req.SourcePaymentMethodID {
+			return 0, "", "", badRequest("source and target payment methods must be different")
+		}
+		var srcType string
+		err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", *req.SourcePaymentMethodID).Scan(&srcType)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return 0, "", "", badRequest("source payment method does not exist")
+			}
+			return 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
+		}
+		if srcType != "asset" {
+			return 0, "", "", badRequest("source payment method must be an asset channel for transfer")
+		}
+
+		// Auto-bind system transfer category & tag if not specified
+		if req.CategoryID <= 0 || req.TagID <= 0 {
+			var sysCatStr, sysTagStr string
+			_ = s.db.QueryRowContext(r.Context(), "SELECT value FROM system_meta WHERE key = 'system_category_transfer_id'").Scan(&sysCatStr)
+			_ = s.db.QueryRowContext(r.Context(), "SELECT value FROM system_meta WHERE key = 'system_tag_transfer_id'").Scan(&sysTagStr)
+			if catID, err := strconv.ParseInt(sysCatStr, 10, 64); err == nil && catID > 0 {
+				req.CategoryID = catID
+			}
+			if tagID, err := strconv.ParseInt(sysTagStr, 10, 64); err == nil && tagID > 0 {
+				req.TagID = tagID
+			}
+		}
+	} else if txType == "repayment" {
 		if pmType != "liability" {
 			return 0, "", "", badRequest("repayment target must be a liability channel")
 		}

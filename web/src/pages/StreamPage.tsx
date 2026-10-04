@@ -146,8 +146,10 @@ export const StreamPage: FC<StreamPageProps> = ({
             <div className="flex flex-col gap-2">
               {items.map((item) => {
                 const isRepayment = item.type === 'repayment';
+                const isTransfer = item.type === 'transfer';
+                const isNeutral = isRepayment || isTransfer;
                 const isExp = item.type === 'expense' || (!item.type && item.amount_cents < 0);
-                const formattedAmount = isRepayment
+                const formattedAmount = isNeutral
                   ? `¥ ${Math.abs(item.amount).toFixed(2)}`
                   : `${isExp ? '-' : '+'}${Math.abs(item.amount).toFixed(2)}`;
 
@@ -164,7 +166,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                         </span>
                         <span
                           className={`text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
-                            isRepayment
+                            isNeutral
                               ? 'bg-[var(--color-brand-light)] text-[var(--color-brand)] border border-[var(--color-brand-stroke)]'
                               : isExp
                               ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
@@ -179,11 +181,11 @@ export const StreamPage: FC<StreamPageProps> = ({
                         <ClockIcon size={12} />
                         <span className="tabular-num">{formatTime(item.transacted_at)}</span>
                         <span className="opacity-40">·</span>
-                        {isRepayment ? (
+                        {isTransfer || isRepayment ? (
                           item.source_payment_method_name ? (
                             <span>{item.source_payment_method_name} → {item.payment_method_name}</span>
                           ) : (
-                            <span>还入 {item.payment_method_name}</span>
+                            <span>{isTransfer ? '转入' : '还入'} {item.payment_method_name}</span>
                           )
                         ) : (
                           <span>{item.payment_method_name}</span>
@@ -195,7 +197,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                     <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 ml-3">
                       <span
                         className={`text-sm sm:text-base font-semibold tabular-num ${
-                          isRepayment
+                          isNeutral
                             ? 'text-[var(--color-brand)]'
                             : isExp
                             ? 'text-[var(--color-expense-dark)]'

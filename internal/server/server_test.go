@@ -1234,4 +1234,347 @@ func TestRepaymentFullFlowAndInvariants(t *testing.T) {
 	}
 }
 
+func TestTransferFullFlowAndInvariants(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// 1. Verify Category API type support and system transfer protection
+	reqCats := httptest.NewRequest("GET", "/api/categories", nil)
+	reqCats.Header.Set("Authorization", authHeader)
+	recCats := httptest.NewRecorder()
+	s.ServeHTTP(recCats, reqCats)
+	if recCats.Code != http.StatusOK {
+		t.Fatalf("expected 200 for list categories, got %d", recCats.Code)
+	}
+
+	var catList []Category
+	if err := json.NewDecoder(recCats.Body).Decode(&catList); err != nil {
+		t.Fatalf("failed to decode categories: %v", err)
+	}
+
+	var transferCatID, transferTagID int64
+	for _, c := range catList {
+		if c.Type == "" {
+			t.Errorf("category %s has empty type", c.Name)
+		}
+		if c.Name == "职业收入" && c.Type != "income" {
+			t.Errorf("expected 职业收入 to be 'income', got '%s'", c.Type)
+		}
+		if c.Name == "餐饮美食" && c.Type != "expense" {
+			t.Errorf("expected 餐饮美食 to be 'expense', got '%s'", c.Type)
+		}
+		if c.Name == "账户转账" {
+			if c.Type != "system" {
+				t.Errorf("expected 账户转账 to be 'system', got '%s'", c.Type)
+			}
+			transferCatID = c.ID
+			if len(c.Tags) > 0 {
+				transferTagID = c.Tags[0].ID
+			}
+		}
+	}
+
+	if transferCatID == 0 || transferTagID == 0 {
+		t.Fatalf("expected system transfer category and tag to exist, got catID=%d, tagID=%d", transferCatID, transferTagID)
+	}
+
+	// 1.1 Verify immutable guard on system transfer category
+	reqUpdateSysCat := httptest.NewRequest("PUT", "/api/categories/"+strconv.FormatInt(transferCatID, 10), strings.NewReader(`{"name":"改名转账"}`))
+	reqUpdateSysCat.Header.Set("Authorization", authHeader)
+	recUpdateSysCat := httptest.NewRecorder()
+	s.ServeHTTP(recUpdateSysCat, reqUpdateSysCat)
+	if recUpdateSysCat.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for updating system transfer category, got %d", recUpdateSysCat.Code)
+	}
+
+	reqDelSysCat := httptest.NewRequest("DELETE", "/api/categories/"+strconv.FormatInt(transferCatID, 10), nil)
+	reqDelSysCat.Header.Set("Authorization", authHeader)
+	recDelSysCat := httptest.NewRecorder()
+	s.ServeHTTP(recDelSysCat, reqDelSysCat)
+	if recDelSysCat.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for deleting system transfer category, got %d", recDelSysCat.Code)
+	}
+
+	// 1.2 Verify immutable guard on system transfer tag
+	reqUpdateSysTag := httptest.NewRequest("PUT", "/api/tags/"+strconv.FormatInt(transferTagID, 10), strings.NewReader(`{"name":"改名标签"}`))
+	reqUpdateSysTag.Header.Set("Authorization", authHeader)
+	recUpdateSysTag := httptest.NewRecorder()
+	s.ServeHTTP(recUpdateSysTag, reqUpdateSysTag)
+	if recUpdateSysTag.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for updating system transfer tag, got %d", recUpdateSysTag.Code)
+	}
+
+	reqDelSysTag := httptest.NewRequest("DELETE", "/api/tags/"+strconv.FormatInt(transferTagID, 10), nil)
+	reqDelSysTag.Header.Set("Authorization", authHeader)
+	recDelSysTag := httptest.NewRecorder()
+	s.ServeHTTP(recDelSysTag, reqDelSysTag)
+	if recDelSysTag.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for deleting system transfer tag, got %d", recDelSysTag.Code)
+	}
+
+	// 1.3 Verify creating categories with type
+	reqCreateIncome := httptest.NewRequest("POST", "/api/categories", strings.NewReader(`{"name":"副业兼职","sort_order":10,"type":"income"}`))
+	reqCreateIncome.Header.Set("Authorization", authHeader)
+	recCreateIncome := httptest.NewRecorder()
+	s.ServeHTTP(recCreateIncome, reqCreateIncome)
+	if recCreateIncome.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for creating income category, got %d", recCreateIncome.Code)
+	}
+	var newIncomeCat Category
+	_ = json.NewDecoder(recCreateIncome.Body).Decode(&newIncomeCat)
+	if newIncomeCat.Type != "income" {
+		t.Errorf("expected new category type to be 'income', got '%s'", newIncomeCat.Type)
+	}
+
+	// Update category without type - type must be preserved
+	reqUpdateCatNoType := httptest.NewRequest("PUT", "/api/categories/"+strconv.FormatInt(newIncomeCat.ID, 10), strings.NewReader(`{"name":"副业兼职改名"}`))
+	reqUpdateCatNoType.Header.Set("Authorization", authHeader)
+	recUpdateCatNoType := httptest.NewRecorder()
+	s.ServeHTTP(recUpdateCatNoType, reqUpdateCatNoType)
+	if recUpdateCatNoType.Code != http.StatusOK {
+		t.Fatalf("expected 200 for update category without type, got %d", recUpdateCatNoType.Code)
+	}
+	var updatedCat Category
+	_ = json.NewDecoder(recUpdateCatNoType.Body).Decode(&updatedCat)
+	if updatedCat.Type != "income" {
+		t.Errorf("expected preserved category type 'income', got '%s'", updatedCat.Type)
+	}
+
+	// 2. Prepare Payment Methods for Transfer
+	// Set initial balance: 招商银行卡 = 5000.00, 微信支付 = 500.00
+	reqPMs := httptest.NewRequest("GET", "/api/payment-methods", nil)
+	reqPMs.Header.Set("Authorization", authHeader)
+	recPMs := httptest.NewRecorder()
+	s.ServeHTTP(recPMs, reqPMs)
+	var pmList []PaymentMethod
+	_ = json.NewDecoder(recPMs.Body).Decode(&pmList)
+
+	var bankPM, wechatPM, creditPM PaymentMethod
+	for _, pm := range pmList {
+		if pm.Name == "招商银行卡" {
+			bankPM = pm
+		} else if pm.Name == "微信支付" {
+			wechatPM = pm
+		} else if pm.Name == "招商信用卡" {
+			creditPM = pm
+		}
+	}
+
+	// Set initial balances via PUT
+	initBalBank := 5000.00
+	updBankReq := httptest.NewRequest("PUT", "/api/payment-methods/"+strconv.FormatInt(bankPM.ID, 10), strings.NewReader(`{"name":"招商银行卡","sort_order":3,"type":"asset","initial_balance":5000}`))
+	updBankReq.Header.Set("Authorization", authHeader)
+	recUpdBank := httptest.NewRecorder()
+	s.ServeHTTP(recUpdBank, updBankReq)
+
+	initBalWechat := 500.00
+	updWechatReq := httptest.NewRequest("PUT", "/api/payment-methods/"+strconv.FormatInt(wechatPM.ID, 10), strings.NewReader(`{"name":"微信支付","sort_order":1,"type":"asset","initial_balance":500}`))
+	updWechatReq.Header.Set("Authorization", authHeader)
+	recUpdWechat := httptest.NewRecorder()
+	s.ServeHTTP(recUpdWechat, updWechatReq)
+
+	_ = initBalBank
+	_ = initBalWechat
+
+	// Initial Stats before any transaction
+	reqStatsBefore := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqStatsBefore.Header.Set("Authorization", authHeader)
+	recStatsBefore := httptest.NewRecorder()
+	s.ServeHTTP(recStatsBefore, reqStatsBefore)
+	var statsBefore StatsSummaryResponse
+	_ = json.NewDecoder(recStatsBefore.Body).Decode(&statsBefore)
+
+	initialTotalAssets := statsBefore.AssetSummary.TotalAssets
+	initialNetAssets := statsBefore.AssetSummary.NetAssets
+
+	// 3. Transfer Validation Errors
+	nowISO := time.Now().UTC().Format(time.RFC3339)
+
+	// 3.1 Negative amount
+	badAmtJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   -100.0,
+		"description":              "非法负金额",
+		"payment_method_id":        wechatPM.ID,
+		"source_payment_method_id": bankPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqBadAmt := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(badAmtJSON)))
+	reqBadAmt.Header.Set("Authorization", authHeader)
+	recBadAmt := httptest.NewRecorder()
+	s.ServeHTTP(recBadAmt, reqBadAmt)
+	if recBadAmt.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative transfer amount, got %d", recBadAmt.Code)
+	}
+
+	// 3.2 Missing source channel
+	noSrcJSON, _ := json.Marshal(map[string]any{
+		"type":              "transfer",
+		"amount":            100.0,
+		"description":       "无来源渠道",
+		"payment_method_id": wechatPM.ID,
+		"transacted_at":     nowISO,
+	})
+	reqNoSrc := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(noSrcJSON)))
+	reqNoSrc.Header.Set("Authorization", authHeader)
+	recNoSrc := httptest.NewRecorder()
+	s.ServeHTTP(recNoSrc, reqNoSrc)
+	if recNoSrc.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for transfer without source channel, got %d", recNoSrc.Code)
+	}
+
+	// 3.3 Source channel equals target channel
+	sameChanJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   100.0,
+		"description":              "自转自",
+		"payment_method_id":        wechatPM.ID,
+		"source_payment_method_id": wechatPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqSameChan := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(sameChanJSON)))
+	reqSameChan.Header.Set("Authorization", authHeader)
+	recSameChan := httptest.NewRecorder()
+	s.ServeHTTP(recSameChan, reqSameChan)
+	if recSameChan.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for self-transfer, got %d", recSameChan.Code)
+	}
+
+	// 3.4 Target channel is liability channel
+	targetLiabJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   100.0,
+		"description":              "目标为负债",
+		"payment_method_id":        creditPM.ID,
+		"source_payment_method_id": bankPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqTargetLiab := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(targetLiabJSON)))
+	reqTargetLiab.Header.Set("Authorization", authHeader)
+	recTargetLiab := httptest.NewRecorder()
+	s.ServeHTTP(recTargetLiab, reqTargetLiab)
+	if recTargetLiab.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for transfer to liability channel, got %d", recTargetLiab.Code)
+	}
+
+	// 3.5 Source channel is liability channel
+	srcLiabJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   100.0,
+		"description":              "来源为负债",
+		"payment_method_id":        wechatPM.ID,
+		"source_payment_method_id": creditPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqSrcLiab := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(srcLiabJSON)))
+	reqSrcLiab.Header.Set("Authorization", authHeader)
+	recSrcLiab := httptest.NewRecorder()
+	s.ServeHTTP(recSrcLiab, reqSrcLiab)
+	if recSrcLiab.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for transfer from liability channel, got %d", recSrcLiab.Code)
+	}
+
+	// 4. Successful Transfer Creation (1000.00 from bank to wechat)
+	validTransferJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   1000.00,
+		"description":              "银行卡转微信零钱充值",
+		"payment_method_id":        wechatPM.ID,
+		"source_payment_method_id": bankPM.ID,
+		"transacted_at":            nowISO,
+	})
+	reqValidTransfer := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(validTransferJSON)))
+	reqValidTransfer.Header.Set("Authorization", authHeader)
+	recValidTransfer := httptest.NewRecorder()
+	s.ServeHTTP(recValidTransfer, reqValidTransfer)
+	if recValidTransfer.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for valid transfer, got %d (body: %s)", recValidTransfer.Code, recValidTransfer.Body.String())
+	}
+
+	var createdTx Transaction
+	if err := json.NewDecoder(recValidTransfer.Body).Decode(&createdTx); err != nil {
+		t.Fatalf("failed to decode created transfer: %v", err)
+	}
+	if createdTx.Type != "transfer" {
+		t.Errorf("expected type 'transfer', got '%s'", createdTx.Type)
+	}
+	if createdTx.Amount != 1000.00 || createdTx.AmountCents != 100000 {
+		t.Errorf("expected amount 1000.00 (cents 100000), got %v (cents %d)", createdTx.Amount, createdTx.AmountCents)
+	}
+	if createdTx.SourcePaymentMethodID == nil || *createdTx.SourcePaymentMethodID != bankPM.ID {
+		t.Errorf("expected source_payment_method_id %d, got %v", bankPM.ID, createdTx.SourcePaymentMethodID)
+	}
+	if createdTx.SourcePaymentMethodName != "招商银行卡" {
+		t.Errorf("expected source_payment_method_name '招商银行卡', got '%s'", createdTx.SourcePaymentMethodName)
+	}
+	if createdTx.PaymentMethodName != "微信支付" {
+		t.Errorf("expected payment_method_name '微信支付', got '%s'", createdTx.PaymentMethodName)
+	}
+	if createdTx.CategoryName != "账户转账" || createdTx.TagName != "资金互转" {
+		t.Errorf("expected auto-bound category '账户转账' and tag '资金互转', got cat '%s', tag '%s'", createdTx.CategoryName, createdTx.TagName)
+	}
+
+	// 5. Query Filter ?type=transfer
+	reqFilterTransfer := httptest.NewRequest("GET", "/api/transactions?type=transfer", nil)
+	reqFilterTransfer.Header.Set("Authorization", authHeader)
+	recFilterTransfer := httptest.NewRecorder()
+	s.ServeHTTP(recFilterTransfer, reqFilterTransfer)
+	if recFilterTransfer.Code != http.StatusOK {
+		t.Fatalf("expected 200 for ?type=transfer, got %d", recFilterTransfer.Code)
+	}
+	var transferList []Transaction
+	_ = json.NewDecoder(recFilterTransfer.Body).Decode(&transferList)
+	if len(transferList) != 1 || transferList[0].ID != createdTx.ID {
+		t.Errorf("expected 1 transfer transaction in filter, got %d", len(transferList))
+	}
+
+	// 6. Macro Asset Portfolio & Invariants Verification
+	reqStatsAfter := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqStatsAfter.Header.Set("Authorization", authHeader)
+	recStatsAfter := httptest.NewRecorder()
+	s.ServeHTTP(recStatsAfter, reqStatsAfter)
+	var statsAfter StatsSummaryResponse
+	_ = json.NewDecoder(recStatsAfter.Body).Decode(&statsAfter)
+
+	var actualBankBal, actualWechatBal float64
+	for _, a := range statsAfter.AssetSummary.AssetChannels {
+		if a.Name == "招商银行卡" {
+			actualBankBal = a.RemainingBalance
+		} else if a.Name == "微信支付" {
+			actualWechatBal = a.RemainingBalance
+		}
+	}
+
+	// Bank balance: 5000 - 1000 = 4000
+	if actualBankBal != 4000.00 {
+		t.Errorf("expected 招商银行卡 balance 4000.00 after transfer, got %v", actualBankBal)
+	}
+	// Wechat balance: 500 + 1000 = 1500
+	if actualWechatBal != 1500.00 {
+		t.Errorf("expected 微信支付 balance 1500.00 after transfer, got %v", actualWechatBal)
+	}
+
+	// Invariant: TotalAssets and NetAssets must remain strictly constant!
+	if statsAfter.AssetSummary.TotalAssets != initialTotalAssets {
+		t.Errorf("invariance violated: TotalAssets changed from %v to %v", initialTotalAssets, statsAfter.AssetSummary.TotalAssets)
+	}
+	if statsAfter.AssetSummary.NetAssets != initialNetAssets {
+		t.Errorf("invariance violated: NetAssets changed from %v to %v", initialNetAssets, statsAfter.AssetSummary.NetAssets)
+	}
+
+	// 7. P&L isolation: MonthExpense, MonthIncome, CategoryDistribution must be 0 (unaffected by transfer)
+	if statsAfter.MonthExpense != 0 {
+		t.Errorf("P&L polluted: expected MonthExpense 0, got %v", statsAfter.MonthExpense)
+	}
+	if statsAfter.MonthIncome != 0 {
+		t.Errorf("P&L polluted: expected MonthIncome 0, got %v", statsAfter.MonthIncome)
+	}
+	if len(statsAfter.CategoryDistribution) != 0 {
+		t.Errorf("P&L polluted: expected CategoryDistribution empty, got %d items", len(statsAfter.CategoryDistribution))
+	}
+}
+
+
 

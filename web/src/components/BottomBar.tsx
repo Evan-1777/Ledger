@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { PlusIcon } from './Icons';
 
-export type FilterType = 'all' | 'expense' | 'income' | 'repayment';
+export type FilterType = 'all' | 'expense' | 'income' | 'transfer' | 'repayment';
 
 interface BottomBarProps {
   showFilter: boolean;
@@ -14,6 +14,7 @@ const FILTER_OPTIONS: { key: FilterType; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'expense', label: '支出' },
   { key: 'income', label: '收入' },
+  { key: 'transfer', label: '转账' },
   { key: 'repayment', label: '还款' },
 ];
 

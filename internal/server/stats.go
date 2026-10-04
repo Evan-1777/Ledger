@@ -318,7 +318,8 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	portfolioRows, err := s.db.QueryContext(r.Context(), `
 		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents,
 		       COALESCE(SUM(t.amount_cents), 0) AS tx_sum,
-		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'repayment'), 0) AS source_repayment_sum
+		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'repayment'), 0) AS source_repayment_sum,
+		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'transfer'), 0) AS source_transfer_sum
 		FROM payment_methods pm
 		LEFT JOIN transactions t ON t.payment_method_id = pm.id
 		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents
@@ -346,8 +347,8 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	for portfolioRows.Next() {
 		var id int64
 		var name, chType string
-		var initBalCents, creditLimitCents, txSumCents, sourceRepaymentCents int64
-		if err := portfolioRows.Scan(&id, &name, &chType, &initBalCents, &creditLimitCents, &txSumCents, &sourceRepaymentCents); err != nil {
+		var initBalCents, creditLimitCents, txSumCents, sourceRepaymentCents, sourceTransferCents int64
+		if err := portfolioRows.Scan(&id, &name, &chType, &initBalCents, &creditLimitCents, &txSumCents, &sourceRepaymentCents, &sourceTransferCents); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to scan asset row: "+err.Error())
 			return
 		}
@@ -383,8 +384,8 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 				UsageRate:       usageRate,
 			})
 		} else {
-			// Asset channel (default): subtract repayments funded by this asset channel
-			remainingCents := initBalCents + txSumCents - sourceRepaymentCents
+			// Asset channel (default): subtract repayments and transfers funded by this asset channel
+			remainingCents := initBalCents + txSumCents - sourceRepaymentCents - sourceTransferCents
 			totalAssetsCents += remainingCents
 			assetItems = append(assetItems, rawAssetItem{
 				id:             id,

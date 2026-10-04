@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -31,6 +32,7 @@ type Category struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	SortOrder int    `json:"sort_order"`
+	Type      string `json:"type"`
 	CreatedAt string `json:"created_at"`
 	Tags      []Tag  `json:"tags"`
 }
@@ -279,7 +281,7 @@ func (s *Server) handleDeletePaymentMethod(w http.ResponseWriter, r *http.Reques
 // Categories Handlers
 
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	catRows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories ORDER BY sort_order ASC, id ASC")
+	catRows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories ORDER BY sort_order ASC, id ASC")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -292,7 +294,7 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 	for catRows.Next() {
 		var cat Category
 		cat.Tags = make([]Tag, 0)
-		if err := catRows.Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt); err != nil {
+		if err := catRows.Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -323,8 +325,9 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string `json:"name"`
-		SortOrder int    `json:"sort_order"`
+		Name      string  `json:"name"`
+		SortOrder int     `json:"sort_order"`
+		Type      *string `json:"type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -336,7 +339,17 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "INSERT INTO categories (name, sort_order) VALUES (?, ?)", req.Name, req.SortOrder)
+	catType := "expense"
+	if req.Type != nil && strings.TrimSpace(*req.Type) != "" {
+		trimmed := strings.TrimSpace(*req.Type)
+		if trimmed != "expense" && trimmed != "income" {
+			writeJSONError(w, http.StatusBadRequest, "invalid category type, must be 'expense' or 'income'")
+			return
+		}
+		catType = trimmed
+	}
+
+	res, err := s.db.ExecContext(r.Context(), "INSERT INTO categories (name, sort_order, type) VALUES (?, ?, ?)", req.Name, req.SortOrder, catType)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "category already exists")
@@ -353,8 +366,8 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	var cat Category
 	cat.Tags = make([]Tag, 0)
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
 		return
 	}
@@ -371,27 +384,64 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var isSysCat int
-	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_category_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key IN ('system_category_repayment_id', 'system_category_transfer_id') AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
 	if isSysCat > 0 {
-		writeJSONError(w, http.StatusBadRequest, "系统内置还款分类不可修改或删除")
+		writeJSONError(w, http.StatusBadRequest, "系统内置分类不可修改或删除")
 		return
 	}
 
 	var req struct {
-		Name      string `json:"name"`
-		SortOrder int    `json:"sort_order"`
+		Name      *string `json:"name"`
+		SortOrder *int    `json:"sort_order"`
+		Type      *string `json:"type"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeJSONError(w, http.StatusBadRequest, "name cannot be empty")
+
+	var existing struct {
+		name      string
+		sortOrder int
+		catType   string
+	}
+	err = s.db.QueryRowContext(r.Context(), "SELECT name, sort_order, type FROM categories WHERE id = ?", id).
+		Scan(&existing.name, &existing.sortOrder, &existing.catType)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSONError(w, http.StatusNotFound, "category not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, "failed to read existing category: "+err.Error())
 		return
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "UPDATE categories SET name = ?, sort_order = ? WHERE id = ?", req.Name, req.SortOrder, id)
+	newName := existing.name
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		if trimmed == "" {
+			writeJSONError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		newName = trimmed
+	}
+
+	newSortOrder := existing.sortOrder
+	if req.SortOrder != nil {
+		newSortOrder = *req.SortOrder
+	}
+
+	newType := existing.catType
+	if req.Type != nil {
+		trimmed := strings.TrimSpace(*req.Type)
+		if trimmed != "expense" && trimmed != "income" {
+			writeJSONError(w, http.StatusBadRequest, "invalid category type, must be 'expense' or 'income'")
+			return
+		}
+		newType = trimmed
+	}
+
+	res, err := s.db.ExecContext(r.Context(), "UPDATE categories SET name = ?, sort_order = ?, type = ? WHERE id = ?", newName, newSortOrder, newType, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "category already exists")
@@ -408,8 +458,8 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 
 	var cat Category
 	cat.Tags = make([]Tag, 0)
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.CreatedAt); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
 		return
 	}
@@ -426,9 +476,9 @@ func (s *Server) handleDeleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var isSysCat int
-	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_category_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key IN ('system_category_repayment_id', 'system_category_transfer_id') AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysCat)
 	if isSysCat > 0 {
-		writeJSONError(w, http.StatusBadRequest, "系统内置还款分类不可修改或删除")
+		writeJSONError(w, http.StatusBadRequest, "系统内置分类不可修改或删除")
 		return
 	}
 
@@ -579,9 +629,9 @@ func (s *Server) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var isSysTag int
-	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_tag_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key IN ('system_tag_repayment_id', 'system_tag_transfer_id') AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
 	if isSysTag > 0 {
-		writeJSONError(w, http.StatusBadRequest, "系统内置还款标签不可修改或删除")
+		writeJSONError(w, http.StatusBadRequest, "系统内置标签不可修改或删除")
 		return
 	}
 
@@ -633,9 +683,9 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var isSysTag int
-	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key = 'system_tag_repayment_id' AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
+	_ = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM system_meta WHERE key IN ('system_tag_repayment_id', 'system_tag_transfer_id') AND value = ?", strconv.FormatInt(id, 10)).Scan(&isSysTag)
 	if isSysTag > 0 {
-		writeJSONError(w, http.StatusBadRequest, "系统内置还款标签不可修改或删除")
+		writeJSONError(w, http.StatusBadRequest, "系统内置标签不可修改或删除")
 		return
 	}
 

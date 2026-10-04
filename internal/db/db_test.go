@@ -52,22 +52,22 @@ func TestInitDB(t *testing.T) {
 		t.Errorf("unexpected credit card config: type=%s, initBal=%d, limit=%d", ccType, ccInitBal, ccLimit)
 	}
 
-	// Verify categories seeded (5 defaults + 1 system repayment category)
+	// Verify categories seeded (5 defaults + 1 system repayment + 1 system transfer category)
 	var catCount int
 	if err := database.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to query categories count: %v", err)
 	}
-	if catCount != 6 {
-		t.Errorf("expected 6 categories (5 default + 1 repayment), got %d", catCount)
+	if catCount != 7 {
+		t.Errorf("expected 7 categories (5 default + 1 repayment + 1 transfer), got %d", catCount)
 	}
 
-	// Verify tags seeded (16 defaults + 1 system repayment tag)
+	// Verify tags seeded (16 defaults + 1 system repayment tag + 1 system transfer tag)
 	var tagCount int
 	if err := database.QueryRow("SELECT COUNT(*) FROM tags").Scan(&tagCount); err != nil {
 		t.Fatalf("failed to query tags count: %v", err)
 	}
-	if tagCount != 17 {
-		t.Errorf("expected 17 tags (16 default + 1 repayment), got %d", tagCount)
+	if tagCount != 18 {
+		t.Errorf("expected 18 tags (16 default + 1 repayment + 1 transfer), got %d", tagCount)
 	}
 
 	// Verify idempotency on second InitDB call
@@ -104,8 +104,8 @@ func TestInitDB(t *testing.T) {
 	if err := database3.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to query categories count after re-init: %v", err)
 	}
-	if catCount != 5 {
-		t.Errorf("anti-resurrection check failed: expected 5 categories after delete (6 - 1), got %d", catCount)
+	if catCount != 6 {
+		t.Errorf("anti-resurrection check failed: expected 6 categories after delete (7 - 1), got %d", catCount)
 	}
 
 	// Verify foreign key restriction on transactions
@@ -217,9 +217,9 @@ func TestOldDatabaseUpgrade(t *testing.T) {
 	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories").Scan(&catCount); err != nil {
 		t.Fatalf("failed to count categories: %v", err)
 	}
-	// 1 custom user category + 1 system repayment category ('债务偿还') = 2
-	if catCount != 2 {
-		t.Errorf("expected 2 categories (1 custom + 1 repayment), got %d", catCount)
+	// 1 custom user category + 1 system repayment category ('债务偿还') + 1 system transfer category ('账户转账') = 3
+	if catCount != 3 {
+		t.Errorf("expected 3 categories (1 custom + 1 repayment + 1 transfer), got %d", catCount)
 	}
 	var defaultCatCount int
 	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories WHERE name IN ('餐饮美食', '交通出行', '居家生活', '休闲娱乐', '职业收入')").Scan(&defaultCatCount); err != nil {
@@ -464,5 +464,130 @@ func TestTransactionsMigration(t *testing.T) {
 		t.Errorf("system IDs empty: catID=%s, tagID=%s", sysCatID, sysTagID)
 	}
 }
+
+func TestCategoriesMigration(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ledger-cat-migration-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "cat_migration.db")
+
+	// Construct an old database manually with old categories schema (no type)
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open raw db: %v", err)
+	}
+
+	oldSchema := `
+	CREATE TABLE categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE tags (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		name TEXT NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE payment_methods (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE system_meta (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	INSERT INTO system_meta (key, value) VALUES ('seed_initialized', 'true');
+	INSERT INTO categories (name, sort_order) VALUES ('餐饮美食', 1);
+	INSERT INTO categories (name, sort_order) VALUES ('职业收入', 5);
+	INSERT INTO categories (name, sort_order) VALUES ('债务偿还', 999);
+	`
+	if _, err := rawDB.Exec(oldSchema); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to create old schema: %v", err)
+	}
+	rawDB.Close()
+
+	// Upgrade via InitDB
+	upgradedDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed to upgrade: %v", err)
+	}
+	defer upgradedDB.Close()
+
+	// Verify columns exist
+	rows, err := upgradedDB.Query("PRAGMA table_info(categories)")
+	if err != nil {
+		t.Fatalf("failed to query table_info: %v", err)
+	}
+	defer rows.Close()
+
+	hasType := false
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			t.Fatalf("failed to scan table_info: %v", err)
+		}
+		if name == "type" {
+			hasType = true
+		}
+	}
+	if !hasType {
+		t.Fatalf("categories table missing type column")
+	}
+
+	// Verify backfilled type values
+	var foodType, incType, repType, transType string
+	if err := upgradedDB.QueryRow("SELECT type FROM categories WHERE name = '餐饮美食'").Scan(&foodType); err != nil {
+		t.Fatalf("failed to query 餐饮美食: %v", err)
+	}
+	if foodType != "expense" {
+		t.Errorf("expected default 'expense' for 餐饮美食, got '%s'", foodType)
+	}
+
+	if err := upgradedDB.QueryRow("SELECT type FROM categories WHERE name = '职业收入'").Scan(&incType); err != nil {
+		t.Fatalf("failed to query 职业收入: %v", err)
+	}
+	if incType != "income" {
+		t.Errorf("expected 'income' for 职业收入, got '%s'", incType)
+	}
+
+	if err := upgradedDB.QueryRow("SELECT type FROM categories WHERE name = '债务偿还'").Scan(&repType); err != nil {
+		t.Fatalf("failed to query 债务偿还: %v", err)
+	}
+	if repType != "system" {
+		t.Errorf("expected 'system' for 债务偿还, got '%s'", repType)
+	}
+
+	if err := upgradedDB.QueryRow("SELECT type FROM categories WHERE name = '账户转账'").Scan(&transType); err != nil {
+		t.Fatalf("failed to query 账户转账: %v", err)
+	}
+	if transType != "system" {
+		t.Errorf("expected 'system' for 账户转账, got '%s'", transType)
+	}
+
+	// Verify system transfer category and tag injected into system_meta
+	var sysCatID, sysTagID string
+	if err := upgradedDB.QueryRow("SELECT value FROM system_meta WHERE key = 'system_category_transfer_id'").Scan(&sysCatID); err != nil {
+		t.Fatalf("failed to query system_category_transfer_id: %v", err)
+	}
+	if err := upgradedDB.QueryRow("SELECT value FROM system_meta WHERE key = 'system_tag_transfer_id'").Scan(&sysTagID); err != nil {
+		t.Fatalf("failed to query system_tag_transfer_id: %v", err)
+	}
+	if sysCatID == "" || sysTagID == "" {
+		t.Errorf("transfer system IDs empty: catID=%s, tagID=%s", sysCatID, sysTagID)
+	}
+}
+
 
 

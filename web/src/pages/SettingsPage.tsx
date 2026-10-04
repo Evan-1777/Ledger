@@ -17,8 +17,8 @@ interface SettingsPageProps {
   onAddPaymentMethod: (name: string, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onUpdatePaymentMethod?: (id: number, name: string, sort_order: number, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onDeletePaymentMethod: (id: number) => Promise<void>;
-  onAddCategory: (name: string) => Promise<void>;
-  onUpdateCategory: (id: number, name: string, sort_order: number) => Promise<void>;
+  onAddCategory: (name: string, type?: 'expense' | 'income') => Promise<void>;
+  onUpdateCategory: (id: number, name: string, sort_order: number, type?: 'expense' | 'income') => Promise<void>;
   onReorderCategories?: (updates: { id: number; name: string; sort_order: number }[]) => Promise<void>;
   onDeleteCategory: (id: number) => Promise<void>;
   onAddTag: (categoryId: number, name: string) => Promise<void>;
@@ -62,7 +62,8 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const [editingPmLimit, setEditingPmLimit] = useState('');
   const [editingPmType, setEditingPmType] = useState<'asset' | 'liability'>('asset');
 
-  // Category inline add state
+  // Category inline add & type tab state
+  const [categoryTypeTab, setCategoryTypeTab] = useState<'expense' | 'income'>('expense');
   const [newCatName, setNewCatName] = useState('');
   const [showAddCatInput, setShowAddCatInput] = useState(false);
 
@@ -76,6 +77,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Inline rename states
   const [editingCatId, setEditingCatId] = useState<number | null>(null);
   const [editingCatName, setEditingCatName] = useState('');
+  const [editingCatType, setEditingCatType] = useState<'expense' | 'income'>('expense');
 
   const [editingTagId, setEditingTagId] = useState<number | null>(null);
   const [editingTagName, setEditingTagName] = useState('');
@@ -223,10 +225,24 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     }
   };
 
+  const expenseCategories = categories.filter((c) => (c.type || 'expense') === 'expense');
+  const incomeCategories = categories.filter((c) => c.type === 'income');
+  const systemCategories = categories.filter((c) => c.type === 'system');
+
+  const currentCategories = categoryTypeTab === 'expense' ? expenseCategories : incomeCategories;
+
   const handleCreateCategory = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newCatName.trim()) return;
-    await onAddCategory(newCatName.trim());
+    const trimmed = newCatName.trim();
+    if (!trimmed) return;
+    const isDuplicate = categories.some(
+      (c) => (c.type || 'expense') === categoryTypeTab && c.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      onToast?.('error', '该类型名称已存在');
+      return;
+    }
+    await onAddCategory(trimmed, categoryTypeTab);
     setNewCatName('');
     setShowAddCatInput(false);
   };
@@ -252,10 +268,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
   const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= categories.length) return;
+    if (targetIndex < 0 || targetIndex >= currentCategories.length) return;
 
-    const itemA = categories[index];
-    const itemB = categories[targetIndex];
+    const itemA = currentCategories[index];
+    const itemB = currentCategories[targetIndex];
 
     let orderForA: number;
     let orderForB: number;
@@ -276,8 +292,8 @@ export const SettingsPage: FC<SettingsPageProps> = ({
         ]);
       } else {
         await Promise.all([
-          onUpdateCategory(itemA.id, itemA.name, orderForA),
-          onUpdateCategory(itemB.id, itemB.name, orderForB),
+          onUpdateCategory(itemA.id, itemA.name, orderForA, itemA.type === 'income' ? 'income' : 'expense'),
+          onUpdateCategory(itemB.id, itemB.name, orderForB, itemB.type === 'income' ? 'income' : 'expense'),
         ]);
       }
     } catch {
@@ -288,22 +304,27 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const handleSaveCatRename = async (cat: Category, e: FormEvent) => {
     e.preventDefault();
     const trimmed = editingCatName.trim();
-    if (!trimmed || trimmed === cat.name) {
+    if (!trimmed) {
+      onToast?.('error', '分类名称不能为空');
+      return;
+    }
+    const typeChanged = editingCatType !== (cat.type || 'expense');
+    if (trimmed === cat.name && !typeChanged) {
       setEditingCatId(null);
       return;
     }
 
-    // Pre-check duplicate in sibling categories
+    // Pre-check duplicate in categories with the same target type
     const isDuplicate = categories.some(
-      (c) => c.id !== cat.id && c.name.toLowerCase() === trimmed.toLowerCase()
+      (c) => c.id !== cat.id && (c.type || 'expense') === editingCatType && c.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (isDuplicate) {
-      onToast?.('error', '该消费类型已存在');
+      onToast?.('error', '该类型名称已存在');
       return;
     }
 
     try {
-      await onUpdateCategory(cat.id, trimmed, cat.sort_order);
+      await onUpdateCategory(cat.id, trimmed, cat.sort_order, editingCatType);
       setEditingCatId(null);
     } catch {
       // Keep edit state open so user can adjust name
@@ -381,18 +402,52 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       {/* Section 1: Categories & Tags Taxonomy */}
       {activeTab === 'categories' && (
         <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)] flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
-              消费类型
-            </h4>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
+                分类管理
+              </h4>
+              {/* Sub-tab segmented control */}
+              <div className="flex items-center p-0.5 bg-[var(--color-hover-bg)] rounded-lg border border-[var(--color-neutral-stroke)] text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategoryTypeTab('expense');
+                    setShowAddCatInput(false);
+                  }}
+                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                    categoryTypeTab === 'expense'
+                      ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] shadow-xs font-semibold'
+                      : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-2)]'
+                  }`}
+                >
+                  支出分类 ({expenseCategories.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategoryTypeTab('income');
+                    setShowAddCatInput(false);
+                  }}
+                  className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
+                    categoryTypeTab === 'income'
+                      ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] shadow-xs font-semibold'
+                      : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-2)]'
+                  }`}
+                >
+                  收入分类 ({incomeCategories.length})
+                </button>
+              </div>
+            </div>
+
             {!showAddCatInput && (
               <button
                 type="button"
                 onClick={() => setShowAddCatInput(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] text-xs font-semibold text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-hover-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] text-xs font-semibold text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors self-start sm:self-auto"
               >
                 <PlusIcon size={14} />
-                <span>新增类型</span>
+                <span>新增{categoryTypeTab === 'income' ? '收入分类' : '支出分类'}</span>
               </button>
             )}
           </div>
@@ -408,7 +463,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 autoFocus
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
-                placeholder="输入类型名称 (如：数码科技、宠物养护)"
+                placeholder={categoryTypeTab === 'income' ? '输入收入分类名称 (如：职业收入、理财利息)' : '输入支出分类名称 (如：数码科技、宠物养护)'}
                 className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)]"
               />
               <button
@@ -432,137 +487,218 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
           {/* Clean Category List */}
           <div className="flex flex-col gap-2.5">
-            {categories.map((cat, index) => (
-              <div
-                key={cat.id}
-                className="group border border-[var(--color-neutral-stroke)] rounded-xl p-3 sm:px-4 bg-[var(--color-subtle-bg)] hover:bg-[var(--color-card-bg)] hover:border-[var(--color-neutral-stroke-strong)] flex flex-col gap-2 transition-all relative"
-              >
-                {/* Inline Category Rename Mode */}
-                {editingCatId === cat.id ? (
-                  <form
-                    onSubmit={(e) => handleSaveCatRename(cat, e)}
-                    className="flex items-center gap-2 animate-fade-in"
+            {currentCategories.length === 0 ? (
+              <div className="text-xs text-[var(--color-neutral-fg-subtle)] py-8 text-center bg-[var(--color-subtle-bg)] rounded-xl border border-dashed border-[var(--color-neutral-stroke)]">
+                暂无{categoryTypeTab === 'income' ? '收入分类' : '支出分类'}，点击右上角新增
+              </div>
+            ) : (
+              currentCategories.map((cat, index) => (
+                <div
+                  key={cat.id}
+                  className="group border border-[var(--color-neutral-stroke)] rounded-xl p-3 sm:px-4 bg-[var(--color-subtle-bg)] hover:bg-[var(--color-card-bg)] hover:border-[var(--color-neutral-stroke-strong)] flex flex-col gap-2 transition-all relative"
+                >
+                  {/* Inline Category Rename / Type Edit Mode */}
+                  {editingCatId === cat.id ? (
+                    <form
+                      onSubmit={(e) => handleSaveCatRename(cat, e)}
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 animate-fade-in"
+                    >
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingCatName}
+                        onChange={(e) => setEditingCatName(e.target.value)}
+                        className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-brand)] text-xs text-[var(--color-neutral-fg-1)] outline-none"
+                      />
+                      {/* Type Switcher */}
+                      <div className="flex items-center gap-1 bg-[var(--color-hover-bg)] p-0.5 rounded-lg border border-[var(--color-neutral-stroke)] text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setEditingCatType('expense')}
+                          className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            editingCatType === 'expense'
+                              ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] shadow-xs'
+                              : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-2)]'
+                          }`}
+                        >
+                          支出
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCatType('income')}
+                          className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer transition-colors ${
+                            editingCatType === 'income'
+                              ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] shadow-xs'
+                              : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-2)]'
+                          }`}
+                        >
+                          收入
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button
+                          type="submit"
+                          className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
+                        >
+                          保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCatId(null)}
+                          className="px-2.5 py-1.5 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      {/* Left: Category info */}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-sm font-semibold text-[var(--color-neutral-fg-1)] truncate">
+                          {cat.name}
+                        </span>
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-3)] flex-shrink-0">
+                          {cat.tags?.length || 0} 个细分标签
+                        </span>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div className="flex items-center gap-1.5">
+                        {/* Open Tag Management Drawer Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDrawerCategoryId(cat.id);
+                            setDrawerNewTagName('');
+                            setEditingTagId(null);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--color-card-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] border border-[var(--color-neutral-stroke)] text-xs font-medium text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
+                        >
+                          <EditIcon size={12} />
+                          <span>管理标签</span>
+                        </button>
+
+                        {/* Move Up */}
+                        <button
+                          type="button"
+                          title="上移类型"
+                          disabled={index === 0}
+                          onClick={() => handleMoveCategory(index, 'up')}
+                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                        >
+                          <ChevronUpIcon size={13} />
+                        </button>
+
+                        {/* Move Down */}
+                        <button
+                          type="button"
+                          title="下移类型"
+                          disabled={index === currentCategories.length - 1}
+                          onClick={() => handleMoveCategory(index, 'down')}
+                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                        >
+                          <ChevronDownIcon size={13} />
+                        </button>
+
+                        {/* Context Menu for Rename & Delete */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            title="更多操作"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenCatMenuId(openCatMenuId === cat.id ? null : cat.id);
+                            }}
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                          >
+                            <MoreVerticalIcon size={13} />
+                          </button>
+
+                          {openCatMenuId === cat.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-full mt-1 w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCatId(cat.id);
+                                  setEditingCatName(cat.name);
+                                  setEditingCatType(cat.type === 'income' ? 'income' : 'expense');
+                                  setOpenCatMenuId(null);
+                                }}
+                                className="px-3 py-1.5 text-left text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                              >
+                                编辑分类
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenCatMenuId(null);
+                                  onDeleteCategory(cat.id);
+                                }}
+                                className="px-3 py-1.5 text-left text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
+                              >
+                                删除分类
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* System Categories Immutable Section */}
+          {systemCategories.length > 0 && (
+            <div className="mt-2 pt-4 border-t border-[var(--color-neutral-stroke)] flex flex-col gap-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-semibold text-[var(--color-neutral-fg-3)]">
+                  系统内置分类
+                </span>
+                <span className="text-[11px] text-[var(--color-neutral-fg-3)]">
+                  系统底层调度保护 · 不可更名或删除
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {systemCategories.map((cat) => (
+                  <div
+                    key={cat.id}
+                    className="border border-[var(--color-neutral-stroke)] rounded-xl p-3 sm:px-4 bg-[var(--color-subtle-bg)] opacity-90 flex items-center justify-between"
                   >
-                    <input
-                      type="text"
-                      autoFocus
-                      value={editingCatName}
-                      onChange={(e) => setEditingCatName(e.target.value)}
-                      className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-brand)] text-xs text-[var(--color-neutral-fg-1)] outline-none"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer"
-                    >
-                      保存
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingCatId(null)}
-                      className="px-2.5 py-1.5 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-card-bg)] cursor-pointer"
-                    >
-                      取消
-                    </button>
-                  </form>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    {/* Left: Category info */}
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="text-sm font-semibold text-[var(--color-neutral-fg-1)] truncate">
                         {cat.name}
                       </span>
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)] text-[var(--color-brand)] flex-shrink-0">
+                        系统内置
+                      </span>
                       <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-3)] flex-shrink-0">
-                        {cat.tags?.length || 0} 个细分标签
+                        {cat.tags?.length || 0} 个内置标签
                       </span>
                     </div>
 
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-1.5">
-                      {/* Open Tag Management Drawer Button */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveDrawerCategoryId(cat.id);
-                          setDrawerNewTagName('');
-                          setEditingTagId(null);
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--color-card-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] border border-[var(--color-neutral-stroke)] text-xs font-medium text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
-                      >
-                        <EditIcon size={12} />
-                        <span>管理标签</span>
-                      </button>
-
-                      {/* Move Up */}
-                      <button
-                        type="button"
-                        title="上移类型"
-                        disabled={index === 0}
-                        onClick={() => handleMoveCategory(index, 'up')}
-                        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                      >
-                        <ChevronUpIcon size={13} />
-                      </button>
-
-                      {/* Move Down */}
-                      <button
-                        type="button"
-                        title="下移类型"
-                        disabled={index === categories.length - 1}
-                        onClick={() => handleMoveCategory(index, 'down')}
-                        className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                      >
-                        <ChevronDownIcon size={13} />
-                      </button>
-
-                      {/* Context Menu for Rename & Delete */}
-                      <div className="relative">
-                        <button
-                          type="button"
-                          title="更多操作"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenCatMenuId(openCatMenuId === cat.id ? null : cat.id);
-                          }}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
-                        >
-                          <MoreVerticalIcon size={13} />
-                        </button>
-
-                        {openCatMenuId === cat.id && (
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-0 top-full mt-1 w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCatId(cat.id);
-                                setEditingCatName(cat.name);
-                                setOpenCatMenuId(null);
-                              }}
-                              className="px-3 py-1.5 text-left text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
-                            >
-                              重命名类型
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenCatMenuId(null);
-                                onDeleteCategory(cat.id);
-                              }}
-                              className="px-3 py-1.5 text-left text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
-                            >
-                              删除类型
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveDrawerCategoryId(cat.id);
+                        setDrawerNewTagName('');
+                        setEditingTagId(null);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--color-card-bg)] hover:bg-[var(--color-brand-light)] hover:text-[var(--color-brand)] border border-[var(--color-neutral-stroke)] text-xs font-medium text-[var(--color-neutral-fg-2)] cursor-pointer transition-colors"
+                    >
+                      <EditIcon size={12} />
+                      <span>查看标签</span>
+                    </button>
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -945,24 +1081,30 @@ export const SettingsPage: FC<SettingsPageProps> = ({
             {/* Drawer Body */}
             <div className="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
               {/* Add Tag Input Form inside Drawer */}
-              <form
-                onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)}
-                className="flex items-center gap-2"
-              >
-                <input
-                  type="text"
-                  value={drawerNewTagName}
-                  onChange={(e) => setDrawerNewTagName(e.target.value)}
-                  placeholder="添加细分标签 (如：午餐、地铁)"
-                  className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)] transition-colors"
-                />
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer flex-shrink-0 hover:bg-[var(--color-brand-hover)] transition-colors"
+              {activeDrawerCategory.type !== 'system' ? (
+                <form
+                  onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)}
+                  className="flex items-center gap-2"
                 >
-                  添加
-                </button>
-              </form>
+                  <input
+                    type="text"
+                    value={drawerNewTagName}
+                    onChange={(e) => setDrawerNewTagName(e.target.value)}
+                    placeholder="添加细分标签 (如：午餐、地铁)"
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-xs text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)] transition-colors"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3.5 py-1.5 rounded-lg bg-[var(--color-brand)] text-white text-xs font-medium cursor-pointer flex-shrink-0 hover:bg-[var(--color-brand-hover)] transition-colors"
+                  >
+                    添加
+                  </button>
+                </form>
+              ) : (
+                <div className="p-3 rounded-lg bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)] text-xs text-[var(--color-brand)]">
+                  系统分类标签由底层调度引擎固定保护，不可增删改
+                </div>
+              )}
 
               {/* Tag List */}
               <div className="flex flex-col gap-2">
@@ -1003,27 +1145,33 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                           <span className="font-medium text-[var(--color-neutral-fg-1)] truncate">
                             {tag.name}
                           </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              title="重命名标签"
-                              onClick={() => {
-                                setEditingTagId(tag.id);
-                                setEditingTagName(tag.name);
-                              }}
-                              className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
-                            >
-                              <EditIcon size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              title="删除标签"
-                              onClick={() => onDeleteTag(tag.id)}
-                              className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
-                            >
-                              <TrashIcon size={12} />
-                            </button>
-                          </div>
+                          {activeDrawerCategory.type !== 'system' ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="重命名标签"
+                                onClick={() => {
+                                  setEditingTagId(tag.id);
+                                  setEditingTagName(tag.name);
+                                }}
+                                className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+                              >
+                                <EditIcon size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                title="删除标签"
+                                onClick={() => onDeleteTag(tag.id)}
+                                className="w-6 h-6 rounded flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
+                              >
+                                <TrashIcon size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] font-medium text-[var(--color-brand)] bg-[var(--color-card-bg)] px-2 py-0.5 rounded border border-[var(--color-brand-stroke)]">
+                              系统固定
+                            </span>
+                          )}
                         </>
                       )}
                     </div>
