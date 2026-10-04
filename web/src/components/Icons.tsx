@@ -120,6 +120,43 @@ export function CalendarIcon({ size = 13 }: IconProps) {
   );
 }
 
+export function ExpenseIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 17 17 7" />
+      <polyline points="8 7 17 7 17 16" />
+    </svg>
+  );
+}
+
+export function IncomeIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 7 7 17" />
+      <polyline points="16 17 7 17 7 8" />
+    </svg>
+  );
+}
+
+export function TransferIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="8" x2="20" y2="8" />
+      <polyline points="15 4 20 8 15 12" />
+      <line x1="20" y1="16" x2="4" y2="16" />
+      <polyline points="9 12 4 16 9 20" />
+    </svg>
+  );
+}
+
+export function RepaymentIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+    </svg>
+  );
+}
 
 export function ChevronUpIcon({ size = 14 }: IconProps) {
   return (

@@ -56,7 +56,7 @@
 
   --color-canvas-bg: #0f172a;
   --color-card-bg: #1e293b;
-  --color-subtle-bg: #1e293b;
+  --color-subtle-bg: #172033;
   --color-hover-bg: #334155;
 
   --color-expense-bg: rgba(239, 68, 68, 0.15);
@@ -75,12 +75,19 @@
 body {
   font-family: var(--font-family-base);
   background-color: var(--color-canvas-bg);
+  background-image: radial-gradient(1100px 520px at 50% -8%, rgba(0, 120, 212, 0.07), transparent 62%);
+  background-repeat: no-repeat;
   color: var(--color-neutral-fg-1);
   line-height: 1.5;
   min-height: 100vh;
   margin: 0;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark-mode body,
+body.dark-mode {
+  background-image: radial-gradient(1100px 520px at 50% -8%, rgba(71, 158, 245, 0.09), transparent 62%);
 }
 
 .tabular-num {
