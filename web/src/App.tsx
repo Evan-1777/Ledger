@@ -333,7 +333,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)]">
+    <div className="min-h-screen flex flex-col bg-[var(--color-canvas-bg)] [background-image:var(--canvas-gradient)] bg-no-repeat text-[var(--color-neutral-fg-1)] transition-colors duration-200">
       {/* Toast notifications */}
       <Toast toasts={toasts} onDismiss={removeToast} />
 

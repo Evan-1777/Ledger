@@ -16,11 +16,11 @@ build-server:
 # Complete pipeline: build frontend then compile single binary
 build: build-web build-server
 
-# Run backend unit tests and frontend type checking
+# Run backend unit tests and frontend type checking & tests
 test:
 	@echo "Running tests..."
 	@go test -v ./...
-	@cd web && npm run lint
+	@cd web && npm run lint && npm run test
 
 # Run Go backend for local development
 dev-server:

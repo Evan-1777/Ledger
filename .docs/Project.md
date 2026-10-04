@@ -62,13 +62,16 @@ Ledger/
 │  │  │  └─ Toast.tsx        # 轻量操作反馈悬浮通知
 │  │  ├─ pages/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：日表层合组（连续卡片表面 + 两段式日期表头/本地时区星期/收支小计 + hairline 分隔）、四类语义类型图标、完整四段元信息（分类/标签/账户/时间）、统一金额对齐契约与二级操作浮层
+│  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装、金额规范化）
 │  │  │  ├─ StatsPage.tsx    # 收支与资产统计：顶部 3 联宏观资产组合 KPI 卡片、渠道资产/负债细分监控面板、4 联收支 KPI 卡片、分类下钻、月度趋势双柱图（严格排除转账与还款）
 │  │  │  └─ SettingsPage.tsx # 基础设置：分类管理支持支出/收入分段控制、内联类型纠错、系统内置分类保护展示；资产与负债渠道双列工作台（内联新增、即时编辑）；专属细分标签管理抽屉 (Layer 3 Drawer)
 │  │  ├─ lib/
 │  │  │  └─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
-│  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N）
-│  │  ├─ index.css           # Fluent 2 视觉令牌、暗黑模式中性凹陷面修正、Layer 0 Mica 类画布渐变材质、全局等宽数字 tabular-nums
+│  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N），承载 Layer 0 Mica 画布渐变底色
+│  │  ├─ index.css           # Fluent 2 视觉令牌、暗黑模式中性凹陷面修正、暗黑浮层阴影补齐、Layer 0 Mica 类画布渐变材质（--canvas-gradient）、全局等宽数字 tabular-nums
 │  │  └─ main.tsx            # React 挂载入口
+│  ├─ test/                  # 前端自动化自检（基于 Node 24 原生 node:test 与 --experimental-strip-types）
+│  │  └─ stream.test.ts      # 流水纯函数核心业务契约自检测试套件
 │  ├─ embed.go               # Go embed 静态资源绑定（暴露 DistFS）
 │  ├─ embed_test.go          # embed 资源可读性验证
 │  ├─ vite.config.ts         # Vite 配置（Tailwind 插件、/api 反向代理）
@@ -139,6 +142,7 @@ Ledger/
 - 2026-10-04 移动端底部筛选胶囊间距防重叠——`BottomBar.tsx` 移动端内边距微调为 `px-2.5` 且间距设为 `gap-0.5`，胶囊总宽收缩至 248px，彻底消除 ≤375px 小屏下与右侧悬浮记账按钮（FAB）的边缘重叠，保留 35px 以上安全缓冲距离
 - 2026-10-04 账目流水主页视觉重构与日表层合组（方案 A）——消除碎片化单笔浮起卡片，重构为每日一张连续表面 + 表头行（两段式日期与本地时区星期派生）+ hairline 分隔；形状编码类型（4 枚 32px 语义图标块）搭配单一色彩焦点（金额定宽竖向对齐契约 `${sign}¥${amount}`）；元信息完整包含细分标签且全宽度一致不丢失信息；常态元素收敛为单个更多入口并展开 React 声明式二级操作浮层（日容器不裁切保证边界溢出可见）；排除了过度设计的对账单列阵方案（YAGNI，避免为桌面密度牺牲移动端主作业流连续性与引入双布局复杂性）
 - 2026-10-04 暗黑模式凹陷面令牌修正与 Mica 画布材质——在 `index.css` 根因处将暗色 `--color-subtle-bg` 调整为 `#172033` 恢复凹陷面层级，浅色与暗色分别注入极淡品牌色顶部径向渐变作为 Fluent Layer 0 画布材质
+- 2026-10-04 复审质量加固与 Mica 画布材质归位——将 Layer 0 Mica 画布渐变材质收敛至 CSS 令牌层（`--canvas-gradient`）并由 App 根容器消费，彻底解决 body 背景被不透明容器遮挡的问题；暗色模式补齐 `--shadow-flyout` 阴影深度；流水纯函数（星期派生、元信息拼接、金额契约）抽离至 `streamUtils.ts`，接入 Node 24 原生 `node:test` 与 `--experimental-strip-types` 自动化自检（无第三方测试库开销）；二级操作浮层收敛至 WAI-ARIA disclosure 模式并退回普通按钮组，日分组容器退回 `<div>` 消除 landmark 语义噪音；彻底清除 `ClockIcon` 零引用死代码
 
 ## 术语
 

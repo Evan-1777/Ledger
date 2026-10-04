@@ -8,6 +8,7 @@ import {
   MoreVerticalIcon,
 } from '../components/Icons';
 import { Transaction } from '../lib/api';
+import { getDayInfo, buildMetaParts, formatAmount } from './streamUtils';
 
 interface StreamPageProps {
   transactions: Transaction[];
@@ -15,8 +16,6 @@ interface StreamPageProps {
   onEdit: (tx: Transaction) => void;
   onDelete: (id: number) => void;
 }
-
-const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 export const StreamPage: FC<StreamPageProps> = ({
   transactions,
@@ -85,63 +84,6 @@ export const StreamPage: FC<StreamPageProps> = ({
 
   const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
-  const getDayInfo = (dateStr: string) => {
-    try {
-      const today = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
-
-      const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        const year = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10);
-        const day = parseInt(parts[2], 10);
-        const localDate = new Date(year, month - 1, day);
-        const weekday = WEEKDAYS[localDate.getDay()] || '';
-
-        if (dateStr === todayStr) {
-          return {
-            primary: '今天',
-            sub: `${month}月${day}日 ${weekday}`,
-          };
-        }
-        if (dateStr === yesterdayStr) {
-          return {
-            primary: '昨天',
-            sub: `${month}月${day}日 ${weekday}`,
-          };
-        }
-        if (year !== today.getFullYear()) {
-          return {
-            primary: `${year}年${month}月${day}日`,
-            sub: weekday,
-          };
-        }
-        return {
-          primary: `${month}月${day}日`,
-          sub: weekday,
-        };
-      }
-      return { primary: dateStr, sub: '' };
-    } catch {
-      return { primary: dateStr, sub: '' };
-    }
-  };
-
-  const formatTime = (isoStr: string) => {
-    try {
-      const d = new Date(isoStr);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    } catch {
-      return '';
-    }
-  };
-
   return (
     <div className="w-full max-w-[900px] flex flex-col gap-6 animate-fade-in pb-12">
       {sortedKeys.map((dateKey) => {
@@ -160,7 +102,7 @@ export const StreamPage: FC<StreamPageProps> = ({
         });
 
         return (
-          <section
+          <div
             key={dateKey}
             className="bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] rounded-xl shadow-[var(--shadow-card)]"
           >
@@ -205,31 +147,14 @@ export const StreamPage: FC<StreamPageProps> = ({
                 const isExp = item.type === 'expense' || (!item.type && item.amount_cents < 0);
 
                 // Build meta parts: category · tag · account / flow · time
-                const metaParts: string[] = [];
-                if (item.category_name) metaParts.push(item.category_name);
-                if (item.tag_name) metaParts.push(item.tag_name);
-
-                if (isTransfer || isRepayment) {
-                  if (item.source_payment_method_name && item.payment_method_name) {
-                    metaParts.push(`${item.source_payment_method_name} → ${item.payment_method_name}`);
-                  } else if (item.payment_method_name) {
-                    metaParts.push(`${isTransfer ? '转入' : '还入'} ${item.payment_method_name}`);
-                  }
-                } else if (item.payment_method_name) {
-                  metaParts.push(item.payment_method_name);
-                }
-
-                const timeStr = formatTime(item.transacted_at);
-                if (timeStr) metaParts.push(timeStr);
+                const metaParts = buildMetaParts(item);
 
                 // Unified contract: ${sign}¥${amount}
-                const absAmount = Math.abs(item.amount);
-                const amountStr = absAmount.toLocaleString('zh-CN', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                });
-                const sign = isNeutral ? '' : isExp ? '−' : '+';
-                const formattedAmountText = `${sign}¥${amountStr}`;
+                const { formattedText: formattedAmountText } = formatAmount(
+                  item.amount,
+                  item.type,
+                  item.amount_cents
+                );
 
                 const isMenuOpen = openMenuTxId === item.id;
 
@@ -295,7 +220,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                         type="button"
                         title="更多操作"
                         aria-label="更多操作"
-                        aria-haspopup="menu"
+                        aria-haspopup="true"
                         aria-expanded={isMenuOpen}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -312,13 +237,11 @@ export const StreamPage: FC<StreamPageProps> = ({
 
                       {isMenuOpen && (
                         <div
-                          role="menu"
                           onClick={(e) => e.stopPropagation()}
                           className="absolute right-0 top-[calc(100%+4px)] w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
                         >
                           <button
                             type="button"
-                            role="menuitem"
                             onClick={() => {
                               setOpenMenuTxId(null);
                               onEdit(item);
@@ -329,7 +252,6 @@ export const StreamPage: FC<StreamPageProps> = ({
                           </button>
                           <button
                             type="button"
-                            role="menuitem"
                             onClick={() => {
                               setOpenMenuTxId(null);
                               onDelete(item.id);
@@ -345,7 +267,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                 );
               })}
             </div>
-          </section>
+          </div>
         );
       })}
     </div>

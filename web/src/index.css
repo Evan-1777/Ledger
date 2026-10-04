@@ -41,6 +41,9 @@
   --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-flyout: 0 12px 28px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
 
+  /* Fluent Layer 0 Mica Canvas Material */
+  --canvas-gradient: radial-gradient(1100px 520px at 50% -8%, rgba(0, 120, 212, 0.07), transparent 62%);
+
   /* Typography */
   --font-family-base: "Segoe UI", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
@@ -70,24 +73,20 @@
   --shadow-card-hover: 0 4px 14px rgba(0, 0, 0, 0.5);
   --shadow-capsule: 0 4px 20px rgba(0, 0, 0, 0.6);
   --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.7);
+  --shadow-flyout: 0 12px 28px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  --canvas-gradient: radial-gradient(1100px 520px at 50% -8%, rgba(71, 158, 245, 0.09), transparent 62%);
 }
 
 body {
   font-family: var(--font-family-base);
   background-color: var(--color-canvas-bg);
-  background-image: radial-gradient(1100px 520px at 50% -8%, rgba(0, 120, 212, 0.07), transparent 62%);
-  background-repeat: no-repeat;
   color: var(--color-neutral-fg-1);
   line-height: 1.5;
   min-height: 100vh;
   margin: 0;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.dark-mode body,
-body.dark-mode {
-  background-image: radial-gradient(1100px 520px at 50% -8%, rgba(71, 158, 245, 0.09), transparent 62%);
 }
 
 .tabular-num {
