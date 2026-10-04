@@ -258,14 +258,14 @@ func migrateCategoriesColumns(tx *sql.Tx) error {
 		if _, err := tx.Exec("ALTER TABLE categories ADD COLUMN type TEXT NOT NULL DEFAULT 'expense'"); err != nil {
 			return fmt.Errorf("failed to add column type to categories: %w", err)
 		}
-	}
 
-	// Atomic backfill for known category types
-	if _, err := tx.Exec("UPDATE categories SET type = 'income' WHERE name = '职业收入' AND type != 'income'"); err != nil {
-		return fmt.Errorf("failed to backfill 职业收入 type: %w", err)
-	}
-	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE name = '债务偿还' AND type != 'system'"); err != nil {
-		return fmt.Errorf("failed to backfill 债务偿还 type: %w", err)
+		// Atomic backfill for known category types (one-time legacy migration)
+		if _, err := tx.Exec("UPDATE categories SET type = 'income' WHERE name = '职业收入' AND type != 'income'"); err != nil {
+			return fmt.Errorf("failed to backfill 职业收入 type: %w", err)
+		}
+		if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE name = '债务偿还' AND type != 'system'"); err != nil {
+			return fmt.Errorf("failed to backfill 债务偿还 type: %w", err)
+		}
 	}
 
 	return nil
@@ -376,6 +376,9 @@ func ensureSystemRepaymentCategory(tx *sql.Tx) error {
 	if err := tx.QueryRow("SELECT id FROM categories WHERE name = '债务偿还'").Scan(&catID); err != nil {
 		return fmt.Errorf("failed to get system repayment category id: %w", err)
 	}
+	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE id = ?", catID); err != nil {
+		return fmt.Errorf("failed to ensure system repayment category type: %w", err)
+	}
 
 	if _, err := tx.Exec("INSERT OR IGNORE INTO tags (category_id, name, sort_order) VALUES (?, '负债还款', 1)", catID); err != nil {
 		return fmt.Errorf("failed to ensure system repayment tag: %w", err)
@@ -402,6 +405,9 @@ func ensureSystemTransferCategory(tx *sql.Tx) error {
 	var catID int64
 	if err := tx.QueryRow("SELECT id FROM categories WHERE name = '账户转账'").Scan(&catID); err != nil {
 		return fmt.Errorf("failed to get system transfer category id: %w", err)
+	}
+	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE id = ?", catID); err != nil {
+		return fmt.Errorf("failed to ensure system transfer category type: %w", err)
 	}
 
 	if _, err := tx.Exec("INSERT OR IGNORE INTO tags (category_id, name, sort_order) VALUES (?, '资金互转', 1)", catID); err != nil {

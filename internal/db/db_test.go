@@ -587,6 +587,98 @@ func TestCategoriesMigration(t *testing.T) {
 	if sysCatID == "" || sysTagID == "" {
 		t.Errorf("transfer system IDs empty: catID=%s, tagID=%s", sysCatID, sysTagID)
 	}
+
+	// User corrects 职业收入 to 'expense'
+	if _, err := upgradedDB.Exec("UPDATE categories SET type = 'expense' WHERE name = '职业收入'"); err != nil {
+		t.Fatalf("failed to update 职业收入 to expense: %v", err)
+	}
+	upgradedDB.Close()
+
+	// Simulate subsequent reboot: verify user correction is preserved and NOT overwritten
+	rebootDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed on reboot: %v", err)
+	}
+	defer rebootDB.Close()
+
+	var afterRebootIncType string
+	if err := rebootDB.QueryRow("SELECT type FROM categories WHERE name = '职业收入'").Scan(&afterRebootIncType); err != nil {
+		t.Fatalf("failed to query 职业收入 after reboot: %v", err)
+	}
+	if afterRebootIncType != "expense" {
+		t.Errorf("expected 'expense' after reboot (user correction preserved), got '%s'", afterRebootIncType)
+	}
+}
+
+func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ledger-custom-transfer-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "old_custom_transfer.db")
+
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open raw sqlite: %v", err)
+	}
+
+	oldSchema := `
+	CREATE TABLE categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE tags (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		name TEXT NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE payment_methods (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE system_meta (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	INSERT INTO system_meta (key, value) VALUES ('seed_initialized', 'true');
+	-- Old user had created their own '账户转账' category before the feature existed
+	INSERT INTO categories (name, sort_order) VALUES ('账户转账', 10);
+	`
+	if _, err := rawDB.Exec(oldSchema); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to create old schema: %v", err)
+	}
+	rawDB.Close()
+
+	upgradedDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed to upgrade: %v", err)
+	}
+	defer upgradedDB.Close()
+
+	var transType string
+	if err := upgradedDB.QueryRow("SELECT type FROM categories WHERE name = '账户转账'").Scan(&transType); err != nil {
+		t.Fatalf("failed to query 账户转账: %v", err)
+	}
+	if transType != "system" {
+		t.Errorf("expected 'system' for pre-existing 账户转账, got '%s'", transType)
+	}
+
+	var sysCatID string
+	if err := upgradedDB.QueryRow("SELECT value FROM system_meta WHERE key = 'system_category_transfer_id'").Scan(&sysCatID); err != nil {
+		t.Fatalf("failed to query system_category_transfer_id: %v", err)
+	}
+	if sysCatID != "1" {
+		t.Errorf("expected system_category_transfer_id to match user's category (1), got %s", sysCatID)
+	}
 }
 
 
