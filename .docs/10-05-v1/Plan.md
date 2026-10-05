@@ -103,15 +103,10 @@
         <td style="padding: 8px 12px;">极低（复用金额卡片 Header 行高，0 额外垂直纵深）</td>
         <td style="padding: 8px 12px;">较低（独占一行微型文本按钮）</td>
       </tr>
-      <tr style="border-bottom: 1px solid #e1e4e8;">
+      <tr>
         <td style="padding: 8px 12px; font-weight: 600;">展开态信息聚集</td>
         <td style="padding: 8px 12px;">高（转账本金与附加费用于同一金额卡片内核算，心智模型统一）</td>
         <td style="padding: 8px 12px;">中（本金与手续费被用途与账户选择截断，上下割裂）</td>
-      </tr>
-      <tr>
-        <td style="padding: 8px 12px; font-weight: 600;">Demo 静态原型</td>
-        <td style="padding: 8px 12px;"><code>temp/transfer-fee-variant-a.html</code></td>
-        <td style="padding: 8px 12px;"><code>temp/transfer-fee-variant-b.html</code></td>
       </tr>
     </tbody>
   </table>

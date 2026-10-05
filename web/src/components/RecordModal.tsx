@@ -302,7 +302,7 @@ export const RecordModal: FC<RecordModalProps> = ({
         const trimmedFee = feeStr.trim();
         if (trimmedFee) {
           const parsedFee = parseFloat(trimmedFee);
-          if (isNaN(parsedFee) || parsedFee < 0) {
+          if (isNaN(parsedFee)) {
             setError('请输入有效的手续费金额');
             return;
           }
