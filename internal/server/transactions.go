@@ -17,6 +17,8 @@ type Transaction struct {
 	Type                    string  `json:"type"`
 	AmountCents             int64   `json:"amount_cents"`
 	Amount                  float64 `json:"amount"`
+	FeeCents                int64   `json:"fee_cents"`
+	Fee                     float64 `json:"fee"`
 	Description             string  `json:"description"`
 	PaymentMethodID         int64   `json:"payment_method_id"`
 	PaymentMethodName       string  `json:"payment_method_name"`
@@ -33,6 +35,7 @@ type Transaction struct {
 type TransactionRequest struct {
 	Type                  string  `json:"type"`
 	Amount                float64 `json:"amount"`
+	Fee                   float64 `json:"fee"`
 	Description           string  `json:"description"`
 	PaymentMethodID       int64   `json:"payment_method_id"`
 	SourcePaymentMethodID *int64  `json:"source_payment_method_id"`
@@ -64,7 +67,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	typeFilter := strings.ToLower(r.URL.Query().Get("type"))
 	var query strings.Builder
 	query.WriteString(`
-		SELECT t.id, t.type, t.amount_cents, t.description,
+		SELECT t.id, t.type, t.amount_cents, t.fee_cents, t.description,
 		       t.payment_method_id, COALESCE(pm.name, ''),
 		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
@@ -104,7 +107,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		var srcPMID sql.NullInt64
 		var srcPMName sql.NullString
 		err := rows.Scan(
-			&item.ID, &item.Type, &item.AmountCents, &item.Description,
+			&item.ID, &item.Type, &item.AmountCents, &item.FeeCents, &item.Description,
 			&item.PaymentMethodID, &item.PaymentMethodName,
 			&srcPMID, &srcPMName,
 			&item.CategoryID, &item.CategoryName,
@@ -123,6 +126,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 			item.SourcePaymentMethodName = srcPMName.String
 		}
 		item.Amount = float64(item.AmountCents) / 100.0
+		item.Fee = float64(item.FeeCents) / 100.0
 		list = append(list, item)
 	}
 
@@ -136,7 +140,7 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	amountCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
+	amountCents, feeCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
 		var brErr *badRequestError
 		if errors.As(err, &brErr) {
@@ -149,9 +153,9 @@ func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request)
 
 	res, err := s.db.ExecContext(
 		r.Context(),
-		`INSERT INTO transactions (amount_cents, description, payment_method_id, source_payment_method_id, category_id, tag_id, transacted_at, type)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		amountCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType,
+		`INSERT INTO transactions (amount_cents, fee_cents, description, payment_method_id, source_payment_method_id, category_id, tag_id, transacted_at, type)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		amountCents, feeCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType,
 	)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to insert transaction: "+err.Error())
@@ -182,7 +186,7 @@ func (s *Server) handleUpdateTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	amountCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
+	amountCents, feeCents, txType, transactedAt, err := s.validateTransactionInput(r, &req)
 	if err != nil {
 		var brErr *badRequestError
 		if errors.As(err, &brErr) {
@@ -196,9 +200,9 @@ func (s *Server) handleUpdateTransaction(w http.ResponseWriter, r *http.Request)
 	res, err := s.db.ExecContext(
 		r.Context(),
 		`UPDATE transactions
-		 SET amount_cents = ?, description = ?, payment_method_id = ?, source_payment_method_id = ?, category_id = ?, tag_id = ?, transacted_at = ?, type = ?
+		 SET amount_cents = ?, fee_cents = ?, description = ?, payment_method_id = ?, source_payment_method_id = ?, category_id = ?, tag_id = ?, transacted_at = ?, type = ?
 		 WHERE id = ?`,
-		amountCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType, id,
+		amountCents, feeCents, req.Description, req.PaymentMethodID, req.SourcePaymentMethodID, req.CategoryID, req.TagID, transactedAt, txType, id,
 	)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to update transaction: "+err.Error())
@@ -242,7 +246,7 @@ func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, string, string, error) {
+func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, int64, string, string, error) {
 	txType := strings.ToLower(strings.TrimSpace(req.Type))
 	if txType == "" {
 		if req.Amount < 0 {
@@ -252,30 +256,40 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 		}
 	}
 	if txType != "expense" && txType != "income" && txType != "repayment" && txType != "transfer" {
-		return 0, "", "", badRequest("invalid transaction type, must be 'expense', 'income', 'repayment', or 'transfer'")
+		return 0, 0, "", "", badRequest("invalid transaction type, must be 'expense', 'income', 'repayment', or 'transfer'")
+	}
+
+	var feeCents int64
+	if txType == "transfer" {
+		if req.Fee < 0 {
+			return 0, 0, "", "", badRequest("fee must not be negative")
+		}
+		feeCents = int64(math.Round(req.Fee * 100))
+	} else {
+		feeCents = 0
 	}
 
 	var amountCents int64
 	if txType == "repayment" || txType == "transfer" {
 		if req.Amount <= 0 {
-			return 0, "", "", badRequest(txType + " amount must be greater than 0")
+			return 0, 0, "", "", badRequest(txType + " amount must be greater than 0")
 		}
 		amountCents = int64(math.Round(req.Amount * 100))
 	} else if txType == "expense" {
 		amountCents = -int64(math.Round(math.Abs(req.Amount) * 100))
 		if amountCents == 0 {
-			return 0, "", "", badRequest("amount must not be 0")
+			return 0, 0, "", "", badRequest("amount must not be 0")
 		}
 	} else {
 		amountCents = int64(math.Round(math.Abs(req.Amount) * 100))
 		if amountCents == 0 {
-			return 0, "", "", badRequest("amount must not be 0")
+			return 0, 0, "", "", badRequest("amount must not be 0")
 		}
 	}
 
 	req.Description = strings.TrimSpace(req.Description)
 	if req.Description == "" {
-		return 0, "", "", badRequest("description cannot be empty")
+		return 0, 0, "", "", badRequest("description cannot be empty")
 	}
 
 	// Validate target payment method exists
@@ -283,31 +297,31 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 	err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", req.PaymentMethodID).Scan(&pmType)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, "", "", badRequest("payment method does not exist")
+			return 0, 0, "", "", badRequest("payment method does not exist")
 		}
-		return 0, "", "", fmt.Errorf("failed to query payment method: %w", err)
+		return 0, 0, "", "", fmt.Errorf("failed to query payment method: %w", err)
 	}
 
 	if txType == "transfer" {
 		if pmType != "asset" {
-			return 0, "", "", badRequest("transfer target must be an asset channel")
+			return 0, 0, "", "", badRequest("transfer target must be an asset channel")
 		}
 		if req.SourcePaymentMethodID == nil || *req.SourcePaymentMethodID <= 0 {
-			return 0, "", "", badRequest("source payment method is required for transfer")
+			return 0, 0, "", "", badRequest("source payment method is required for transfer")
 		}
 		if req.PaymentMethodID == *req.SourcePaymentMethodID {
-			return 0, "", "", badRequest("source and target payment methods must be different")
+			return 0, 0, "", "", badRequest("source and target payment methods must be different")
 		}
 		var srcType string
 		err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", *req.SourcePaymentMethodID).Scan(&srcType)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return 0, "", "", badRequest("source payment method does not exist")
+				return 0, 0, "", "", badRequest("source payment method does not exist")
 			}
-			return 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
+			return 0, 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
 		}
 		if srcType != "asset" {
-			return 0, "", "", badRequest("source payment method must be an asset channel for transfer")
+			return 0, 0, "", "", badRequest("source payment method must be an asset channel for transfer")
 		}
 
 		// Auto-bind system transfer category & tag if not specified
@@ -324,19 +338,19 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 		}
 	} else if txType == "repayment" {
 		if pmType != "liability" {
-			return 0, "", "", badRequest("repayment target must be a liability channel")
+			return 0, 0, "", "", badRequest("repayment target must be a liability channel")
 		}
 		if req.SourcePaymentMethodID != nil && *req.SourcePaymentMethodID > 0 {
 			var srcType string
 			err := s.db.QueryRowContext(r.Context(), "SELECT type FROM payment_methods WHERE id = ?", *req.SourcePaymentMethodID).Scan(&srcType)
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
-					return 0, "", "", badRequest("source payment method does not exist")
+					return 0, 0, "", "", badRequest("source payment method does not exist")
 				}
-				return 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
+				return 0, 0, "", "", fmt.Errorf("failed to query source payment method: %w", err)
 			}
 			if srcType != "asset" {
-				return 0, "", "", badRequest("source payment method must be an asset channel")
+				return 0, 0, "", "", badRequest("source payment method must be an asset channel")
 			}
 		} else {
 			req.SourcePaymentMethodID = nil
@@ -362,20 +376,20 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 	var catExists int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM categories WHERE id = ?", req.CategoryID).Scan(&catExists)
 	if err != nil {
-		return 0, "", "", fmt.Errorf("failed to query category: %w", err)
+		return 0, 0, "", "", fmt.Errorf("failed to query category: %w", err)
 	}
 	if catExists == 0 {
-		return 0, "", "", badRequest("category does not exist")
+		return 0, 0, "", "", badRequest("category does not exist")
 	}
 
 	// Validate tag exists and belongs to the given category
 	var tagBelongs int
 	err = s.db.QueryRowContext(r.Context(), "SELECT COUNT(1) FROM tags WHERE id = ? AND category_id = ?", req.TagID, req.CategoryID).Scan(&tagBelongs)
 	if err != nil {
-		return 0, "", "", fmt.Errorf("failed to query tag: %w", err)
+		return 0, 0, "", "", fmt.Errorf("failed to query tag: %w", err)
 	}
 	if tagBelongs == 0 {
-		return 0, "", "", badRequest("tag does not belong to specified category")
+		return 0, 0, "", "", badRequest("tag does not belong to specified category")
 	}
 
 	// Validate/standardize transacted_at
@@ -386,18 +400,18 @@ func (s *Server) validateTransactionInput(r *http.Request, req *TransactionReque
 	} else {
 		parsedTime, err := parseFlexibleTime(transactedAtStr)
 		if err != nil {
-			return 0, "", "", badRequest(fmt.Sprintf("invalid transacted_at: %v", err))
+			return 0, 0, "", "", badRequest(fmt.Sprintf("invalid transacted_at: %v", err))
 		}
 		finalTransactedAt = parsedTime.UTC().Format(time.RFC3339)
 	}
 
-	return amountCents, txType, finalTransactedAt, nil
+	return amountCents, feeCents, txType, finalTransactedAt, nil
 }
 
 func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, error) {
 	var item Transaction
 	query := `
-		SELECT t.id, t.type, t.amount_cents, t.description,
+		SELECT t.id, t.type, t.amount_cents, t.fee_cents, t.description,
 		       t.payment_method_id, COALESCE(pm.name, ''),
 		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
@@ -413,7 +427,7 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 	var srcPMID sql.NullInt64
 	var srcPMName sql.NullString
 	err := s.db.QueryRowContext(r.Context(), query, id).Scan(
-		&item.ID, &item.Type, &item.AmountCents, &item.Description,
+		&item.ID, &item.Type, &item.AmountCents, &item.FeeCents, &item.Description,
 		&item.PaymentMethodID, &item.PaymentMethodName,
 		&srcPMID, &srcPMName,
 		&item.CategoryID, &item.CategoryName,
@@ -434,6 +448,7 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 		item.SourcePaymentMethodName = srcPMName.String
 	}
 	item.Amount = float64(item.AmountCents) / 100.0
+	item.Fee = float64(item.FeeCents) / 100.0
 	return &item, nil
 }
 

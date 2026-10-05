@@ -169,6 +169,7 @@ export default function App() {
   const handleSaveTransaction = async (data: {
     type?: 'expense' | 'income' | 'repayment' | 'transfer';
     amount: number;
+    fee?: number;
     description: string;
     payment_method_id: number;
     source_payment_method_id?: number;

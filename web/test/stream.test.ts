@@ -101,6 +101,32 @@ describe('streamUtils - buildMetaParts', () => {
     });
     assert.deepStrictEqual(parts, ['工资']);
   });
+
+  test('builds bilateral flow with fee for transfer before time', () => {
+    const parts = buildMetaParts({
+      category_name: '账户转账',
+      tag_name: '资金互转',
+      type: 'transfer',
+      source_payment_method_name: '招商银行',
+      payment_method_name: '微信零钱',
+      fee: 2.0,
+      transacted_at: new Date(2026, 9, 4, 15, 30).toISOString(),
+    });
+    assert.deepStrictEqual(parts, ['账户转账', '资金互转', '招商银行 → 微信零钱', '手续费 ¥2.00', '15:30']);
+  });
+
+  test('does not output fee when fee is 0 or null', () => {
+    const parts = buildMetaParts({
+      category_name: '账户转账',
+      tag_name: '资金互转',
+      type: 'transfer',
+      source_payment_method_name: '招商银行',
+      payment_method_name: '微信零钱',
+      fee: 0,
+      transacted_at: new Date(2026, 9, 4, 15, 30).toISOString(),
+    });
+    assert.deepStrictEqual(parts, ['账户转账', '资金互转', '招商银行 → 微信零钱', '15:30']);
+  });
 });
 
 describe('streamUtils - formatAmount', () => {

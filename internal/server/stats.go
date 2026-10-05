@@ -319,7 +319,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		SELECT pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents,
 		       COALESCE(SUM(t.amount_cents), 0) AS tx_sum,
 		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'repayment'), 0) AS source_repayment_sum,
-		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'transfer'), 0) AS source_transfer_sum
+		       COALESCE((SELECT SUM(amount_cents + fee_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'transfer'), 0) AS source_transfer_sum
 		FROM payment_methods pm
 		LEFT JOIN transactions t ON t.payment_method_id = pm.id
 		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents

@@ -13,6 +13,7 @@ interface RecordModalProps {
   onSubmit: (data: {
     type?: 'expense' | 'income' | 'repayment' | 'transfer';
     amount: number;
+    fee?: number;
     description: string;
     payment_method_id: number;
     source_payment_method_id?: number;
@@ -44,6 +45,10 @@ export const RecordModal: FC<RecordModalProps> = ({
   const [inlineCatOpen, setInlineCatOpen] = useState(false);
   const [hoverCategoryId, setHoverCategoryId] = useState<number>(0);
 
+  // Transfer Fee state (Variant A - Discreet Inline Collapsible)
+  const [showFee, setShowFee] = useState(false);
+  const [feeStr, setFeeStr] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +62,8 @@ export const RecordModal: FC<RecordModalProps> = ({
     if (!isOpen) {
       setInlineCatOpen(false);
       setError(null);
+      setShowFee(false);
+      setFeeStr('');
       return;
     }
 
@@ -70,6 +77,15 @@ export const RecordModal: FC<RecordModalProps> = ({
       setCategoryId(initialTransaction.category_id);
       setTagId(initialTransaction.tag_id);
       setHoverCategoryId(initialTransaction.category_id);
+
+      if (initialType === 'transfer' && (initialTransaction.fee ?? 0) > 0) {
+        setShowFee(true);
+        setFeeStr(String(initialTransaction.fee));
+      } else {
+        setShowFee(false);
+        setFeeStr('');
+      }
+
       try {
         const d = new Date(initialTransaction.transacted_at);
         const pad = (n: number) => String(n).padStart(2, '0');
@@ -84,6 +100,8 @@ export const RecordModal: FC<RecordModalProps> = ({
       setDescription('');
       setError(null);
       setSourcePaymentMethodId(undefined);
+      setShowFee(false);
+      setFeeStr('');
 
       // Default payment method
       if (paymentMethods.length > 0) {
@@ -139,6 +157,11 @@ export const RecordModal: FC<RecordModalProps> = ({
     if (initialTransaction) return;
     setRecordType(newType);
     setInlineCatOpen(false);
+
+    if (newType !== 'transfer') {
+      setShowFee(false);
+      setFeeStr('');
+    }
 
     if (newType === 'transfer') {
       const transCat = categories.find((c) => c.name === '账户转账');
@@ -273,6 +296,25 @@ export const RecordModal: FC<RecordModalProps> = ({
     }
 
     const finalAmount = recordType === 'expense' ? -parsedAmount : parsedAmount;
+    let finalFee: number | undefined = undefined;
+    if (recordType === 'transfer') {
+      if (showFee) {
+        const trimmedFee = feeStr.trim();
+        if (trimmedFee) {
+          const parsedFee = parseFloat(trimmedFee);
+          if (isNaN(parsedFee) || parsedFee < 0) {
+            setError('请输入有效的手续费金额');
+            return;
+          }
+          finalFee = parsedFee;
+        } else {
+          finalFee = 0;
+        }
+      } else {
+        finalFee = 0;
+      }
+    }
+
     let finalTransactedAt: string | undefined = undefined;
     if (transactedAt) {
       const d = new Date(transactedAt);
@@ -288,6 +330,7 @@ export const RecordModal: FC<RecordModalProps> = ({
       await onSubmit({
         type: recordType,
         amount: finalAmount,
+        fee: finalFee,
         description: description.trim(),
         payment_method_id: paymentMethodId,
         source_payment_method_id: (recordType === 'repayment' || recordType === 'transfer') ? sourcePaymentMethodId : undefined,
@@ -411,8 +454,17 @@ export const RecordModal: FC<RecordModalProps> = ({
 
             {/* Hero Amount Box */}
             <div className="bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-3.5 focus-within:border-[var(--color-brand)] focus-within:bg-[var(--color-card-bg)] transition-colors">
-              <div className="mb-1.5">
+              <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-xs text-[var(--color-neutral-fg-3)]">账单金额</span>
+                {recordType === 'transfer' && !showFee && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFee(true)}
+                    className="text-[11px] font-medium text-[var(--color-neutral-fg-3)] hover:text-[var(--color-brand)] px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                  >
+                    + 手续费
+                  </button>
+                )}
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-semibold text-[var(--color-neutral-fg-2)]">¥</span>
@@ -426,6 +478,40 @@ export const RecordModal: FC<RecordModalProps> = ({
                   className="w-full bg-transparent border-none outline-none text-3xl font-bold text-[var(--color-neutral-fg-1)] tabular-num placeholder-[var(--color-neutral-fg-subtle)]"
                 />
               </div>
+
+              {/* Inline Collapsible Fee Row */}
+              {recordType === 'transfer' && showFee && (
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[var(--color-neutral-stroke-strong)] flex items-center justify-between animate-fade-in">
+                  <span className="text-xs font-medium text-[var(--color-neutral-fg-2)]">手续费</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-[var(--color-neutral-fg-3)]">¥</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={feeStr}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (/^\d*\.?\d*$/.test(val)) {
+                          setFeeStr(val);
+                        }
+                      }}
+                      placeholder="0.00"
+                      className="w-20 text-right bg-transparent border-b border-[var(--color-neutral-stroke-strong)] focus:border-[var(--color-brand)] outline-none px-1 py-0.5 text-xs font-semibold text-[var(--color-neutral-fg-1)] tabular-nums transition-colors"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeeStr('');
+                        setShowFee(false);
+                      }}
+                      className="p-1 text-[11px] text-[var(--color-neutral-fg-subtle)] hover:text-[var(--color-neutral-fg-1)] rounded hover:bg-[var(--color-hover-bg)] transition-colors cursor-pointer leading-none ml-0.5"
+                      title="清除手续费"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Description */}

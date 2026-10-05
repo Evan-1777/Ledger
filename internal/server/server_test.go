@@ -1576,5 +1576,167 @@ func TestTransferFullFlowAndInvariants(t *testing.T) {
 	}
 }
 
+func TestTransferTransactionWithFee(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	// 1. Set up clean accounts: Bank Card (Asset, init 5000), Wechat (Asset, init 500)
+	if _, err := s.db.Exec("DELETE FROM payment_methods;"); err != nil {
+		t.Fatalf("failed to clear payment methods: %v", err)
+	}
+	pmBank, err := s.db.Exec("INSERT INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES ('招商银行卡', 1, 'asset', 500000, 0)")
+	if err != nil {
+		t.Fatalf("failed to insert bank pm: %v", err)
+	}
+	bankID, _ := pmBank.LastInsertId()
+
+	pmWechat, err := s.db.Exec("INSERT INTO payment_methods (name, sort_order, type, initial_balance_cents, credit_limit_cents) VALUES ('微信支付', 2, 'asset', 50000, 0)")
+	if err != nil {
+		t.Fatalf("failed to insert wechat pm: %v", err)
+	}
+	wechatID, _ := pmWechat.LastInsertId()
+
+	nowISO := time.Now().UTC().Format(time.RFC3339)
+
+	// Baseline stats
+	reqStatsBefore := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqStatsBefore.Header.Set("Authorization", authHeader)
+	recStatsBefore := httptest.NewRecorder()
+	s.ServeHTTP(recStatsBefore, reqStatsBefore)
+	var statsBefore StatsSummaryResponse
+	_ = json.NewDecoder(recStatsBefore.Body).Decode(&statsBefore)
+	initialTotalAssets := statsBefore.AssetSummary.TotalAssets // 5500.00
+	initialNetAssets := statsBefore.AssetSummary.NetAssets     // 5500.00
+
+	// 2. Negative fee test -> 400 Bad Request
+	negFeeJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   1000.00,
+		"fee":                      -1.5,
+		"description":              "非法负手续费",
+		"payment_method_id":        wechatID,
+		"source_payment_method_id": bankID,
+		"transacted_at":            nowISO,
+	})
+	reqNegFee := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(negFeeJSON)))
+	reqNegFee.Header.Set("Authorization", authHeader)
+	recNegFee := httptest.NewRecorder()
+	s.ServeHTTP(recNegFee, reqNegFee)
+	if recNegFee.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative fee, got %d", recNegFee.Code)
+	}
+
+	// 3. Create transfer with fee: 1000.00 transfer with 2.00 fee
+	validTransferJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   1000.00,
+		"fee":                      2.00,
+		"description":              "跨行转账含手续费",
+		"payment_method_id":        wechatID,
+		"source_payment_method_id": bankID,
+		"transacted_at":            nowISO,
+	})
+	reqValid := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(validTransferJSON)))
+	reqValid.Header.Set("Authorization", authHeader)
+	recValid := httptest.NewRecorder()
+	s.ServeHTTP(recValid, reqValid)
+	if recValid.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for valid transfer with fee, got %d: %s", recValid.Code, recValid.Body.String())
+	}
+
+	var createdTx Transaction
+	if err := json.NewDecoder(recValid.Body).Decode(&createdTx); err != nil {
+		t.Fatalf("failed to decode created transfer: %v", err)
+	}
+	if createdTx.Fee != 2.00 || createdTx.FeeCents != 200 {
+		t.Errorf("expected fee 2.00 (fee_cents 200), got %v (fee_cents %d)", createdTx.Fee, createdTx.FeeCents)
+	}
+
+	// Verify directly in DB
+	var dbFeeCents int64
+	err = s.db.QueryRow("SELECT fee_cents FROM transactions WHERE id = ?", createdTx.ID).Scan(&dbFeeCents)
+	if err != nil {
+		t.Fatalf("failed to query transaction fee_cents from db: %v", err)
+	}
+	if dbFeeCents != 200 {
+		t.Errorf("expected fee_cents 200 in db, got %d", dbFeeCents)
+	}
+
+	// 4. Update transaction fee: change fee to 5.00
+	updateTransferJSON, _ := json.Marshal(map[string]any{
+		"type":                     "transfer",
+		"amount":                   1000.00,
+		"fee":                      5.00,
+		"description":              "修改手续费为5元",
+		"payment_method_id":        wechatID,
+		"source_payment_method_id": bankID,
+		"category_id":              createdTx.CategoryID,
+		"tag_id":                   createdTx.TagID,
+		"transacted_at":            nowISO,
+	})
+	reqUpdate := httptest.NewRequest("PUT", "/api/transactions/"+strconv.FormatInt(createdTx.ID, 10), strings.NewReader(string(updateTransferJSON)))
+	reqUpdate.Header.Set("Authorization", authHeader)
+	recUpdate := httptest.NewRecorder()
+	s.ServeHTTP(recUpdate, reqUpdate)
+	if recUpdate.Code != http.StatusOK {
+		t.Fatalf("expected 200 for update transfer fee, got %d: %s", recUpdate.Code, recUpdate.Body.String())
+	}
+
+	var updatedTx Transaction
+	_ = json.NewDecoder(recUpdate.Body).Decode(&updatedTx)
+	if updatedTx.Fee != 5.00 || updatedTx.FeeCents != 500 {
+		t.Errorf("expected updated fee 5.00 (cents 500), got %v (cents %d)", updatedTx.Fee, updatedTx.FeeCents)
+	}
+
+	// 5. Macro Asset Portfolio & Invariants Verification with fee = 5.00
+	reqStatsAfter := httptest.NewRequest("GET", "/api/stats/summary", nil)
+	reqStatsAfter.Header.Set("Authorization", authHeader)
+	recStatsAfter := httptest.NewRecorder()
+	s.ServeHTTP(recStatsAfter, reqStatsAfter)
+	var statsAfter StatsSummaryResponse
+	_ = json.NewDecoder(recStatsAfter.Body).Decode(&statsAfter)
+
+	var actualBankBal, actualWechatBal float64
+	for _, a := range statsAfter.AssetSummary.AssetChannels {
+		if a.Name == "招商银行卡" {
+			actualBankBal = a.RemainingBalance
+		} else if a.Name == "微信支付" {
+			actualWechatBal = a.RemainingBalance
+		}
+	}
+
+	// Bank balance: 5000 - (1000 + 5) = 3995.00
+	if actualBankBal != 3995.00 {
+		t.Errorf("expected 招商银行卡 balance 3995.00 after transfer with fee, got %v", actualBankBal)
+	}
+	// Wechat balance: 500 + 1000 = 1500.00
+	if actualWechatBal != 1500.00 {
+		t.Errorf("expected 微信支付 balance 1500.00 after transfer, got %v", actualWechatBal)
+	}
+
+	// Invariant: TotalAssets and NetAssets should decrease exactly by fee (5.00)!
+	expectedAssets := initialTotalAssets - 5.00
+	if statsAfter.AssetSummary.TotalAssets != expectedAssets {
+		t.Errorf("expected TotalAssets %v, got %v", expectedAssets, statsAfter.AssetSummary.TotalAssets)
+	}
+	expectedNet := initialNetAssets - 5.00
+	if statsAfter.AssetSummary.NetAssets != expectedNet {
+		t.Errorf("expected NetAssets %v, got %v", expectedNet, statsAfter.AssetSummary.NetAssets)
+	}
+
+	// P&L isolation: MonthExpense, MonthIncome, CategoryDistribution must be 0
+	if statsAfter.MonthExpense != 0 {
+		t.Errorf("P&L polluted: expected MonthExpense 0, got %v", statsAfter.MonthExpense)
+	}
+	if statsAfter.MonthIncome != 0 {
+		t.Errorf("P&L polluted: expected MonthIncome 0, got %v", statsAfter.MonthIncome)
+	}
+	if len(statsAfter.CategoryDistribution) != 0 {
+		t.Errorf("P&L polluted: expected CategoryDistribution empty, got %d items", len(statsAfter.CategoryDistribution))
+	}
+}
+
 
 

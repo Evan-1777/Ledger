@@ -30,6 +30,8 @@ export interface Transaction {
   type: 'expense' | 'income' | 'repayment' | 'transfer';
   amount_cents: number;
   amount: number;
+  fee_cents?: number;
+  fee?: number;
   description: string;
   payment_method_id: number;
   payment_method_name: string;
@@ -294,6 +296,7 @@ export const api = {
   createTransaction(data: {
     type?: 'expense' | 'income' | 'repayment' | 'transfer';
     amount: number;
+    fee?: number;
     description: string;
     payment_method_id: number;
     source_payment_method_id?: number;
@@ -312,6 +315,7 @@ export const api = {
     data: {
       type?: 'expense' | 'income' | 'repayment' | 'transfer';
       amount: number;
+      fee?: number;
       description: string;
       payment_method_id: number;
       source_payment_method_id?: number;

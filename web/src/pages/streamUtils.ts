@@ -71,6 +71,7 @@ export interface MetaItemInput {
   payment_method_name?: string | null;
   source_payment_method_name?: string | null;
   type?: string | null;
+  fee?: number | null;
   transacted_at?: string | null;
 }
 
@@ -90,6 +91,10 @@ export function buildMetaParts(item: MetaItemInput): string[] {
     }
   } else if (item.payment_method_name) {
     metaParts.push(item.payment_method_name);
+  }
+
+  if (isTransfer && item.fee && item.fee > 0) {
+    metaParts.push(`手续费 ¥${item.fee.toFixed(2)}`);
   }
 
   if (item.transacted_at) {
