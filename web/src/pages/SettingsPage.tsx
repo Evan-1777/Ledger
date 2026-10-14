@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { FC, FormEvent, ReactNode } from 'react';
 import { Category, PaymentMethod, Tag } from '../lib/api';
 import { formatMoney } from '../lib/format.ts';
@@ -79,6 +80,15 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Drawer & Tag state (Layer 3 Drawer container bound to SSOT activeCategoryId)
   const [activeDrawerCategoryId, setActiveDrawerCategoryId] = useState<number | null>(null);
   const [drawerNewTagName, setDrawerNewTagName] = useState('');
+  const isCreatingTagRef = useRef(false);
+  const [isSubmittingTag, setIsSubmittingTag] = useState(false);
+  const drawerTriggerRef = useRef<HTMLElement | null>(null);
+  const prevDrawerCatIdRef = useRef<number | null>(null);
+  const drawerNewTagInputRef = useRef<HTMLInputElement>(null);
+  const drawerCloseBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Derive active category directly from SSOT
+  const activeDrawerCategory = categories.find((c) => c.id === activeDrawerCategoryId);
 
   // Inline rename states
   const [editingCatId, setEditingCatId] = useState<number | null>(null);
@@ -91,26 +101,73 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Single confirmation host shared by category / channel / tag deletion
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
 
+  const openDrawer = (catId: number, triggerEl?: HTMLElement | null) => {
+    drawerTriggerRef.current = triggerEl ?? (document.activeElement as HTMLElement | null);
+    setActiveDrawerCategoryId(catId);
+    setDrawerNewTagName('');
+    setEditingTagId(null);
+    setEditingTagName('');
+  };
+
+  const closeDrawer = () => {
+    setActiveDrawerCategoryId(null);
+    setDrawerNewTagName('');
+    setEditingTagId(null);
+    setEditingTagName('');
+    isCreatingTagRef.current = false;
+    setIsSubmittingTag(false);
+    if (drawerTriggerRef.current?.isConnected) {
+      drawerTriggerRef.current.focus();
+    }
+    drawerTriggerRef.current = null;
+  };
+
+  // Close drawer if active category was removed from parent categories
+  useEffect(() => {
+    if (activeDrawerCategoryId !== null && !activeDrawerCategory) {
+      closeDrawer();
+    }
+  }, [activeDrawerCategoryId, activeDrawerCategory]);
+
   // Lock background scroll while the drawer is open
   useEffect(() => {
-    if (activeDrawerCategoryId === null) return;
+    if (!activeDrawerCategory) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [activeDrawerCategoryId]);
+  }, [activeDrawerCategory]);
 
-  // ESC key listener to close drawer or editing state
+  // Initial focus on drawer open transition (null -> catId), avoids re-stealing on category refresh
+  useEffect(() => {
+    if (activeDrawerCategoryId !== null && prevDrawerCatIdRef.current === null) {
+      if (activeDrawerCategory?.type === 'system') {
+        drawerCloseBtnRef.current?.focus();
+      } else {
+        drawerNewTagInputRef.current?.focus();
+      }
+    }
+    prevDrawerCatIdRef.current = activeDrawerCategoryId;
+  }, [activeDrawerCategoryId, activeDrawerCategory?.type]);
+
+  // ESC key listener to close drawer or editing state; yields to ConfirmDialog when open
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (editingTagId !== null) {
-          setEditingTagId(null);
-        } else if (activeDrawerCategoryId !== null) {
-          setActiveDrawerCategoryId(null);
-          setDrawerNewTagName('');
-        } else if (editingCatId !== null) {
+        if (pendingDelete !== null) {
+          return;
+        }
+        if (activeDrawerCategory) {
+          if (editingTagId !== null) {
+            setEditingTagId(null);
+            setEditingTagName('');
+          } else {
+            closeDrawer();
+          }
+          return;
+        }
+        if (editingCatId !== null) {
           setEditingCatId(null);
         } else if (editingPmId !== null) {
           setEditingPmId(null);
@@ -132,7 +189,8 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    activeDrawerCategoryId,
+    pendingDelete,
+    activeDrawerCategory,
     editingTagId,
     editingCatId,
     editingPmId,
@@ -257,6 +315,8 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
   const handleCreateTagInDrawer = async (categoryId: number, e: FormEvent) => {
     e.preventDefault();
+    if (isCreatingTagRef.current) return;
+
     const trimmed = drawerNewTagName.trim();
     if (!trimmed) return;
 
@@ -270,8 +330,17 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       return;
     }
 
-    await onAddTag(categoryId, trimmed);
-    setDrawerNewTagName('');
+    isCreatingTagRef.current = true;
+    setIsSubmittingTag(true);
+    try {
+      await onAddTag(categoryId, trimmed);
+      setDrawerNewTagName('');
+    } catch {
+      // Keep draft on failure; error toast already shown by App
+    } finally {
+      isCreatingTagRef.current = false;
+      setIsSubmittingTag(false);
+    }
   };
 
   const handleMoveCategory = async (index: number, direction: 'up' | 'down') => {
@@ -367,9 +436,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     else if (kind === 'channel') await onDeletePaymentMethod(id);
     else await onDeleteTag(id);
   };
-
-  // Derive active category directly from SSOT
-  const activeDrawerCategory = categories.find((c) => c.id === activeDrawerCategoryId);
 
   // Derive asset and liability channels
   const assetChannels = paymentMethods.filter((pm) => pm.type === 'asset' || !pm.type);
@@ -593,11 +659,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                       <Button
                         variant="subtle"
                         size="sm"
-                        onClick={() => {
-                          setActiveDrawerCategoryId(cat.id);
-                          setDrawerNewTagName('');
-                          setEditingTagId(null);
-                        }}
+                        onClick={(e) => openDrawer(cat.id, e.currentTarget)}
                       >
                         <EditIcon size={12} />
                         {cat.type === 'system' ? '查看标签' : '管理标签'}
@@ -661,11 +723,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     <Button
                       variant="subtle"
                       size="sm"
-                      onClick={() => {
-                        setActiveDrawerCategoryId(cat.id);
-                        setDrawerNewTagName('');
-                        setEditingTagId(null);
-                      }}
+                      onClick={(e) => openDrawer(cat.id, e.currentTarget)}
                     >
                       <EditIcon size={12} />
                       查看标签
@@ -822,149 +880,157 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       )}
 
       {/* ==================== Layer 3: Tag Drawer ==================== */}
-      {activeDrawerCategory && (
-        <div
-          className="fixed inset-0 z-[1100] bg-[var(--overlay)] backdrop-blur-[4px] animate-fade
-            flex justify-end items-stretch
-            max-[639px]:items-end max-[639px]:p-3"
-          onClick={() => {
-            setActiveDrawerCategoryId(null);
-            setDrawerNewTagName('');
-            setEditingTagId(null);
-          }}
-        >
+      {activeDrawerCategory &&
+        createPortal(
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${activeDrawerCategory.name} 细分标签`}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full min-[640px]:w-[min(420px,100%)] max-h-[85dvh] min-[640px]:max-h-none min-[640px]:h-full
-              bg-[var(--surface)] border border-[var(--line)] min-[640px]:border-l-0 min-[640px]:border-t-0 min-[640px]:border-b-0
-              rounded-t-[16px] min-[640px]:rounded-none
-              shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)]
-              flex flex-col overflow-hidden animate-slide-up min-[640px]:animate-slide"
+            className="fixed inset-0 z-[1100] bg-[var(--overlay)] backdrop-blur-[4px] animate-fade
+              flex justify-end items-stretch
+              max-[639px]:items-end max-[639px]:p-3"
+            onClick={closeDrawer}
           >
-            {/* Drawer Header */}
-            <div className="px-4 py-3 border-b border-[var(--line)] flex items-center justify-between flex-shrink-0 bg-[var(--surface-sunken)]">
-              <div className="flex items-center gap-2 min-w-0">
-                <b className="text-sm font-[650] text-[var(--fg)] truncate">
-                  {activeDrawerCategory.name} · 细分标签
-                </b>
-                <Chip>{activeDrawerCategory.tags?.length || 0}</Chip>
-              </div>
-              <IconButton
-                label="关闭"
-                size={28}
-                onClick={() => {
-                  setActiveDrawerCategoryId(null);
-                  setDrawerNewTagName('');
-                  setEditingTagId(null);
-                }}
-              >
-                <CloseIcon size={15} />
-              </IconButton>
-            </div>
-
-            {/* Drawer Body */}
-            <div className="p-4 flex flex-col gap-3.5 overflow-y-auto flex-1">
-              {activeDrawerCategory.type !== 'system' ? (
-                <form onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={drawerNewTagName}
-                    onChange={(e) => setDrawerNewTagName(e.target.value)}
-                    placeholder="添加细分标签 (如：午餐、地铁)"
-                    className={`flex-1 ${INPUT_CLASS}`}
-                  />
-                  <Button type="submit" variant="primary" size="sm" className="flex-shrink-0">
-                    添加
-                  </Button>
-                </form>
-              ) : (
-                <div className="p-3 rounded-[var(--r-sm)] bg-[var(--brand-soft)] border border-[var(--brand-line)] text-xs text-[var(--brand-text)]">
-                  系统分类标签由底层调度引擎固定保护，不可增删改
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${activeDrawerCategory.name} 细分标签`}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full min-[640px]:w-[420px] max-h-[85dvh] min-[640px]:max-h-none min-[640px]:h-full
+                bg-[var(--surface)] border border-[var(--line)] min-[640px]:border-y-0 min-[640px]:border-r-0 min-[640px]:border-l
+                rounded-t-[16px] min-[640px]:rounded-none
+                shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)]
+                flex flex-col overflow-hidden animate-slide-up min-[640px]:animate-slide"
+            >
+              {/* Drawer Header */}
+              <div className="px-4 py-3 border-b border-[var(--line)] flex items-center justify-between flex-shrink-0 bg-[var(--surface-sunken)]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <b className="text-sm font-[650] text-[var(--fg)] truncate">
+                    {activeDrawerCategory.name} · 细分标签
+                  </b>
+                  <Chip>{activeDrawerCategory.tags?.length || 0}</Chip>
                 </div>
-              )}
+                <IconButton
+                  ref={drawerCloseBtnRef}
+                  label="关闭细分标签抽屉"
+                  size={28}
+                  onClick={closeDrawer}
+                >
+                  <CloseIcon size={15} />
+                </IconButton>
+              </div>
 
-              {/* Tag List */}
-              <div>
-                {activeDrawerCategory.tags && activeDrawerCategory.tags.length > 0 ? (
-                  activeDrawerCategory.tags.map((tag) => (
-                    <div
-                      key={tag.id}
-                      className="flex items-center gap-2.5 py-2.5 border-t border-[var(--line)] first:border-t-0"
+              {/* Drawer Body */}
+              <div className="p-4 flex flex-col gap-3.5 overflow-y-auto flex-1 min-h-0">
+                {activeDrawerCategory.type !== 'system' ? (
+                  <form onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)} className="flex items-center gap-2 min-w-0">
+                    <input
+                      ref={drawerNewTagInputRef}
+                      type="text"
+                      disabled={isSubmittingTag}
+                      value={drawerNewTagName}
+                      onChange={(e) => setDrawerNewTagName(e.target.value)}
+                      placeholder="添加细分标签 (如：午餐、地铁)"
+                      className={`flex-1 min-w-0 ${INPUT_CLASS}`}
+                    />
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="sm"
+                      disabled={isSubmittingTag || !drawerNewTagName.trim()}
+                      className="flex-shrink-0"
                     >
-                      {editingTagId === tag.id ? (
-                        <form
-                          onSubmit={(e) => handleSaveTagRename(tag, e, activeDrawerCategory)}
-                          className="flex items-center gap-2 w-full animate-fade"
-                        >
-                          <input
-                            type="text"
-                            autoFocus
-                            value={editingTagName}
-                            onChange={(e) => setEditingTagName(e.target.value)}
-                            className={`flex-1 ${INPUT_CLASS}`}
-                          />
-                          <Button type="submit" variant="primary" size="sm">保存</Button>
-                          <Button variant="ghost" size="sm" onClick={() => setEditingTagId(null)}>取消</Button>
-                        </form>
-                      ) : (
-                        <>
-                          <b className="flex-1 text-[13.5px] font-semibold text-[var(--fg)] truncate">{tag.name}</b>
-                          {activeDrawerCategory.type !== 'system' ? (
-                            <>
-                              <IconButton
-                                label={`重命名 ${tag.name}`}
-                                size={28}
-                                onClick={() => {
-                                  setEditingTagId(tag.id);
-                                  setEditingTagName(tag.name);
-                                }}
-                              >
-                                <EditIcon size={13} />
-                              </IconButton>
-                              <IconButton
-                                label={`删除 ${tag.name}`}
-                                tone="danger"
-                                size={28}
-                                onClick={() => setPendingDelete({ kind: 'tag', id: tag.id, name: tag.name })}
-                              >
-                                <TrashIcon size={13} />
-                              </IconButton>
-                            </>
-                          ) : (
-                            <Chip tone="brand">系统固定</Chip>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))
+                      {isSubmittingTag ? '添加中…' : '添加'}
+                    </Button>
+                  </form>
                 ) : (
-                  <div className="text-xs text-[var(--fg-muted)] py-8 text-center">
-                    暂无细分标签
+                  <div className="p-3 rounded-[var(--r-sm)] bg-[var(--brand-soft)] border border-[var(--brand-line)] text-xs text-[var(--brand-text)]">
+                    系统分类标签由底层调度引擎固定保护，不可增删改
                   </div>
                 )}
+
+                {/* Tag List */}
+                <div className="min-w-0">
+                  {activeDrawerCategory.tags && activeDrawerCategory.tags.length > 0 ? (
+                    activeDrawerCategory.tags.map((tag) => (
+                      <div
+                        key={tag.id}
+                        className="flex items-center gap-2.5 py-2.5 border-t border-[var(--line)] first:border-t-0 min-w-0"
+                      >
+                        {editingTagId === tag.id ? (
+                          <form
+                            onSubmit={(e) => handleSaveTagRename(tag, e, activeDrawerCategory)}
+                            className="flex items-center gap-2 w-full min-w-0 animate-fade"
+                          >
+                            <input
+                              type="text"
+                              autoFocus
+                              value={editingTagName}
+                              onChange={(e) => setEditingTagName(e.target.value)}
+                              className={`flex-1 min-w-0 ${INPUT_CLASS}`}
+                            />
+                            <Button type="submit" variant="primary" size="sm">保存</Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingTagId(null);
+                                setEditingTagName('');
+                              }}
+                            >
+                              取消
+                            </Button>
+                          </form>
+                        ) : (
+                          <>
+                            <b className="flex-1 min-w-0 text-[13.5px] font-semibold text-[var(--fg)] truncate">{tag.name}</b>
+                            {activeDrawerCategory.type !== 'system' ? (
+                              <>
+                                <IconButton
+                                  label={`重命名 ${tag.name}`}
+                                  size={28}
+                                  onClick={() => {
+                                    setEditingTagId(tag.id);
+                                    setEditingTagName(tag.name);
+                                  }}
+                                >
+                                  <EditIcon size={13} />
+                                </IconButton>
+                                <IconButton
+                                  label={`删除 ${tag.name}`}
+                                  tone="danger"
+                                  size={28}
+                                  onClick={() => setPendingDelete({ kind: 'tag', id: tag.id, name: tag.name })}
+                                >
+                                  <TrashIcon size={13} />
+                                </IconButton>
+                              </>
+                            ) : (
+                              <Chip tone="brand">系统固定</Chip>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-xs text-[var(--fg-muted)] py-8 text-center">
+                      暂无细分标签
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="px-4 py-3 border-t border-[var(--line)] flex justify-end flex-shrink-0">
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  onClick={closeDrawer}
+                >
+                  完成
+                </Button>
               </div>
             </div>
-
-            {/* Drawer Footer */}
-            <div className="px-4 py-3 border-t border-[var(--line)] flex justify-end flex-shrink-0">
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => {
-                  setActiveDrawerCategoryId(null);
-                  setDrawerNewTagName('');
-                  setEditingTagId(null);
-                }}
-              >
-                完成
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* Single ConfirmDialog shared by category / channel / tag deletion */}
       <ConfirmDialog

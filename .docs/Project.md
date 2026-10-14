@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账 Web 应用，基于 Go + React + Vite + Tailwind + SQLite，单二进制交付。
-- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框），以及复审修复轮（头条统计与筛选解耦、令牌字面量收敛、分段控件可访问名与禁用态、主模态 dialog 语义等）已交付，支持单二进制独立运行与 Docker 部署。
+- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓以被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -54,7 +54,7 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog（单一删除确认宿主契约）
+│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog（Portal 视口挂载、单一删除确认宿主契约、首焦点与关闭焦点自动恢复）
 │  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
 │  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、SegmentedControl 主导航（滑动指示器）、主题切换与登出
 │  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
@@ -66,12 +66,12 @@ Ledger/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：当月概览头条（自然月聚合、不受筛选影响、除零保护、收支比例导轨）+ 日表层组（sunken 表头 + 发丝行分隔）+ TypeTile 语义瓦片 + 金额对齐契约 + 骨架/空态
 │  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装含转账手续费），金额格式化再导出自 lib/format.ts
 │  │  │  ├─ StatsPage.tsx    # 统计看板：净资产 Hero（40px 主数值 + 资产负债率导轨，可派生指标零虚构）+ 发丝分节四格指标行（花费环比/储蓄率注脚）+ 资产负债渠道双列明细（额度导轨、≥80% 使用率语义切换）+ 当月支付途径分布 + 环形/趋势图
-│  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户）、发丝线列表、操作入口常驻可见、单一 pendingDelete 状态 + 单一 ConfirmDialog 实例宿主、细分标签抽屉（桌面右侧滑入 / 窄屏底部面板、滚动锁定）
+│  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户）、发丝线列表、操作入口常驻可见、单一 pendingDelete 状态 + 单一 ConfirmDialog 实例宿主、细分标签抽屉（Portal 视口挂载脱离祖先动画上下文、桌面贴右 / 窄屏底部面板、滚动锁定、初次打开自聚焦与关闭焦点恢复、Esc 分层仲裁、同步锁防抖与失败保留输入草稿）
 │  │  ├─ lib/
 │  │  │  ├─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
 │  │  │  └─ format.ts        # 唯一格式化模块：formatAmount/formatMoney/formatPercent/resolveTone/本地时间输入互转工具
-│  │  ├─ App.tsx             # 应用主容器，协调主题（documentElement 同步 + 防闪脚本）、视图 rise 转场（key 重挂载）、账单删除单一 ConfirmDialog 确认宿主与全局快捷键（N）
-│  │  ├─ index.css           # Fluent 2 四层材质令牌体系（分层面/发丝线/品牌/四组语义色/半径/深度/动效/排版，深浅成对）、全局关键帧与 prefers-reduced-motion 退化
+│  │  ├─ App.tsx             # 应用主容器，协调主题（documentElement 同步 + 防闪脚本）、视图 rise 转场（key 重挂载）、账单删除单一 ConfirmDialog 确认宿主、全局快捷键（N 键基于 [aria-modal="true"] 真状态自动互斥）、细分标签添加失败错误穿透与提示
+│  │  ├─ index.css           # Fluent 2 四层材质令牌体系（分层面/发丝线/品牌/四组语义色/半径/深度/动效/排版，深浅成对）、@layer base 键盘焦点轮廓定义（确保 outline-none 正常覆盖）、全局关键帧与 prefers-reduced-motion 退化
 │  │  └─ main.tsx            # React 挂载入口
 │  ├─ test/                  # 前端自动化自检（基于 Node 24 原生 node:test 与 --experimental-strip-types）
 │  │  ├─ stream.test.ts      # 流水纯函数核心业务契约自检测试套件

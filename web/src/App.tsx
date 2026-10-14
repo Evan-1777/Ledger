@@ -171,6 +171,7 @@ export default function App() {
         (e.key === 'n' || e.key === 'N') &&
         !isRecordModalOpen &&
         !showAuthModal &&
+        !document.querySelector('[aria-modal="true"]') &&
         document.activeElement?.tagName !== 'INPUT' &&
         document.activeElement?.tagName !== 'TEXTAREA'
       ) {
@@ -329,6 +330,7 @@ export default function App() {
       fetchConfigData();
     } catch (err: unknown) {
       addToast('error', err instanceof Error ? err.message : '添加失败');
+      throw err;
     }
   };
 

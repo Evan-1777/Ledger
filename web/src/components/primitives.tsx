@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { FC, ReactNode } from 'react';
 import {
   ExpenseIcon,
@@ -33,6 +34,7 @@ interface IconButtonProps {
   size?: number;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
+  ref?: React.Ref<HTMLButtonElement>;
   children: ReactNode;
 }
 
@@ -42,9 +44,11 @@ export const IconButton: FC<IconButtonProps> = ({
   size = 34,
   onClick,
   disabled,
+  ref,
   children,
 }) => (
   <button
+    ref={ref}
     type="button"
     aria-label={label}
     title={label}
@@ -383,10 +387,20 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
   onCancel,
 }) => {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
-  // Focus only on open transitions — re-focusing on every render would steal typing focus
+  // Focus only on open transitions — re-focusing on every render would steal typing focus;
+  // Restore focus to trigger element on close if still connected to DOM
   useEffect(() => {
-    if (open) cancelRef.current?.focus();
+    if (open) {
+      triggerRef.current = document.activeElement as HTMLElement | null;
+      cancelRef.current?.focus();
+    } else {
+      if (triggerRef.current && triggerRef.current.isConnected) {
+        triggerRef.current.focus();
+      }
+      triggerRef.current = null;
+    }
   }, [open]);
 
   useEffect(() => {
@@ -400,7 +414,7 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[1200] bg-[var(--overlay)] backdrop-blur-[4px] flex items-center justify-center p-3 animate-fade"
       onClick={onCancel}
@@ -428,6 +442,7 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
