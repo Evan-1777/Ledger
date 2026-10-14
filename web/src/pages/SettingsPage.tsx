@@ -924,7 +924,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                     <input
                       ref={drawerNewTagInputRef}
                       type="text"
-                      disabled={isSubmittingTag}
                       value={drawerNewTagName}
                       onChange={(e) => setDrawerNewTagName(e.target.value)}
                       placeholder="添加细分标签 (如：午餐、地铁)"
@@ -934,7 +933,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                       type="submit"
                       variant="primary"
                       size="sm"
-                      disabled={isSubmittingTag || !drawerNewTagName.trim()}
+                      disabled={isSubmittingTag}
                       className="flex-shrink-0"
                     >
                       {isSubmittingTag ? '添加中…' : '添加'}

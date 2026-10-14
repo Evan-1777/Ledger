@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账 Web 应用，基于 Go + React + Vite + Tailwind + SQLite，单二进制交付。
-- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓以被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
+- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -156,6 +156,7 @@ Ledger/
 - 2026-10-14 Fluent 2 成品级 UI/UX 全站重构（不新增业务功能、不改后端契约）——`index.css` 重写为四层材质令牌体系（画布/内容/悬浮/模态分层面、发丝线、品牌色组、支出/收入/转账/还款四组语义色各四档、半径刻度、三级深度阴影、三条动效曲线三档时长、深浅主题成对定义，暗色以面提亮 + 顶部内高光表达层级）；新增共享原子构件层 `primitives.tsx`（Panel/IconButton/Button/SegmentedControl/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog），组件样式一律 Tailwind utility + 令牌任意值语法消费，禁止就地色值/圆角/阴影字面量；金额格式化收敛至 `lib/format.ts` 唯一模块（`formatMoney`/`formatPercent`/`resolveTone`/本地时间输入互转），streamUtils 再导出保持既有测试契约；自绘 SVG 图表 `Charts.tsx`（品牌单色阶环形图 + 图例点选同视口下钻、响应式 viewBox 双线趋势图），零第三方图表依赖；破坏性操作全面以应用内 `ConfirmDialog`（alertdialog 契约、焦点落于取消、Esc/遮罩等同取消）替换浏览器原生 `confirm`，App 层与设置页各自维护单一 `pendingDelete` 状态宿主；流水页新增当月概览头条（自然月聚合、不受筛选影响、比例导轨除零不渲染）；统计页重构为净资产 Hero 主视觉 + 发丝分节指标行（花费环比/储蓄率注脚，分母为零降级）+ 渠道双列明细；数据边界纪律：所有呈现数值仅由 `StatsSummary` 已有字段及其四则派生，禁止虚构历史快照类指标；`index.html` 补主题元信息与首帧防闪内联脚本（类挂 documentElement 与 App 主题同步）
 - 2026-10-14 复审修复轮（吸收 Review 审计报告）——流水头条统计与底部筛选解耦（App 层并行拉取不带筛选数据源，`computeMonthHeadline` 独立消费，修复筛选档位下头条归零缺陷）；`:focus-visible` 移除强制 `border-radius` 修复杂圆形控件变形；`.num` 移入 `@layer components` 使 `tracking-*` utility 可覆盖；统计页补回被静默删除的「当月支付途径分布」面板；新增 `--overlay`/`--brand-glow`/`--donut-1..5`/`--r-nano` 令牌并清除全部 JSX 十六进制色值与 rgba 字面量（Navbar 渐变第二停改用 `--brand-pressed`）；删除零消费令牌 `--surface-raised`/`--e2`/`--transfer`/`--repay` 基色与死导出 `Badge`/`MoreVerticalIcon`，`formatPercent` 落地至全部百分比呈现点；SegmentedControl 补 aria-label 与 disabled（记账编辑态类型滑块真锁定）；RecordModal 表单标签程序化关联；RecordModal/AuthModal 补 dialog 语义；ConfirmDialog 焦点仅在打开时夺取；设置页空态去「点击右上角」指引改 EmptyState 直达按钮；表面材质收敛至 Panel 单一来源（日表圆角统一 16px）；`color-scheme` 与 meta theme-color 跟随应用主题而非系统；320px 筛选胶囊与 FAB 防重叠（<400px 收紧内边距与字号）
 - 2026-10-14 复审驳回项备案——客户端 7 处重名预校验收敛（既有代码，后端 409 映射已兜底，改动风险大于收益）；Panel hero 变体保留（StatsPage 有真实调用方）；模态焦点陷阱留待后续专项（已有首焦点落点与 dialog 语义）
+- 2026-10-14 金额焦点层级归位与模态视口级挂载——全局 `:focus-visible` 移入 `@layer base`，使控件级 `outline-none`（v4 即 `outline-style: none`）正常覆盖默认轮廓，消除记账金额输入框内外双重焦点边框；细分标签抽屉与共享 `ConfirmDialog` 一律 `createPortal` 挂载至 `document.body`，脱离祖先动画容器的包含块与层叠上下文（后续新增模态覆盖层沿用此约定，不在带动画的容器内直接渲染 `fixed` 覆盖层）；抽屉关闭路径统一为 `closeDrawer`，Escape 按确认 → 编辑 → 抽屉分层仲裁，打开自聚焦与关闭焦点恢复以 `isConnected` 守卫；新增标签以同步 ref 提交锁防重、失败保留草稿并由父级单次 Toast 提示，输入框不禁用以避免提交期间丢失焦点
 
 ## 术语
 
