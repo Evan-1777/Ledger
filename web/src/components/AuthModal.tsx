@@ -38,8 +38,13 @@ export const AuthModal: FC<AuthModalProps> = ({ isOpen, onSuccess }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-[rgba(8,12,20,.44)] backdrop-blur-[4px] flex items-center justify-center p-4 animate-fade">
-      <div className="w-full max-w-sm bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] p-6 flex flex-col gap-5 animate-pop">
+    <div className="fixed inset-0 z-[1000] bg-[var(--overlay)] backdrop-blur-[4px] flex items-center justify-center p-4 animate-fade">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="管理员安全解锁"
+        className="w-full max-w-sm bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] p-6 flex flex-col gap-5 animate-pop"
+      >
         <div className="flex flex-col items-center text-center gap-2">
           <div className="w-12 h-12 rounded-[var(--r-md)] bg-[var(--brand-soft)] border border-[var(--brand-line)] text-[var(--brand-text)] flex items-center justify-center mb-1">
             <LockIcon size={22} />

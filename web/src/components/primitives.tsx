@@ -33,7 +33,6 @@ interface IconButtonProps {
   size?: number;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
-  className?: string;
   children: ReactNode;
 }
 
@@ -43,7 +42,6 @@ export const IconButton: FC<IconButtonProps> = ({
   size = 34,
   onClick,
   disabled,
-  className = '',
   children,
 }) => (
   <button
@@ -57,7 +55,7 @@ export const IconButton: FC<IconButtonProps> = ({
       tone === 'danger'
         ? 'text-[var(--fg-3)] hover:text-[var(--expense-text)] hover:bg-[var(--expense-soft)]'
         : 'text-[var(--fg-3)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)]'
-    } ${className}`}
+    }`}
   >
     {children}
   </button>
@@ -82,7 +80,7 @@ interface ButtonProps {
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] shadow-[0_2px_8px_rgba(0,120,212,0.28)]',
+    'bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] shadow-[0_2px_8px_var(--brand-glow)]',
   subtle:
     'bg-[var(--surface-sunken)] text-[var(--fg-2)] border border-[var(--line)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
   ghost: 'bg-transparent text-[var(--fg-2)] hover:bg-[var(--surface-hover)]',
@@ -131,6 +129,8 @@ interface SegmentedControlProps {
   ariaLabel?: string;
   /** compact: hide text labels below the breakpoint, icons only ('sm' = 640px, 'xs' = 400px) */
   compact?: boolean | 'xs';
+  /** Blocks interaction entirely (e.g. edit-mode type lock); dimming stays the caller's job */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -140,6 +140,7 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
   onChange,
   ariaLabel,
   compact = false,
+  disabled = false,
   className = '',
 }) => {
   const activeIndex = Math.max(
@@ -174,8 +175,11 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
             type="button"
             role="tab"
             aria-selected={selected}
+            // Text may be display:none under `compact`, which removes it from the a11y tree
+            aria-label={typeof it.label === 'string' ? it.label : undefined}
+            disabled={disabled}
             onClick={() => onChange(it.key)}
-            className={`relative z-[1] flex items-center justify-center gap-1.5 min-h-[32px] px-2.5 rounded-[var(--r-pill)] text-[13px] cursor-pointer whitespace-nowrap transition-colors duration-[var(--d1)] [transition-timing-function:var(--ease-std)] ${
+            className={`relative z-[1] flex items-center justify-center gap-1.5 min-h-[32px] px-2.5 rounded-[var(--r-pill)] text-[13px] cursor-pointer whitespace-nowrap transition-colors duration-[var(--d1)] [transition-timing-function:var(--ease-std)] disabled:cursor-not-allowed ${
               selected ? 'text-[var(--fg)] font-semibold' : 'text-[var(--fg-3)] font-medium hover:text-[var(--fg)]'
             }`}
           >
@@ -188,7 +192,7 @@ export const SegmentedControl: FC<SegmentedControlProps> = ({
   );
 };
 
-/* ============================== Chip / Badge ============================== */
+/* ============================== Chip ============================== */
 
 interface ChipProps {
   tone?: 'neutral' | 'brand';
@@ -207,8 +211,6 @@ export const Chip: FC<ChipProps> = ({ tone = 'neutral', className = '', children
     {children}
   </span>
 );
-
-export const Badge = Chip;
 
 /* ============================== Amount ============================== */
 
@@ -279,17 +281,17 @@ export const TypeTile: FC<TypeTileProps> = ({ type }) => {
 
 interface RailProps {
   value: number;
-  color?: string;
+  color: string;
   className?: string;
 }
 
-export const Rail: FC<RailProps> = ({ value, color = 'var(--brand)', className = '' }) => (
+export const Rail: FC<RailProps> = ({ value, color, className = '' }) => (
   <div
     aria-hidden
-    className={`h-1 rounded-[2px] bg-[var(--surface-sunken)] overflow-hidden ${className}`}
+    className={`h-1 rounded-[var(--r-nano)] bg-[var(--surface-sunken)] overflow-hidden ${className}`}
   >
     <div
-      className="h-full rounded-[2px] transition-[width] duration-[var(--d3)] [transition-timing-function:var(--ease-out)]"
+      className="h-full rounded-[var(--r-nano)] transition-[width] duration-[var(--d3)] [transition-timing-function:var(--ease-out)]"
       style={{ width: `${Math.min(Math.max(value, 0), 100)}%`, background: color }}
     />
   </div>
@@ -305,7 +307,7 @@ export const Skeleton: FC<{ className?: string }> = ({ className = '' }) => (
 export const SkeletonList: FC<{ groups?: number }> = ({ groups = 2 }) => (
   <div aria-hidden className="flex flex-col gap-4">
     {Array.from({ length: groups }).map((_, g) => (
-      <div key={g} className="bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-md)] shadow-[var(--e1)] overflow-hidden">
+      <div key={g} className="bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-lg)] shadow-[var(--e1)] overflow-hidden">
         <div className="flex items-center justify-between px-3.5 py-[9px] bg-[var(--surface-sunken)] border-b border-[var(--line)]">
           <Skeleton className="h-3.5 w-24" />
           <Skeleton className="h-3 w-28" />
@@ -382,9 +384,13 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
 }) => {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
+  // Focus only on open transitions — re-focusing on every render would steal typing focus
+  useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
-    cancelRef.current?.focus();
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCancel();
     };
@@ -396,7 +402,7 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[1200] bg-[rgba(8,12,20,.44)] backdrop-blur-[4px] flex items-center justify-center p-3 animate-fade"
+      className="fixed inset-0 z-[1200] bg-[var(--overlay)] backdrop-blur-[4px] flex items-center justify-center p-3 animate-fade"
       onClick={onCancel}
     >
       <div

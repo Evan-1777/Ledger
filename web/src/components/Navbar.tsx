@@ -35,8 +35,8 @@ export const Navbar: FC<NavbarProps> = ({
     <div className="flex items-center gap-2.5 min-w-0">
       <div
         className="w-[30px] h-[30px] rounded-[var(--r-sm)] flex items-center justify-center text-white flex-shrink-0
-          bg-[linear-gradient(160deg,var(--brand),#0a5fb4)]
-          shadow-[0_2px_6px_rgba(0,120,212,.32),inset_0_1px_0_rgba(255,255,255,.25)]"
+          bg-[linear-gradient(160deg,var(--brand),var(--brand-pressed))]
+          shadow-[0_2px_6px_var(--brand-glow),inset_0_1px_0_rgba(255,255,255,.25)]"
       >
         <BrandIcon size={16} />
       </div>

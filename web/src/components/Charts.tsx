@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import type { FC } from 'react';
 import type { CategoryStat, MonthlyTrend } from '../lib/api';
-import { formatMoney } from '../lib/format.ts';
+import { formatMoney, formatPercent } from '../lib/format.ts';
 
-/* Fluent brand single-hue scale: #0f6cbd → #bcdcfb */
-const DONUT_SCALE = ['#0f6cbd', '#2f88dc', '#57a6ee', '#85c1f6', '#bcdcfb'];
+/* Fluent brand single-hue scale, token-driven */
+const DONUT_SCALE = [
+  'var(--donut-1)',
+  'var(--donut-2)',
+  'var(--donut-3)',
+  'var(--donut-4)',
+  'var(--donut-5)',
+];
 
 const donutColor = (index: number) => DONUT_SCALE[index % DONUT_SCALE.length];
 
@@ -99,13 +105,13 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
                       : 'border-transparent hover:bg-[var(--surface-hover)]'
                   }`}
                 >
-                  <i className="w-2 h-2 rounded-[2.5px] flex-shrink-0" style={{ background: donutColor(i) }} />
+                  <i className="w-2 h-2 rounded-[var(--r-nano)] flex-shrink-0" style={{ background: donutColor(i) }} />
                   <b className="flex-1 text-[12.5px] font-medium text-[var(--fg)] truncate">{d.name}</b>
                   <em className="not-italic num text-[12.5px] font-semibold text-[var(--fg)]">
                     {formatMoney(d.amount, { sign: 'none' })}
                   </em>
                   <s className="no-underline num text-[11.5px] text-[var(--fg-3)] w-[42px] text-right">
-                    {d.percentage.toFixed(1)}%
+                    {formatPercent(d.percentage)}
                   </s>
                 </button>
               );
@@ -136,7 +142,7 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
                   <s className="no-underline num text-[11px] text-[var(--fg-3)]">
                     {formatMoney(tg.amount, { sign: 'none' })}
                   </s>
-                  <s className="no-underline num text-[11px] text-[var(--fg-3)]">{tg.percentage.toFixed(1)}%</s>
+                  <s className="no-underline num text-[11px] text-[var(--fg-3)]">{formatPercent(tg.percentage)}</s>
                 </span>
               ))}
             </div>

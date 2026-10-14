@@ -45,7 +45,7 @@ export const BottomBar: FC<BottomBarProps> = ({
                 role="tab"
                 aria-selected={selected}
                 onClick={() => onFilterChange(opt.key)}
-                className={`min-h-[36px] px-2.5 min-[640px]:px-[11px] rounded-[var(--r-pill)] text-[13px] cursor-pointer whitespace-nowrap transition-colors duration-[var(--d1)] ${
+                className={`min-h-[36px] px-2 min-[400px]:px-2.5 min-[640px]:px-[11px] rounded-[var(--r-pill)] text-xs min-[400px]:text-[13px] cursor-pointer whitespace-nowrap transition-colors duration-[var(--d1)] ${
                   selected
                     ? 'bg-[var(--surface-sunken)] text-[var(--fg)] font-semibold'
                     : 'text-[var(--fg-3)] font-medium hover:text-[var(--fg)]'
@@ -66,7 +66,7 @@ export const BottomBar: FC<BottomBarProps> = ({
         onClick={onOpenRecord}
         className="fixed bottom-[18px] right-4 min-[640px]:right-7 z-40 w-[52px] h-[52px] rounded-full
           bg-[var(--brand)] text-white border-none cursor-pointer flex items-center justify-center
-          shadow-[0_4px_14px_rgba(0,120,212,.38),0_2px_6px_rgba(16,24,40,.12),inset_0_1px_0_rgba(255,255,255,.22)]
+          shadow-[0_4px_14px_var(--brand-glow),0_2px_6px_rgba(16,24,40,.12),inset_0_1px_0_rgba(255,255,255,.22)]
           hover:bg-[var(--brand-hover)] hover:scale-105 active:scale-[.94]
           transition-all duration-[var(--d1)] [transition-timing-function:var(--ease-out)]"
       >

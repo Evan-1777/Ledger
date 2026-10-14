@@ -1,16 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light dark;
+  /* Follows the in-app theme (driven by the .dark-mode class), not the OS preference */
+  color-scheme: light;
 
   /* ===== Layer surfaces ===== */
   --canvas: #f4f5f7;
   --canvas-glow: radial-gradient(1100px 520px at 50% -10%, rgba(0, 120, 212, 0.075), transparent 62%);
   --surface: #ffffff;
-  --surface-raised: #ffffff;
   --surface-sunken: #f0f1f4;
   --surface-hover: #f2f3f6;
   --glass: rgba(255, 255, 255, 0.72);
+  --overlay: rgba(8, 12, 20, 0.44);
 
   /* ===== Lines ===== */
   --line: rgba(15, 23, 42, 0.075);
@@ -30,14 +31,23 @@
   --brand-text: #0063b1;
   --brand-soft: #e9f3fc;
   --brand-line: #b9dcf7;
+  --brand-glow: rgba(0, 120, 212, 0.34);
 
   /* ===== Semantic — money direction ===== */
   --expense: #e5484d;      --expense-text: #c22f3d;  --expense-soft: #fdedee;  --expense-line: #f7c9cb;
   --income: #2fa96b;       --income-text: #1f8a55;   --income-soft: #e7f6ef;   --income-line: #b6e3ca;
-  --transfer: #0087e0;     --transfer-text: #0071bd; --transfer-soft: #e6f2fd; --transfer-line: #b7d9f7;
-  --repay: #8e5cd6;        --repay-text: #7840c4;    --repay-soft: #f3ebfb;    --repay-line: #dac6f5;
+  --transfer-text: #0071bd; --transfer-soft: #e6f2fd; --transfer-line: #b7d9f7;
+  --repay-text: #7840c4;   --repay-soft: #f3ebfb;    --repay-line: #dac6f5;
+
+  /* ===== Chart palettes ===== */
+  --donut-1: #0f6cbd;
+  --donut-2: #2f88dc;
+  --donut-3: #57a6ee;
+  --donut-4: #85c1f6;
+  --donut-5: #bcdcfb;
 
   /* ===== Radii ===== */
+  --r-nano: 2px;
   --r-xs: 6px;
   --r-sm: 8px;
   --r-md: 12px;
@@ -47,7 +57,6 @@
 
   /* ===== Elevation ===== */
   --e1: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
-  --e2: 0 2px 4px -1px rgba(16, 24, 40, 0.05), 0 4px 8px -2px rgba(16, 24, 40, 0.05);
   --e3: 0 8px 14px -4px rgba(16, 24, 40, 0.07), 0 2px 6px -2px rgba(16, 24, 40, 0.04);
   --e4: 0 24px 48px -12px rgba(16, 24, 40, 0.22);
 
@@ -65,13 +74,15 @@
 }
 
 .dark-mode {
+  color-scheme: dark;
+
   --canvas: #0b0f17;
   --canvas-glow: radial-gradient(1100px 520px at 50% -10%, rgba(71, 158, 245, 0.1), transparent 62%);
   --surface: #151a24;
-  --surface-raised: #1b2230;
   --surface-sunken: #10151f;
   --surface-hover: #1f2632;
   --glass: rgba(21, 26, 36, 0.72);
+  --overlay: rgba(4, 7, 12, 0.56);
 
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.15);
@@ -88,14 +99,14 @@
   --brand-text: #79b7f8;
   --brand-soft: rgba(71, 158, 245, 0.15);
   --brand-line: rgba(71, 158, 245, 0.36);
+  --brand-glow: rgba(71, 158, 245, 0.4);
 
   --expense: #f4737d;  --expense-text: #ff8f94;  --expense-soft: rgba(229, 72, 77, 0.16);  --expense-line: rgba(229, 72, 77, 0.32);
   --income: #4ade80;   --income-text: #5fe096;   --income-soft: rgba(47, 169, 107, 0.16);  --income-line: rgba(47, 169, 107, 0.32);
-  --transfer: #4bb3fb; --transfer-text: #69c0fc; --transfer-soft: rgba(0, 135, 224, 0.18); --transfer-line: rgba(0, 135, 224, 0.34);
-  --repay: #b491e8;    --repay-text: #c6aaf2;    --repay-soft: rgba(142, 92, 214, 0.18);   --repay-line: rgba(142, 92, 214, 0.34);
+  --transfer-text: #69c0fc; --transfer-soft: rgba(0, 135, 224, 0.18); --transfer-line: rgba(0, 135, 224, 0.34);
+  --repay-text: #c6aaf2;   --repay-soft: rgba(142, 92, 214, 0.18);   --repay-line: rgba(142, 92, 214, 0.34);
 
   --e1: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --e2: 0 2px 6px rgba(0, 0, 0, 0.5);
   --e3: 0 10px 22px rgba(0, 0, 0, 0.55);
   --e4: 0 24px 48px rgba(0, 0, 0, 0.72);
 }
@@ -114,9 +125,12 @@ body {
 }
 
 /* ===== Global utilities ===== */
-.num {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+/* Layered under components so per-element `tracking-*` utilities can override the letter-spacing */
+@layer components {
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
 }
 
 /* Temporary class applied by App during theme toggle to smooth color changes */
@@ -129,7 +143,6 @@ body {
 :focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 ::selection {

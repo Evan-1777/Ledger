@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import type { FC, FormEvent, ReactNode } from 'react';
 import { Category, PaymentMethod, Tag } from '../lib/api';
 import { formatMoney } from '../lib/format.ts';
-import { SegmentedControl, IconButton, Button, Chip, ConfirmDialog } from '../components/primitives';
+import { Panel, SegmentedControl, IconButton, Button, Chip, EmptyState, ConfirmDialog } from '../components/primitives';
 import {
   PlusIcon,
   ChevronUpIcon,
@@ -16,11 +16,11 @@ interface SettingsPageProps {
   categories: Category[];
   paymentMethods: PaymentMethod[];
   onAddPaymentMethod: (name: string, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
-  onUpdatePaymentMethod?: (id: number, name: string, sort_order: number, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
+  onUpdatePaymentMethod: (id: number, name: string, sort_order: number, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onDeletePaymentMethod: (id: number) => Promise<void>;
   onAddCategory: (name: string, type?: 'expense' | 'income') => Promise<void>;
   onUpdateCategory: (id: number, name: string, sort_order: number, type?: 'expense' | 'income') => Promise<void>;
-  onReorderCategories?: (updates: { id: number; name: string; sort_order: number }[]) => Promise<void>;
+  onReorderCategories: (updates: { id: number; name: string; sort_order: number }[]) => Promise<void>;
   onDeleteCategory: (id: number) => Promise<void>;
   onAddTag: (categoryId: number, name: string) => Promise<void>;
   onUpdateTag: (id: number, name: string, sort_order: number) => Promise<void>;
@@ -225,13 +225,11 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       onToast?.('error', '授信额度不能为负数');
       return;
     }
-    if (onUpdatePaymentMethod) {
-      try {
-        await onUpdatePaymentMethod(pm.id, trimmed, pm.sort_order, editingPmType, initBal, limit);
-        setEditingPmId(null);
-      } catch {
-        // Keep edit state open
-      }
+    try {
+      await onUpdatePaymentMethod(pm.id, trimmed, pm.sort_order, editingPmType, initBal, limit);
+      setEditingPmId(null);
+    } catch {
+      // Keep edit state open
     }
   };
 
@@ -295,17 +293,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     }
 
     try {
-      if (onReorderCategories) {
-        await onReorderCategories([
-          { id: itemA.id, name: itemA.name, sort_order: orderForA },
-          { id: itemB.id, name: itemB.name, sort_order: orderForB },
-        ]);
-      } else {
-        await Promise.all([
-          onUpdateCategory(itemA.id, itemA.name, orderForA, itemA.type === 'income' ? 'income' : 'expense'),
-          onUpdateCategory(itemB.id, itemB.name, orderForB, itemB.type === 'income' ? 'income' : 'expense'),
-        ]);
-      }
+      await onReorderCategories([
+        { id: itemA.id, name: itemA.name, sort_order: orderForA },
+        { id: itemB.id, name: itemB.name, sort_order: orderForB },
+      ]);
     } catch {
       // Toast and refresh handled in parent
     }
@@ -549,9 +540,11 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
             {/* Hairline Category List */}
             {currentCategories.length === 0 ? (
-              <div className="text-xs text-[var(--fg-muted)] py-8 text-center bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-dashed border-[var(--line)]">
-                暂无{categoryTypeTab === 'income' ? '收入分类' : '支出分类'}，点击右上角新增
-              </div>
+              <EmptyState
+                title={`暂无${categoryTypeTab === 'income' ? '收入分类' : '支出分类'}`}
+                subtitle="创建第一个分类后开始记账"
+                action={{ label: '立即新增', onClick: () => setShowAddCatInput(true) }}
+              />
             ) : (
               currentCategories.map((cat, index) => (
                 <div key={cat.id} className="py-2.5 border-t border-[var(--line)] first:border-t-0">
@@ -739,8 +732,12 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
             <div className="grid grid-cols-1 min-[640px]:grid-cols-2">
               {assetChannels.length === 0 ? (
-                <div className="text-xs text-[var(--fg-muted)] py-8 text-center col-span-full bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-dashed border-[var(--line)]">
-                  暂无资产渠道，点击右上角添加
+                <div className="col-span-full">
+                  <EmptyState
+                    title="暂无资产渠道"
+                    subtitle="添加后用于记录支出与收入"
+                    action={{ label: '添加资产渠道', onClick: () => setShowAddAssetInput(true) }}
+                  />
                 </div>
               ) : (
                 assetChannels.map(channelRow)
@@ -809,8 +806,12 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
             <div className="grid grid-cols-1 min-[640px]:grid-cols-2">
               {liabilityChannels.length === 0 ? (
-                <div className="text-xs text-[var(--fg-muted)] py-8 text-center col-span-full bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-dashed border-[var(--line)]">
-                  暂无负债渠道，点击右上角添加
+                <div className="col-span-full">
+                  <EmptyState
+                    title="暂无负债渠道"
+                    subtitle="添加后用于记录还款与额度"
+                    action={{ label: '添加负债渠道', onClick: () => setShowAddLiabilityInput(true) }}
+                  />
                 </div>
               ) : (
                 liabilityChannels.map(channelRow)
@@ -823,7 +824,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       {/* ==================== Layer 3: Tag Drawer ==================== */}
       {activeDrawerCategory && (
         <div
-          className="fixed inset-0 z-[1100] bg-[rgba(8,12,20,.44)] backdrop-blur-[4px] animate-fade
+          className="fixed inset-0 z-[1100] bg-[var(--overlay)] backdrop-blur-[4px] animate-fade
             flex justify-end items-stretch
             max-[639px]:items-end max-[639px]:p-3"
           onClick={() => {
@@ -941,7 +942,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   ))
                 ) : (
                   <div className="text-xs text-[var(--fg-muted)] py-8 text-center">
-                    暂无细分标签，可在上方添加
+                    暂无细分标签
                   </div>
                 )}
               </div>
@@ -985,14 +986,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   );
 };
 
-/* Local panel card with head + hairline content */
+/* Local panel card with head + hairline content (surface comes from the shared Panel) */
 const PanelCard: FC<{ title: string; count?: number; action?: ReactNode; children: ReactNode }> = ({
   title,
   count,
   action,
   children,
 }) => (
-  <div className="bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-lg)] shadow-[var(--e1),inset_0_1px_0_var(--highlight-top)] p-[18px] flex flex-col gap-3">
+  <Panel className="p-[18px] flex flex-col gap-3">
     <div className="flex items-center justify-between gap-2.5">
       <div className="flex items-baseline gap-2">
         <b className="text-sm font-[650] text-[var(--fg)]">{title}</b>
@@ -1001,5 +1002,5 @@ const PanelCard: FC<{ title: string; count?: number; action?: ReactNode; childre
       {action}
     </div>
     {children}
-  </div>
+  </Panel>
 );

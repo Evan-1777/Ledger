@@ -1,6 +1,6 @@
 import type { FC, ReactNode } from 'react';
-import { StatsSummary, AssetChannelStat, LiabilityChannelStat } from '../lib/api';
-import { formatMoney } from '../lib/format.ts';
+import { StatsSummary, AssetChannelStat, LiabilityChannelStat, PaymentMethodStat } from '../lib/api';
+import { formatMoney, formatPercent } from '../lib/format.ts';
 import { Panel, Chip, Rail, Skeleton, EmptyState } from '../components/primitives';
 import { DonutChart, TrendChart } from '../components/Charts';
 import { WalletIcon } from '../components/Icons';
@@ -103,7 +103,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
             </span>
           </div>
           <div className="flex items-center gap-2.5 mt-3 flex-wrap">
-            {debtRatio !== null && <Chip>资产负债率 {debtRatio.toFixed(1)}%</Chip>}
+            {debtRatio !== null && <Chip>资产负债率 {formatPercent(debtRatio)}</Chip>}
             {channelCount > 0 && <Chip>{channelCount} 个在用渠道</Chip>}
           </div>
         </div>
@@ -127,7 +127,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
               <Rail value={debtRatio} color="var(--expense)" />
               <div className="flex justify-between text-[11.5px] text-[var(--fg-muted)]">
                 <span>负债 / 资产</span>
-                <span className="num">{debtRatio.toFixed(1)}%</span>
+                <span className="num">{formatPercent(debtRatio)}</span>
               </div>
             </>
           )}
@@ -145,7 +145,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
             momChange !== null ? (
               <span>
                 较上月 {momChange >= 0 ? '+' : '−'}
-                {Math.abs(momChange).toFixed(1)}%
+                {formatPercent(Math.abs(momChange))}
               </span>
             ) : undefined
           }
@@ -159,7 +159,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
               {formatMoney(stats.month_balance)}
             </span>
           }
-          footnote={`储蓄率 ${stats.savings_rate.toFixed(1)}%`}
+          footnote={`储蓄率 ${formatPercent(stats.savings_rate)}`}
         />
       </Panel>
 
@@ -182,7 +182,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                 railValue={Math.min(ac.percentage, 100)}                railColor="var(--brand)"
                 tone="text-[var(--fg)]"
                 subLeft={`初始 ${formatMoney(ac.initial_balance, { sign: 'none' })}`}
-                subRight={`占资产 ${ac.percentage.toFixed(1)}%`}
+                subRight={`占资产 ${formatPercent(ac.percentage)}`}
               />
             ))
           )}
@@ -221,7 +221,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                   subRight={
                     <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
                       {lc.credit_limit > 0
-                        ? `额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${lc.usage_rate.toFixed(1)}%`
+                        ? `额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${formatPercent(lc.usage_rate)}`
                         : `初始欠款 ${formatMoney(lc.initial_debt, { sign: 'none' })}`}
                     </span>
                   }
@@ -231,6 +231,33 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           )}
         </Panel>
       </div>
+
+      {/* ===== Payment Method Distribution ===== */}
+      <Panel className="p-[18px]">
+        <div className="flex items-baseline justify-between gap-2.5 mb-3">
+          <b className="text-sm font-[650] text-[var(--fg)]">当月支付途径分布</b>
+          <span className="num text-[12.5px] text-[var(--fg-3)]">
+            {formatMoney(stats.month_expense, { sign: 'none' })}
+          </span>
+        </div>
+        {stats.payment_distribution.length === 0 ? (
+          <EmptyState title="当月暂无渠道支出" subtitle="记录支出后这里会展示分布" />
+        ) : (
+          stats.payment_distribution.map((pm: PaymentMethodStat) => (
+            <ChannelRow
+              key={pm.id}
+              dotColor="var(--brand)"
+              name={pm.name}
+              balance={pm.amount}
+              railValue={Math.min(pm.percentage, 100)}
+              railColor="var(--brand)"
+              tone="text-[var(--fg)]"
+              subLeft="占当月支出"
+              subRight={formatPercent(pm.percentage)}
+            />
+          ))
+        )}
+      </Panel>
 
       {/* ===== Category Donut + Trend ===== */}
       <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
@@ -253,11 +280,11 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
             <b className="text-sm font-[650] text-[var(--fg)]">近 6 个月收支</b>
             <span className="flex gap-2.5 items-center text-[11px] text-[var(--fg-3)]">
               <span className="flex gap-1 items-center">
-                <i className="block w-2 h-2 rounded-[2px] bg-[var(--expense)]" />
+                <i className="block w-2 h-2 rounded-[var(--r-nano)] bg-[var(--expense)]" />
                 支出
               </span>
               <span className="flex gap-1 items-center">
-                <i className="block w-2 h-2 rounded-[2px] bg-[var(--income)]" />
+                <i className="block w-2 h-2 rounded-[var(--r-nano)] bg-[var(--income)]" />
                 收入
               </span>
             </span>

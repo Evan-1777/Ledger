@@ -40,6 +40,7 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [monthTransactions, setMonthTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<StatsSummary | null>(null);
 
   // Loading states
@@ -69,6 +70,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('ledger_theme', darkMode ? 'dark' : 'light');
+    // Browser chrome & native controls follow the app theme, not the OS preference
+    const canvas = getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim();
+    if (canvas) {
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', canvas);
+    }
     // Brief global transition to smooth the theme switch without lingering side effects
     document.body.classList.add('theme-switching');
     const t = setTimeout(() => document.body.classList.remove('theme-switching'), 200);
@@ -109,8 +115,13 @@ export default function App() {
   const fetchTransactions = useCallback(async () => {
     setLoadingTransactions(true);
     try {
-      const data = await api.getTransactions(streamFilter);
+      // Headline and list are decoupled: the month aggregate always uses the unfiltered source
+      const [data, monthData] = await Promise.all([
+        api.getTransactions(streamFilter),
+        api.getTransactions('all'),
+      ]);
       setTransactions(data);
+      setMonthTransactions(monthData);
     } catch (err: unknown) {
       if (isAuthenticated) {
         addToast('error', err instanceof Error ? err.message : '获取流水失败');
@@ -373,6 +384,7 @@ export default function App() {
           {currentTab === 'stream' && (
             <StreamPage
               transactions={transactions}
+              monthTransactions={monthTransactions}
               loading={loadingTransactions}
               onEdit={handleEditClick}
               onDelete={(id) => {

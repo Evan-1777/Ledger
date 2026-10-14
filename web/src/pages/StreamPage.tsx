@@ -1,12 +1,14 @@
 import type { FC } from 'react';
 import { CalendarIcon, EditIcon, TrashIcon } from '../components/Icons';
-import { TypeTile, Amount, SkeletonList, EmptyState, IconButton } from '../components/primitives';
+import { TypeTile, Amount, Panel, SkeletonList, EmptyState, IconButton } from '../components/primitives';
 import { Transaction } from '../lib/api';
-import { formatMoney } from '../lib/format.ts';
+import { formatMoney, formatPercent } from '../lib/format.ts';
 import { getDayInfo, buildMetaParts, formatAmount } from './streamUtils';
 
 interface StreamPageProps {
   transactions: Transaction[];
+  /** Unfiltered source (limit=100) dedicated to the month headline, immune to the bottom filter */
+  monthTransactions: Transaction[];
   loading: boolean;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: number) => void;
@@ -56,6 +58,7 @@ function computeMonthHeadline(transactions: Transaction[]): MonthHeadline {
 
 export const StreamPage: FC<StreamPageProps> = ({
   transactions,
+  monthTransactions,
   loading,
   onEdit,
   onDelete,
@@ -77,7 +80,7 @@ export const StreamPage: FC<StreamPageProps> = ({
     );
   }
 
-  const headline = computeMonthHeadline(transactions);
+  const headline = computeMonthHeadline(monthTransactions);
 
   // Group transactions by local date
   const groups: { [dateKey: string]: Transaction[] } = {};
@@ -128,10 +131,10 @@ export const StreamPage: FC<StreamPageProps> = ({
         {/* Expense/Income ratio rail — hidden when there is nothing to divide */}
         {headline.ratio !== null && (
           <div
-            className="w-[132px] h-1 rounded-[2px] overflow-hidden flex bg-[var(--income)] mb-1.5"
+            className="w-[132px] h-1 rounded-[var(--r-nano)] overflow-hidden flex bg-[var(--income)] mb-1.5"
             title="收支比例"
             role="img"
-            aria-label={`支出占收支合计 ${headline.ratio.toFixed(1)}%`}
+            aria-label={`支出占收支合计 ${formatPercent(headline.ratio)}`}
           >
             <i className="block h-full bg-[var(--expense)]" style={{ width: `${headline.ratio}%` }} />
           </div>
@@ -156,11 +159,7 @@ export const StreamPage: FC<StreamPageProps> = ({
           });
 
           return (
-            <section
-              key={dateKey}
-              className="bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-md)]
-                shadow-[var(--e1),inset_0_1px_0_var(--highlight-top)] overflow-hidden"
-            >
+            <Panel key={dateKey} className="overflow-hidden">
               {/* Day Header */}
               <div className="flex items-baseline justify-between gap-3 flex-wrap px-3.5 py-[9px] bg-[var(--surface-sunken)] border-b border-[var(--line)]">
                 <div className="flex items-baseline gap-1.5">
@@ -235,7 +234,7 @@ export const StreamPage: FC<StreamPageProps> = ({
                   );
                 })}
               </div>
-            </section>
+            </Panel>
           );
         })}
       </div>

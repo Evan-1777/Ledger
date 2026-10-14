@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import type { FC, FormEvent } from 'react';
 import {
   CloseIcon,
@@ -368,9 +368,14 @@ export const RecordModal: FC<RecordModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-[rgba(8,12,20,.44)] backdrop-blur-[4px] flex items-center justify-center p-3 sm:p-4 animate-fade">
+    <div className="fixed inset-0 z-[1000] bg-[var(--overlay)] backdrop-blur-[4px] flex items-center justify-center p-3 sm:p-4 animate-fade">
       {/* Modal Card - 100dvh Dynamic Viewport Height & Column Flex */}
-      <div className="w-full max-w-[520px] max-h-[calc(100dvh-24px)] bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] flex flex-col overflow-hidden animate-pop relative">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={initialTransaction ? '编辑账单' : '记账'}
+        className="w-full max-w-[520px] max-h-[calc(100dvh-24px)] bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] flex flex-col overflow-hidden animate-pop relative"
+      >
         {/* Header */}
         <div className="px-[18px] py-3.5 border-b border-[var(--line)] flex items-center justify-between flex-shrink-0">
           <b className="text-[15px] font-[650] text-[var(--fg)]">{initialTransaction ? '编辑账单' : '记账'}</b>
@@ -395,6 +400,7 @@ export const RecordModal: FC<RecordModalProps> = ({
                 onChange={(key) => handleSwitchType(key as RecordType)}
                 ariaLabel="记账类型"
                 compact="xs"
+                disabled={!!initialTransaction}
                 className="rounded-[var(--r-md)]"
               />
             </div>
@@ -402,7 +408,7 @@ export const RecordModal: FC<RecordModalProps> = ({
             {/* Hero Amount Box — the single protagonist */}
             <div className="p-3.5 px-4 rounded-[var(--r-md)] bg-[var(--surface-sunken)] border border-[var(--line)] focus-within:border-[var(--brand)] focus-within:bg-[var(--surface)] transition-[border-color,background-color] duration-[var(--d1)]">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs text-[var(--fg-3)]">账单金额</span>
+                <label htmlFor="record-amount" className="text-xs text-[var(--fg-3)]">账单金额</label>
                 {recordType === 'transfer' && !showFee && (
                   <button
                     type="button"
@@ -417,12 +423,12 @@ export const RecordModal: FC<RecordModalProps> = ({
                 <span className="text-[22px] font-medium text-[var(--fg-2)]">¥</span>
                 <input
                   ref={amountInputRef}
+                  id="record-amount"
                   type="text"
                   inputMode="decimal"
                   value={amountStr}
                   onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder="0.00"
-                  aria-label="金额"
                   className="flex-1 min-w-0 bg-transparent border-none outline-none text-[34px] font-[680] tracking-[-.03em] text-[var(--fg)] num placeholder:text-[var(--fg-muted)]"
                 />
               </div>
@@ -465,8 +471,9 @@ export const RecordModal: FC<RecordModalProps> = ({
 
             {/* Description */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-[var(--fg-2)]">用途说明</label>
+              <label htmlFor="record-desc" className="text-xs font-semibold text-[var(--fg-2)]">用途说明</label>
               <input
+                id="record-desc"
                 type="text"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -689,8 +696,9 @@ export const RecordModal: FC<RecordModalProps> = ({
 
             {/* Date & Time */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-[var(--fg-2)]">记账时间</label>
+              <label htmlFor="record-time" className="text-xs font-semibold text-[var(--fg-2)]">记账时间</label>
               <input
+                id="record-time"
                 type="datetime-local"
                 value={transactedAt}
                 onChange={(e) => setTransactedAt(e.target.value)}
@@ -733,12 +741,15 @@ export const RecordModal: FC<RecordModalProps> = ({
 
 const ChevronRight = () => <ChevronRightIcon size={12} className="text-[var(--fg-muted)]" />;
 
-const ChannelField: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-[var(--fg-2)]">{label}</label>
-    <div className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-2">{children}</div>
-  </div>
-);
+const ChannelField: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span id={id} className="text-xs font-semibold text-[var(--fg-2)]">{label}</span>
+      <div role="group" aria-labelledby={id} className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-2">{children}</div>
+    </div>
+  );
+};
 
 const ChannelButton: FC<{
   name: string;
