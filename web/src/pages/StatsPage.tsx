@@ -1,422 +1,275 @@
-import { useState } from 'react';
-import type { FC } from 'react';
-import { StatsSummary } from '../lib/api';
+import type { FC, ReactNode } from 'react';
+import { StatsSummary, AssetChannelStat, LiabilityChannelStat } from '../lib/api';
+import { formatMoney } from '../lib/format.ts';
+import { Panel, Chip, Rail, Skeleton, EmptyState } from '../components/primitives';
+import { DonutChart, TrendChart } from '../components/Charts';
+import { WalletIcon } from '../components/Icons';
 
 interface StatsPageProps {
   stats: StatsSummary | null;
   loading: boolean;
 }
 
-export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
-  const [selectedCatId, setSelectedCatId] = useState<number | null>(null);
-
-  if (loading || !stats) {
-    return (
-      <div className="w-full max-w-[900px] flex flex-col items-center justify-center py-20 text-[var(--color-neutral-fg-3)]">
-        <div className="w-8 h-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-xs">加载统计数据中...</span>
+function StatsSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-hidden>
+      <Skeleton className="h-[150px] rounded-[var(--r-xl)]" />
+      <Skeleton className="h-[110px] rounded-[var(--r-lg)]" />
+      <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
+        <Skeleton className="h-[190px] rounded-[var(--r-lg)]" />
+        <Skeleton className="h-[190px] rounded-[var(--r-lg)]" />
       </div>
-    );
+    </div>
+  );
+}
+
+/* Metric cell inside the hairline-divided row */
+const Metric: FC<{ label: string; value: ReactNode; footnote?: ReactNode; className?: string }> = ({
+  label,
+  value,
+  footnote,
+  className = '',
+}) => (
+  <div className={`p-4 px-[18px] ${className}`}>
+    <span className="block text-xs text-[var(--fg-3)]">{label}</span>
+    <b className="num block mt-1 text-[19px] font-[650] tracking-[-.02em] text-[var(--fg)]">{value}</b>
+    {footnote && <small className="block mt-1.5 text-[11.5px] text-[var(--fg-muted)]">{footnote}</small>}
+  </div>
+);
+
+/* Hairline dividers: 2-col grid below 720px, 4-col above */
+const METRIC_BORDERS = [
+  '',
+  'border-l border-[var(--line)]',
+  'border-t border-[var(--line)] min-[720px]:border-t-0 min-[720px]:border-l',
+  'border-t border-l border-[var(--line)] min-[720px]:border-t-0',
+];
+
+/* Channel row shared by asset & liability panels */
+const ChannelRow: FC<{
+  dotColor: string;
+  name: string;
+  balance: number;
+  /** null → no meaningful ratio, rail is not rendered */
+  railValue: number | null;
+  railColor: string;
+  tone: string;
+  subLeft: ReactNode;
+  subRight: ReactNode;
+}> = ({ dotColor, name, balance, railValue, railColor, tone, subLeft, subRight }) => (
+  <div className="flex flex-col gap-1.5 py-2.5 border-t border-[var(--line)] first:border-t-0">
+    <div className="flex items-center gap-2 text-[13px]">
+      <i className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: dotColor }} />
+      <b className="flex-1 font-semibold text-[var(--fg)] truncate">{name}</b>
+      <i className={`not-italic num font-[650] ${tone}`}>{formatMoney(balance, { sign: 'none' })}</i>
+    </div>
+    {railValue !== null && <Rail value={railValue} color={railColor} />}
+    <div className="flex justify-between gap-2 text-[11.5px] text-[var(--fg-muted)]">
+      <span className="truncate">{subLeft}</span>
+      <span className="whitespace-nowrap">{subRight}</span>
+    </div>
+  </div>
+);
+
+export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
+  if (loading || !stats) {
+    return <StatsSkeleton />;
   }
 
-  // Calculate max value for trend bar scaling
-  const maxTrendVal = Math.max(
-    ...stats.monthly_trends.map((t) => Math.max(t.expense, t.income)),
-    100
-  );
+  const assetSummary = stats.asset_summary;
+  const { total_assets: totalAssets, total_liabilities: totalLiabilities, net_assets: netAssets } = assetSummary;
 
-  const selectedCategory = stats.category_distribution.find((c) => c.id === selectedCatId);
+  // Derivations — all zero-denominator safe, no invented data
+  const debtRatio = totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : null;
+  const channelCount = assetSummary.asset_channels.length + assetSummary.liability_channels.length;
+  const momChange =
+    stats.last_month_expense > 0
+      ? ((stats.month_expense - stats.last_month_expense) / stats.last_month_expense) * 100
+      : null;
 
-  const assetSummary = stats.asset_summary || {
-    total_assets: 0,
-    total_liabilities: 0,
-    net_assets: 0,
-    asset_channels: [],
-    liability_channels: [],
-  };
+  const netTone = netAssets >= 0 ? 'text-[var(--fg)]' : 'text-[var(--expense-text)]';
 
   return (
-    <div className="w-full max-w-[900px] flex flex-col gap-5 animate-fade-in pb-16">
-      {/* Macro Portfolio Overview KPI Cluster */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {/* KPI 1: Net Assets */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-brand-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">净资产</span>
-          </div>
-          <span
-            className={`text-2xl font-bold tabular-num tracking-tight ${
-              assetSummary.net_assets >= 0
-                ? 'text-[var(--color-neutral-fg-1)]'
-                : 'text-[var(--color-expense-dark)]'
-            }`}
-          >
-            {assetSummary.net_assets < 0 ? '-' : ''}¥{Math.abs(assetSummary.net_assets).toFixed(2)}
-          </span>
-        </div>
-
-        {/* KPI 2: Total Assets */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">资产总计</span>
-          <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
-            ¥{assetSummary.total_assets.toFixed(2)}
-          </span>
-        </div>
-
-        {/* KPI 3: Total Liabilities */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">负债总计</span>
-          <span className="text-2xl font-bold tabular-num text-[var(--color-expense-dark)]">
-            ¥{assetSummary.total_liabilities.toFixed(2)}
-          </span>
-        </div>
-      </div>
-
-      {/* 4 Regular Flow KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        {/* KPI 1: Week Expense */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">本周花费</span>
-          <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
-            ¥{stats.week_expense.toFixed(2)}
-          </span>
-        </div>
-
-        {/* KPI 2: Month Expense */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">当月花费</span>
-          <span className="text-2xl font-bold tabular-num text-[var(--color-expense-dark)]">
-            ¥{stats.month_expense.toFixed(2)}
-          </span>
-        </div>
-
-        {/* KPI 3: Last Month Expense */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">上月花费</span>
-          <span className="text-2xl font-bold tabular-num text-[var(--color-neutral-fg-1)]">
-            ¥{stats.last_month_expense.toFixed(2)}
-          </span>
-        </div>
-
-        {/* KPI 4: Month Balance */}
-        <div className="bg-[var(--color-card-bg)] rounded-xl border border-[var(--color-neutral-stroke)] p-4 shadow-[var(--shadow-card)] flex flex-col gap-1.5">
-          <span className="text-xs text-[var(--color-neutral-fg-3)] font-medium">当月结余</span>
-          <span
-            className={`text-2xl font-bold tabular-num ${
-              stats.month_balance >= 0
-                ? 'text-[var(--color-income-dark)]'
-                : 'text-[var(--color-expense-dark)]'
-            }`}
-          >
-            {stats.month_balance >= 0 ? '+' : ''}¥{stats.month_balance.toFixed(2)}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <span
-              className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
-                stats.savings_rate >= 0
-                  ? 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
-                  : 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
-              }`}
-            >
-              储蓄率 {stats.savings_rate.toFixed(1)}%
+    <div className="flex flex-col gap-4 pb-4">
+      {/* ===== Hero: Net Assets ===== */}
+      <Panel variant="hero" className="p-[22px] pt-[22px] pb-5 min-[720px]:grid min-[720px]:grid-cols-[1fr_auto] min-[720px]:gap-[18px] min-[720px]:px-[26px]">
+        <div>
+          <div className="text-[12.5px] font-semibold tracking-[.01em] text-[var(--fg-3)]">净资产</div>
+          <div className="flex items-baseline gap-1 mt-1.5">
+            <span className="num text-2xl font-medium text-[var(--fg-2)]">¥</span>
+            <span className={`num text-[34px] min-[720px]:text-[40px] font-[680] tracking-[-.028em] leading-[1.1] ${netTone}`}>
+              {netAssets < 0 ? '−' : ''}
+              {formatMoney(Math.abs(netAssets), { sign: 'none' })}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Channels Breakdown Grid (Remaining Balance & Credit Usage) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Asset Channels Remaining Balance Panel */}
-        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)] flex flex-col gap-3.5">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
-              资产渠道剩余金额
-            </h4>
-            <span className="text-xs font-semibold tabular-num text-[var(--color-neutral-fg-2)]">
-              ¥{assetSummary.total_assets.toFixed(2)}
-            </span>
+          <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+            {debtRatio !== null && <Chip>资产负债率 {debtRatio.toFixed(1)}%</Chip>}
+            {channelCount > 0 && <Chip>{channelCount} 个在用渠道</Chip>}
           </div>
+        </div>
 
-          {assetSummary.asset_channels.length === 0 ? (
-            <div className="text-center py-6 text-xs text-[var(--color-neutral-fg-3)]">
-              暂无资产渠道
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              {assetSummary.asset_channels.map((ac) => (
-                <div
-                  key={ac.id}
-                  className="flex flex-col gap-1.5 p-2.5 px-3 rounded-xl bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)]"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[var(--color-neutral-fg-1)] flex items-center gap-2 truncate">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-brand)] flex-shrink-0" />
-                      <span className="truncate">{ac.name}</span>
-                    </span>
-                    <span className="font-bold tabular-num text-[var(--color-neutral-fg-1)] ml-2 flex-shrink-0">
-                      ¥{ac.remaining_balance.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-[var(--color-neutral-fg-subtle)]">
-                    <span>初始余额: ¥{ac.initial_balance.toFixed(2)}</span>
-                    <span className="tabular-num">占总资产 {ac.percentage.toFixed(1)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* ≥720px: asset / liability side column with liability ratio rail */}
+        <div className="flex flex-col gap-2.5 min-w-[210px] mt-4 min-[720px]:mt-0">
+          <div className="flex items-baseline justify-between gap-2.5">
+            <span className="text-xs text-[var(--fg-3)]">资产总计</span>
+            <b className="num text-sm font-[650] text-[var(--fg)]">
+              {formatMoney(totalAssets, { sign: 'none' })}
+            </b>
+          </div>
+          <div className="flex items-baseline justify-between gap-2.5">
+            <span className="text-xs text-[var(--fg-3)]">负债总计</span>
+            <b className="num text-sm font-[650] text-[var(--expense-text)]">
+              {formatMoney(totalLiabilities, { sign: 'none' })}
+            </b>
+          </div>
+          {debtRatio !== null && (
+            <>
+              <Rail value={debtRatio} color="var(--expense)" />
+              <div className="flex justify-between text-[11.5px] text-[var(--fg-muted)]">
+                <span>负债 / 资产</span>
+                <span className="num">{debtRatio.toFixed(1)}%</span>
+              </div>
+            </>
           )}
         </div>
+      </Panel>
 
-        {/* Liability Channels Remaining Credit & Debt Panel */}
-        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)] flex flex-col gap-3.5">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
-              负债渠道与欠款
-            </h4>
-            <span className="text-xs font-semibold tabular-num text-[var(--color-expense-dark)]">
-              ¥{assetSummary.total_liabilities.toFixed(2)}
+      {/* ===== Metrics Row (hairline divided) ===== */}
+      <Panel className="grid grid-cols-2 min-[720px]:grid-cols-4 overflow-hidden">
+        <Metric className={METRIC_BORDERS[0]} label="本周花费" value={formatMoney(stats.week_expense, { sign: 'none' })} />
+        <Metric
+          className={METRIC_BORDERS[1]}
+          label="当月花费"
+          value={<span className="text-[var(--expense-text)]">{formatMoney(stats.month_expense, { sign: 'none' })}</span>}
+          footnote={
+            momChange !== null ? (
+              <span>
+                较上月 {momChange >= 0 ? '+' : '−'}
+                {Math.abs(momChange).toFixed(1)}%
+              </span>
+            ) : undefined
+          }
+        />
+        <Metric className={METRIC_BORDERS[2]} label="上月花费" value={formatMoney(stats.last_month_expense, { sign: 'none' })} />
+        <Metric
+          className={METRIC_BORDERS[3]}
+          label="当月结余"
+          value={
+            <span className={stats.month_balance >= 0 ? 'text-[var(--income-text)]' : 'text-[var(--expense-text)]'}>
+              {formatMoney(stats.month_balance)}
+            </span>
+          }
+          footnote={`储蓄率 ${stats.savings_rate.toFixed(1)}%`}
+        />
+      </Panel>
+
+      {/* ===== Channel Panels ===== */}
+      <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
+        <Panel className="p-[18px]">
+          <div className="flex items-baseline justify-between gap-2.5 mb-3">
+            <b className="text-sm font-[650] text-[var(--fg)]">资产渠道</b>
+            <span className="num text-[12.5px] text-[var(--fg-3)]">{formatMoney(totalAssets, { sign: 'none' })}</span>
+          </div>
+          {assetSummary.asset_channels.length === 0 ? (
+            <EmptyState icon={<WalletIcon size={20} />} title="暂无资产渠道" subtitle="在「基础设置」中添加资产渠道后开始统计" />
+          ) : (
+            assetSummary.asset_channels.map((ac: AssetChannelStat) => (
+              <ChannelRow
+                key={ac.id}
+                dotColor="var(--brand)"
+                name={ac.name}
+                balance={ac.remaining_balance}
+                railValue={Math.min(ac.percentage, 100)}                railColor="var(--brand)"
+                tone="text-[var(--fg)]"
+                subLeft={`初始 ${formatMoney(ac.initial_balance, { sign: 'none' })}`}
+                subRight={`占资产 ${ac.percentage.toFixed(1)}%`}
+              />
+            ))
+          )}
+        </Panel>
+
+        <Panel className="p-[18px]">
+          <div className="flex items-baseline justify-between gap-2.5 mb-3">
+            <b className="text-sm font-[650] text-[var(--fg)]">负债渠道</b>
+            <span className="num text-[12.5px] text-[var(--expense-text)]">
+              {formatMoney(totalLiabilities, { sign: 'none' })}
             </span>
           </div>
-
           {assetSummary.liability_channels.length === 0 ? (
-            <div className="text-center py-6 text-xs text-[var(--color-neutral-fg-3)]">
-              暂无负债渠道
-            </div>
+            <EmptyState icon={<WalletIcon size={20} />} title="暂无负债渠道" subtitle="在「基础设置」中添加负债渠道后开始统计" />
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {assetSummary.liability_channels.map((lc) => (
-                <div
+            assetSummary.liability_channels.map((lc: LiabilityChannelStat) => {
+              // ≥80% credit usage flips the whole row into warning semantics
+              const hot = lc.credit_limit > 0 && lc.usage_rate >= 80;
+              const tone = hot ? 'text-[var(--expense-text)]' : 'text-[var(--fg)]';
+              return (
+                <ChannelRow
                   key={lc.id}
-                  className="flex flex-col gap-1.5 p-2.5 px-3 rounded-xl bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)]"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[var(--color-neutral-fg-1)] flex items-center gap-2 truncate">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-expense-dark)] flex-shrink-0" />
-                      <span className="truncate">{lc.name}</span>
-                    </span>
-                    <span className="font-bold tabular-num text-[var(--color-expense-dark)] ml-2 flex-shrink-0">
-                      ¥{lc.current_debt.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* 4px Micro Progress Bar for Credit Limit Usage */}
-                  {lc.credit_limit > 0 && (
-                    <div className="w-full h-1 bg-[var(--color-canvas-bg)] rounded-full overflow-hidden my-0.5">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${
-                          lc.usage_rate >= 80
-                            ? 'bg-[var(--color-expense-dark)]'
-                            : 'bg-[var(--color-neutral-fg-subtle)]'
-                        }`}
-                        style={{ width: `${Math.min(lc.usage_rate, 100)}%` }}
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between text-[11px] text-[var(--color-neutral-fg-subtle)]">
-                    <span>
+                  dotColor="var(--expense)"
+                  name={lc.name}
+                  balance={lc.current_debt}
+                  railValue={lc.credit_limit > 0 ? Math.min(lc.usage_rate, 100) : null}
+                  railColor="var(--expense)"
+                  tone={tone}
+                  subLeft={
+                    <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
                       {lc.credit_limit > 0
-                        ? `剩余可用: ¥${lc.remaining_credit.toFixed(2)}`
+                        ? `剩余可用 ${formatMoney(lc.remaining_credit, { sign: 'none' })}`
                         : '不设额度上限'}
                     </span>
-                    <span className="tabular-num">
+                  }
+                  subRight={
+                    <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
                       {lc.credit_limit > 0
-                        ? `额度: ¥${lc.credit_limit.toFixed(2)} (${lc.usage_rate.toFixed(1)}%)`
-                        : `初始欠款: ¥${lc.initial_debt.toFixed(2)}`}
+                        ? `额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${lc.usage_rate.toFixed(1)}%`
+                        : `初始欠款 ${formatMoney(lc.initial_debt, { sign: 'none' })}`}
                     </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Category Expense Distribution with Drilldown */}
-      <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5.5 shadow-[var(--shadow-card)]">
-        <div className="mb-4">
-          <h4 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
-            当月支出分类占比
-          </h4>
-        </div>
-
-        {stats.category_distribution.length === 0 ? (
-          <div className="text-center py-10 text-xs text-[var(--color-neutral-fg-3)]">
-            当月暂无分类支出数据
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {stats.category_distribution.map((cat) => {
-              const isSelected = selectedCatId === cat.id;
-              return (
-                <div
-                  key={cat.id}
-                  onClick={() => setSelectedCatId(isSelected ? null : cat.id)}
-                  className={`p-2.5 px-3 rounded-xl cursor-pointer border transition-all ${
-                    isSelected
-                      ? 'bg-[var(--color-brand-light)] border-[var(--color-brand-stroke)]'
-                      : 'border-transparent hover:bg-[var(--color-hover-bg)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5 text-xs">
-                    <span className="font-semibold text-[var(--color-neutral-fg-1)]">
-                      {cat.name}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold tabular-num text-[var(--color-neutral-fg-1)]">
-                        ¥{cat.amount.toFixed(2)}
-                      </span>
-                      <span className="text-[var(--color-neutral-fg-3)] tabular-num w-11 text-right">
-                        {cat.percentage.toFixed(1)}%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Progress rail */}
-                  <div className="h-1.5 w-full bg-[var(--color-canvas-bg)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--color-brand)] rounded-full transition-all duration-300"
-                      style={{ width: `${Math.min(cat.percentage, 100)}%` }}
-                    />
-                  </div>
-                </div>
+                  }
+                />
               );
-            })}
-
-            {/* Drilldown Subtag Cluster */}
-            {selectedCategory && (
-              <div className="mt-3 p-4 rounded-xl bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] animate-fade-in">
-                <div className="text-xs font-semibold text-[var(--color-neutral-fg-2)] mb-2 flex items-center justify-between">
-                  <span>{selectedCategory.name} · 细分标签消费明细</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCatId(null);
-                    }}
-                    className="text-xs text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] cursor-pointer"
-                  >
-                    收起
-                  </button>
-                </div>
-
-                {selectedCategory.tags.length === 0 ? (
-                  <div className="text-xs text-[var(--color-neutral-fg-subtle)]">
-                    该分类下暂无细分标签支出
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCategory.tags.map((tg) => (
-                      <div
-                        key={tg.id}
-                        className="bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] px-3 py-1.5 rounded-lg text-xs flex items-center gap-2"
-                      >
-                        <span className="font-medium text-[var(--color-neutral-fg-1)]">
-                          {tg.name}
-                        </span>
-                        <span className="tabular-num font-semibold text-[var(--color-brand)]">
-                          ¥{tg.amount.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] text-[var(--color-neutral-fg-subtle)] tabular-num">
-                          {tg.percentage.toFixed(1)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+            })
+          )}
+        </Panel>
       </div>
 
-      {/* 6-Month Trend & Payment Method Distribution */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Trend Chart */}
-        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)] flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)]">
-              近 6 个月收支趋势
-            </h4>
-            <div className="flex items-center gap-3 text-[11px] text-[var(--color-neutral-fg-3)]">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[var(--color-expense)]" />
+      {/* ===== Category Donut + Trend ===== */}
+      <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
+        <Panel className="p-[18px]">
+          <div className="flex items-baseline justify-between gap-2.5 mb-3.5">
+            <b className="text-sm font-[650] text-[var(--fg)]">当月支出构成</b>
+            <span className="num text-[12.5px] text-[var(--fg-3)]">
+              {formatMoney(stats.month_expense, { sign: 'none' })}
+            </span>
+          </div>
+          {stats.category_distribution.length === 0 ? (
+            <EmptyState title="当月暂无分类支出" subtitle="记录支出后这里会展示构成" />
+          ) : (
+            <DonutChart data={stats.category_distribution} />
+          )}
+        </Panel>
+
+        <Panel className="p-[18px] flex flex-col">
+          <div className="flex items-baseline justify-between gap-2.5 mb-3">
+            <b className="text-sm font-[650] text-[var(--fg)]">近 6 个月收支</b>
+            <span className="flex gap-2.5 items-center text-[11px] text-[var(--fg-3)]">
+              <span className="flex gap-1 items-center">
+                <i className="block w-2 h-2 rounded-[2px] bg-[var(--expense)]" />
                 支出
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-sm bg-[var(--color-income)]" />
+              <span className="flex gap-1 items-center">
+                <i className="block w-2 h-2 rounded-[2px] bg-[var(--income)]" />
                 收入
               </span>
-            </div>
+            </span>
           </div>
-
-          <div className="h-[140px] flex items-end justify-between gap-3 pt-4">
-            {stats.monthly_trends.map((item) => {
-              const expHeight = Math.max((item.expense / maxTrendVal) * 90, item.expense > 0 ? 6 : 0);
-              const incHeight = Math.max((item.income / maxTrendVal) * 90, item.income > 0 ? 6 : 0);
-              const label = item.month.substring(5); // e.g. "05" or "10"
-
-              return (
-                <div key={item.month} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
-                  <div className="flex items-end gap-1 h-[100px]">
-                    {/* Expense bar */}
-                    <div
-                      title={`支出: ¥${item.expense.toFixed(2)}`}
-                      className="w-3 rounded-t-sm bg-[var(--color-expense)] transition-all duration-300 hover:opacity-85"
-                      style={{ height: `${expHeight}px` }}
-                    />
-                    {/* Income bar */}
-                    <div
-                      title={`收入: ¥${item.income.toFixed(2)}`}
-                      className="w-3 rounded-t-sm bg-[var(--color-income)] transition-all duration-300 hover:opacity-85"
-                      style={{ height: `${incHeight}px` }}
-                    />
-                  </div>
-                  <span className="text-[11px] text-[var(--color-neutral-fg-3)] tabular-num">
-                    {label}月
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Payment Methods Breakdown */}
-        <div className="bg-[var(--color-card-bg)] rounded-2xl border border-[var(--color-neutral-stroke)] p-5 shadow-[var(--shadow-card)]">
-          <h4 className="text-sm font-semibold text-[var(--color-neutral-fg-1)] mb-4">
-            当月支付途径分布
-          </h4>
-
-          {stats.payment_distribution.length === 0 ? (
-            <div className="text-center py-10 text-xs text-[var(--color-neutral-fg-3)]">
-              暂无渠道支出记录
-            </div>
+          {stats.monthly_trends.length === 0 ? (
+            <EmptyState title="暂无趋势数据" />
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {stats.payment_distribution.map((pm) => (
-                <div key={pm.id} className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-[var(--color-neutral-fg-2)]">{pm.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="tabular-num font-semibold text-[var(--color-neutral-fg-1)]">
-                        ¥{pm.amount.toFixed(2)}
-                      </span>
-                      <span className="text-[var(--color-neutral-fg-3)] tabular-num w-10 text-right">
-                        {pm.percentage.toFixed(1)}%
-                      </span>
-                    </div>
-                  </div>
-                  <div className="h-1.5 w-full bg-[var(--color-canvas-bg)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--color-brand)] rounded-full"
-                      style={{ width: `${Math.min(pm.percentage, 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="mt-1">
+              <TrendChart data={stats.monthly_trends} />
             </div>
           )}
-        </div>
+        </Panel>
       </div>
     </div>
   );

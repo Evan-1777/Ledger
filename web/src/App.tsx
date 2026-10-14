@@ -4,6 +4,7 @@ import { BottomBar, FilterType } from './components/BottomBar';
 import { AuthModal } from './components/AuthModal';
 import { RecordModal } from './components/RecordModal';
 import { Toast, ToastMessage } from './components/Toast';
+import { ConfirmDialog } from './components/primitives';
 import { StreamPage } from './pages/StreamPage';
 import { StatsPage } from './pages/StatsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -15,6 +16,11 @@ import {
   StatsSummary,
   onAuthStateChange,
 } from './lib/api';
+
+interface PendingDelete {
+  id: number;
+  summary: string;
+}
 
 export default function App() {
   // Theme state
@@ -43,6 +49,8 @@ export default function App() {
   // Modals & Toasts
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const addToast = (type: 'success' | 'error' | 'info', message: string) => {
@@ -57,15 +65,14 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Sync theme
+  // Sync theme on <html> so the pre-paint script in index.html stays consistent
   useEffect(() => {
-    if (darkMode) {
-      document.body.classList.add('dark-mode');
-      localStorage.setItem('ledger_theme', 'dark');
-    } else {
-      document.body.classList.remove('dark-mode');
-      localStorage.setItem('ledger_theme', 'light');
-    }
+    document.documentElement.classList.toggle('dark-mode', darkMode);
+    localStorage.setItem('ledger_theme', darkMode ? 'dark' : 'light');
+    // Brief global transition to smooth the theme switch without lingering side effects
+    document.body.classList.add('theme-switching');
+    const t = setTimeout(() => document.body.classList.remove('theme-switching'), 200);
+    return () => clearTimeout(t);
   }, [darkMode]);
 
   // Auth check and listener
@@ -104,9 +111,9 @@ export default function App() {
     try {
       const data = await api.getTransactions(streamFilter);
       setTransactions(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isAuthenticated) {
-        addToast('error', err?.message || '获取流水失败');
+        addToast('error', err instanceof Error ? err.message : '获取流水失败');
       }
     } finally {
       setLoadingTransactions(false);
@@ -118,9 +125,9 @@ export default function App() {
     try {
       const data = await api.getStatsSummary();
       setStats(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (isAuthenticated) {
-        addToast('error', err?.message || '获取统计失败');
+        addToast('error', err instanceof Error ? err.message : '获取统计失败');
       }
     } finally {
       setLoadingStats(false);
@@ -188,15 +195,20 @@ export default function App() {
     if (currentTab === 'stats') fetchStats();
   };
 
-  const handleDeleteTransaction = async (id: number) => {
-    if (!window.confirm('确认删除此笔账单？')) return;
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await api.deleteTransaction(id);
+      await api.deleteTransaction(pendingDelete.id);
       addToast('success', '账单已删除');
+      setPendingDelete(null);
       fetchTransactions();
       if (currentTab === 'stats') fetchStats();
-    } catch (err: any) {
-      addToast('error', err?.message || '删除失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '删除失败');
+      setPendingDelete(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -216,8 +228,8 @@ export default function App() {
       await api.createPaymentMethod(name, paymentMethods.length + 1, type, initialBalance, creditLimit);
       addToast('success', `${type === 'liability' ? '负债渠道' : '资产渠道'}「${name}」已添加`);
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '添加失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '添加失败');
       throw err;
     }
   };
@@ -234,8 +246,8 @@ export default function App() {
       await api.updatePaymentMethod(id, name, sortOrder, type, initialBalance, creditLimit);
       addToast('success', `渠道「${name}」已更新`);
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '更新失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '更新失败');
       throw err;
     }
   };
@@ -245,8 +257,8 @@ export default function App() {
       await api.deletePaymentMethod(id);
       addToast('success', '渠道已删除');
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '删除失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '删除失败');
     }
   };
 
@@ -255,8 +267,8 @@ export default function App() {
       await api.createCategory(name, categories.length + 1, type);
       addToast('success', `${type === 'income' ? '收入分类' : '消费类型'}「${name}」已创建`);
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '创建失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '创建失败');
     }
   };
 
@@ -265,8 +277,8 @@ export default function App() {
       await api.deleteCategory(id);
       addToast('success', '消费类型已删除');
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '删除失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '删除失败');
     }
   };
 
@@ -274,10 +286,10 @@ export default function App() {
     try {
       await api.updateCategory(id, name, sort_order, type);
       fetchConfigData();
-    } catch (err: any) {
-      const msg = err?.message?.includes('category already exists')
+    } catch (err: unknown) {
+      const msg = err instanceof Error && err.message?.includes('category already exists')
         ? '分类名称已存在'
-        : err?.message || '更新分类失败';
+        : err instanceof Error ? err.message : '更新分类失败';
       addToast('error', msg);
       fetchConfigData();
       throw err;
@@ -292,8 +304,8 @@ export default function App() {
         await api.updateCategory(item.id, item.name, item.sort_order);
       }
       await fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '调整分类顺序失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '调整分类顺序失败');
       await fetchConfigData();
       throw err;
     }
@@ -304,8 +316,8 @@ export default function App() {
       await api.createTag(categoryId, name, 0);
       addToast('success', `细分标签「${name}」已添加`);
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '添加失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '添加失败');
     }
   };
 
@@ -313,10 +325,10 @@ export default function App() {
     try {
       await api.updateTag(id, name, sort_order);
       fetchConfigData();
-    } catch (err: any) {
-      const msg = err?.message?.includes('tag already exists')
+    } catch (err: unknown) {
+      const msg = err instanceof Error && err.message?.includes('tag already exists')
         ? '该分类下已存在同名标签'
-        : err?.message || '更新细分标签失败';
+        : err instanceof Error ? err.message : '更新细分标签失败';
       addToast('error', msg);
       fetchConfigData();
       throw err;
@@ -328,13 +340,13 @@ export default function App() {
       await api.deleteTag(id);
       addToast('success', '细分标签已删除');
       fetchConfigData();
-    } catch (err: any) {
-      addToast('error', err?.message || '删除失败');
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : '删除失败');
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--color-canvas-bg)] [background-image:var(--canvas-gradient)] bg-no-repeat text-[var(--color-neutral-fg-1)] transition-colors duration-200">
+    <div className="min-h-screen flex flex-col bg-[var(--canvas)] text-[var(--fg)]">
       {/* Toast notifications */}
       <Toast toasts={toasts} onDismiss={removeToast} />
 
@@ -351,35 +363,52 @@ export default function App() {
       />
 
       {/* Main Canvas Area */}
-      <main className="flex-1 flex flex-col items-center px-5 pt-6 pb-28 w-full">
-        {currentTab === 'stream' && (
-          <StreamPage
-            transactions={transactions}
-            loading={loadingTransactions}
-            onEdit={handleEditClick}
-            onDelete={handleDeleteTransaction}
-          />
-        )}
+      <main className="relative flex-1 flex flex-col items-center w-full px-4 pt-6 pb-[120px] min-[640px]:px-7">
+        {/* Layer 0 canvas glow */}
+        <div
+          aria-hidden
+          className="fixed inset-0 z-0 pointer-events-none bg-[var(--canvas-glow)] bg-no-repeat"
+        />
+        <div key={currentTab} className="relative z-[1] w-full max-w-[900px] animate-rise">
+          {currentTab === 'stream' && (
+            <StreamPage
+              transactions={transactions}
+              loading={loadingTransactions}
+              onEdit={handleEditClick}
+              onDelete={(id) => {
+                const tx = transactions.find((t) => t.id === id);
+                setPendingDelete({
+                  id,
+                  summary: tx ? `${tx.description} · ${tx.category_name || ''}` : '',
+                });
+              }}
+              onAddRecord={() => {
+                setEditingTransaction(null);
+                setIsRecordModalOpen(true);
+              }}
+            />
+          )}
 
-        {currentTab === 'stats' && <StatsPage stats={stats} loading={loadingStats} />}
+          {currentTab === 'stats' && <StatsPage stats={stats} loading={loadingStats} />}
 
-        {currentTab === 'settings' && (
-          <SettingsPage
-            categories={categories}
-            paymentMethods={paymentMethods}
-            onAddPaymentMethod={handleAddPaymentMethod}
-            onUpdatePaymentMethod={handleUpdatePaymentMethod}
-            onDeletePaymentMethod={handleDeletePaymentMethod}
-            onAddCategory={handleAddCategory}
-            onUpdateCategory={handleUpdateCategory}
-            onReorderCategories={handleReorderCategories}
-            onDeleteCategory={handleDeleteCategory}
-            onAddTag={handleAddTag}
-            onUpdateTag={handleUpdateTag}
-            onDeleteTag={handleDeleteTag}
-            onToast={addToast}
-          />
-        )}
+          {currentTab === 'settings' && (
+            <SettingsPage
+              categories={categories}
+              paymentMethods={paymentMethods}
+              onAddPaymentMethod={handleAddPaymentMethod}
+              onUpdatePaymentMethod={handleUpdatePaymentMethod}
+              onDeletePaymentMethod={handleDeletePaymentMethod}
+              onAddCategory={handleAddCategory}
+              onUpdateCategory={handleUpdateCategory}
+              onReorderCategories={handleReorderCategories}
+              onDeleteCategory={handleDeleteCategory}
+              onAddTag={handleAddTag}
+              onUpdateTag={handleUpdateTag}
+              onDeleteTag={handleDeleteTag}
+              onToast={addToast}
+            />
+          )}
+        </div>
       </main>
 
       {/* Bottom Floating Controls */}
@@ -409,6 +438,19 @@ export default function App() {
         paymentMethods={paymentMethods}
         initialTransaction={editingTransaction}
         onSubmit={handleSaveTransaction}
+      />
+
+      {/* Destructive Action Confirmation (in-app dialog) */}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="删除账单"
+        description="删除后该笔记录不可恢复。"
+        detail={pendingDelete?.summary || undefined}
+        confirmLabel="删除"
+        tone="danger"
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setPendingDelete(null)}
       />
 
       {/* Auth Lock Modal */}

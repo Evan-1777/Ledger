@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账 Web 应用，基于 Go + React + Vite + Tailwind + SQLite，单二进制交付。
-- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环已交付，并已实现移动端通知提示 (Toast) 视口自适应修复与转账手续费可选纯资产调整闭环，支持单二进制独立运行与 Docker 部署。
+- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环，以及 Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -54,24 +54,28 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ Navbar.tsx       # 顶栏分段胶囊主导航（hidden sm:inline 移动端纯图标自适应响应）、主题切换与登出
-│  │  │  ├─ BottomBar.tsx    # 底部 5 档位筛选胶囊（全部/支出/收入/转账/还款）、showFilter 优雅退化与右下角 FAB 记账按钮
-│  │  │  ├─ RecordModal.tsx  # 100dvh 视口适配、常驻底部 Footer、4 段胶囊滑块（支出/收入/转账/还款）、收支分类分流与内联平滑展开、转账方案 A 金额卡片内敛手续费、转账双资产互斥与系统锁定卡片、编辑态类型锁定
-│  │  │  ├─ AuthModal.tsx    # 管理员密码安全解锁浮层
-│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（含收支/转账/还款四类语义类型图标、调序、菜单、锁定与基础图标）
-│  │  │  └─ Toast.tsx        # 变动反馈悬浮通知：响应式居中（移动端绝对居中消除截断，桌面端右上锚定）与自动/手动关闭
+│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog（单一删除确认宿主契约）
+│  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
+│  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、SegmentedControl 主导航（滑动指示器）、主题切换与登出
+│  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
+│  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块（SegmentedControl translateX 指示器）、34px 金额输入区、转账手续费内联展开、收支分类渐进披露、双渠道互斥、日期走 format.ts 工具、常驻底部操作栏
+│  │  │  ├─ AuthModal.tsx    # 管理员安全解锁浮层（pop 弹性入场、内联错误提示条、品牌淡底锁形牌）
+│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标与基础图标，圆头线帽 2–2.4 描边约定）
+│  │  │  └─ Toast.tsx        # 弹簧入场胶囊通知（success/error/info 语义图标、移动端底部居中避开作业条、桌面右上锚定、aria-live）
 │  │  ├─ pages/
-│  │  │  ├─ StreamPage.tsx   # 账目流水：日表层合组（连续卡片表面 + 两段式日期表头/本地时区星期/收支小计 + hairline 分隔）、四类语义类型图标、完整四段元信息（分类/标签/账户/时间）、统一金额对齐契约与二级操作浮层
-│  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装含转账手续费、金额规范化）
-│  │  │  ├─ StatsPage.tsx    # 收支与资产统计：顶部 3 联宏观资产组合 KPI 卡片、渠道资产/负债细分监控面板、4 联收支 KPI 卡片、分类下钻、月度趋势双柱图（严格排除转账与还款）
-│  │  │  └─ SettingsPage.tsx # 基础设置：分类管理支持支出/收入分段控制、内联类型纠错、系统内置分类保护展示；资产与负债渠道双列工作台（内联新增、即时编辑）；专属细分标签管理抽屉 (Layer 3 Drawer)
+│  │  │  ├─ StreamPage.tsx   # 账目流水：当月概览头条（自然月聚合、不受筛选影响、除零保护、收支比例导轨）+ 日表层组（sunken 表头 + 发丝行分隔）+ TypeTile 语义瓦片 + 金额对齐契约 + 骨架/空态
+│  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装含转账手续费），金额格式化再导出自 lib/format.ts
+│  │  │  ├─ StatsPage.tsx    # 统计看板：净资产 Hero（40px 主数值 + 资产负债率导轨，可派生指标零虚构）+ 发丝分节四格指标行（花费环比/储蓄率注脚）+ 资产负债渠道双列明细（额度导轨、≥80% 使用率语义切换）+ 环形/趋势图
+│  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户）、发丝线列表、操作入口常驻可见、单一 pendingDelete 状态 + 单一 ConfirmDialog 实例宿主、细分标签抽屉（桌面右侧滑入 / 窄屏底部面板、滚动锁定）
 │  │  ├─ lib/
-│  │  │  └─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
-│  │  ├─ App.tsx             # 应用主容器，协调主题、鉴权状态、视图切换与全局快捷键（N），承载 Layer 0 Mica 画布渐变底色
-│  │  ├─ index.css           # Fluent 2 视觉令牌、暗黑模式中性凹陷面修正、暗黑浮层阴影补齐、Layer 0 Mica 类画布渐变材质（--canvas-gradient）、全局等宽数字 tabular-nums
+│  │  │  ├─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
+│  │  │  └─ format.ts        # 唯一格式化模块：formatAmount/formatMoney/formatPercent/resolveTone/本地时间输入互转工具
+│  │  ├─ App.tsx             # 应用主容器，协调主题（documentElement 同步 + 防闪脚本）、视图 rise 转场（key 重挂载）、账单删除单一 ConfirmDialog 确认宿主与全局快捷键（N）
+│  │  ├─ index.css           # Fluent 2 四层材质令牌体系（分层面/发丝线/品牌/四组语义色/半径/深度/动效/排版，深浅成对）、全局关键帧与 prefers-reduced-motion 退化
 │  │  └─ main.tsx            # React 挂载入口
 │  ├─ test/                  # 前端自动化自检（基于 Node 24 原生 node:test 与 --experimental-strip-types）
-│  │  └─ stream.test.ts      # 流水纯函数核心业务契约自检测试套件
+│  │  ├─ stream.test.ts      # 流水纯函数核心业务契约自检测试套件
+│  │  └─ format.test.ts      # 格式化模块测试（formatMoney/formatPercent/resolveTone/日期往返）
 │  ├─ embed.go               # Go embed 静态资源绑定（暴露 DistFS）
 │  ├─ embed_test.go          # embed 资源可读性验证
 │  ├─ vite.config.ts         # Vite 配置（Tailwind 插件、/api 反向代理）
@@ -148,6 +152,7 @@ Ledger/
 - 2026-10-05 转账手续费纯资产调整核算与收支隔离——遵循转账本质与既有收支隔离契约，转出资产结余纳管 `source_transfer_sum = amount_cents + fee_cents` 扣减，净资产精确减少 `fee`；周/月收支与分类分布保持对转账完全隔离，杜绝孤儿分类支出与分类百分比失真
 - 2026-10-05 前端方案 A 金额卡片内敛手续费交互——遵循资深用户去噪原则，默认转账界面极简纯净，仅在账单金额卡片 Header 右上角提供微型 `+ 手续费` 触发；点开即内联展开输入框，支持一键清空收起；流水明细元信息按指定规范直观展示 `手续费 ¥X.XX`
 - 2026-10-05 复审吸收与轻量收敛——校准术语表「双向资产转账」明确手续费净资产变动；剔除 RecordModal 提交阶段 parsedFee < 0 不可达防御分支，防线收敛于输入正则与服务端信任边界；清理 Plan 方案比对表中临时原型虚假引用
+- 2026-10-14 Fluent 2 成品级 UI/UX 全站重构（不新增业务功能、不改后端契约）——`index.css` 重写为四层材质令牌体系（画布/内容/悬浮/模态分层面、发丝线、品牌五档、支出/收入/转账/还款四组语义色各四档、半径刻度、四级深度阴影、三条动效曲线三档时长、深浅主题成对定义，暗色以面提亮 + 顶部内高光表达层级）；新增共享原子构件层 `primitives.tsx`（Panel/IconButton/Button/SegmentedControl/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog），组件样式一律 Tailwind utility + 令牌任意值语法消费，禁止就地色值/圆角/阴影字面量；金额格式化收敛至 `lib/format.ts` 唯一模块（`formatMoney`/`formatPercent`/`resolveTone`/本地时间输入互转），streamUtils 再导出保持既有测试契约；自绘 SVG 图表 `Charts.tsx`（品牌单色阶环形图 + 图例点选同视口下钻、响应式 viewBox 双线趋势图），零第三方图表依赖；破坏性操作全面以应用内 `ConfirmDialog`（alertdialog 契约、焦点落于取消、Esc/遮罩等同取消）替换浏览器原生 `confirm`，App 层与设置页各自维护单一 `pendingDelete` 状态宿主；流水页新增当月概览头条（自然月聚合、不受筛选影响、比例导轨除零不渲染）；统计页重构为净资产 Hero 主视觉 + 发丝分节指标行（花费环比/储蓄率注脚，分母为零降级）+ 渠道双列明细；数据边界纪律：所有呈现数值仅由 `StatsSummary` 已有字段及其四则派生，禁止虚构历史快照类指标；`index.html` 补主题元信息与首帧防闪内联脚本（类挂 documentElement 与 App 主题同步）
 
 ## 术语
 

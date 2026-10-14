@@ -105,31 +105,5 @@ export function buildMetaParts(item: MetaItemInput): string[] {
   return metaParts;
 }
 
-export interface FormattedAmount {
-  sign: string;
-  amountStr: string;
-  formattedText: string;
-}
-
-export function formatAmount(
-  amount: number,
-  type?: string | null,
-  amountCents?: number | null
-): FormattedAmount {
-  const isRepayment = type === 'repayment';
-  const isTransfer = type === 'transfer';
-  const isNeutral = isRepayment || isTransfer;
-  const isExp = type === 'expense' || (!type && (amountCents ?? 0) < 0);
-
-  const absAmount = Math.abs(amount);
-  const amountStr = absAmount.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-  const sign = isNeutral ? '' : isExp ? '−' : '+';
-  return {
-    sign,
-    amountStr,
-    formattedText: `${sign}¥${amountStr}`,
-  };
-}
+export { formatAmount } from '../lib/format.ts';
+export type { FormattedAmount } from '../lib/format.ts';

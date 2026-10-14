@@ -1,0 +1,1068 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ledger · 重构原型</title>
+<style>
+/* ============================================================
+   Design Tokens — Fluent-based, four-layer material system
+   ============================================================ */
+:root{
+  /* Layer surfaces */
+  --canvas:#f4f5f7;
+  --canvas-glow:radial-gradient(1100px 520px at 50% -10%, rgba(0,120,212,.075), transparent 62%);
+  --surface:#ffffff;
+  --surface-raised:#ffffff;
+  --surface-sunken:#f0f1f4;
+  --surface-hover:#f2f3f6;
+  --glass:rgba(255,255,255,.72);
+
+  /* Lines */
+  --line:rgba(15,23,42,.075);
+  --line-strong:rgba(15,23,42,.14);
+  --highlight-top:transparent;
+
+  /* Foreground */
+  --fg:#101828;
+  --fg-2:#475467;
+  --fg-3:#6b7684;
+  --fg-muted:#98a2b3;
+
+  /* Brand */
+  --brand:#0078d4;
+  --brand-hover:#106ebe;
+  --brand-pressed:#005a9e;
+  --brand-text:#0063b1;
+  --brand-soft:#e9f3fc;
+  --brand-line:#b9dcf7;
+
+  /* Semantic — money direction */
+  --expense:#e5484d; --expense-text:#c22f3d; --expense-soft:#fdedee; --expense-line:#f7c9cb;
+  --income:#2fa96b;  --income-text:#1f8a55;  --income-soft:#e7f6ef;  --income-line:#b6e3ca;
+  --transfer:#0087e0;--transfer-text:#0071bd;--transfer-soft:#e6f2fd;--transfer-line:#b7d9f7;
+  --repay:#8e5cd6;   --repay-text:#7840c4;   --repay-soft:#f3ebfb;   --repay-line:#dac6f5;
+
+  /* Radii */
+  --r-xs:6px; --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-pill:999px;
+
+  /* Elevation */
+  --e1:0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+  --e2:0 2px 4px -1px rgba(16,24,40,.05), 0 4px 8px -2px rgba(16,24,40,.05);
+  --e3:0 8px 14px -4px rgba(16,24,40,.07), 0 2px 6px -2px rgba(16,24,40,.04);
+  --e4:0 24px 48px -12px rgba(16,24,40,.22);
+
+  /* Motion */
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-std:cubic-bezier(.2,0,0,1);
+  --ease-spring:cubic-bezier(.16,1,.3,1);
+  --d1:120ms; --d2:180ms; --d3:260ms;
+
+  --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
+}
+body.dark{
+  --canvas:#0b0f17;
+  --canvas-glow:radial-gradient(1100px 520px at 50% -10%, rgba(71,158,245,.10), transparent 62%);
+  --surface:#151a24;
+  --surface-raised:#1b2230;
+  --surface-sunken:#10151f;
+  --surface-hover:#1f2632;
+  --glass:rgba(21,26,36,.72);
+
+  --line:rgba(255,255,255,.08);
+  --line-strong:rgba(255,255,255,.15);
+  --highlight-top:rgba(255,255,255,.06);
+
+  --fg:#f4f6fa; --fg-2:#c3cad6; --fg-3:#8f9aab; --fg-muted:#6b7686;
+
+  --brand:#479ef5; --brand-hover:#62abf7; --brand-pressed:#2f8ce6;
+  --brand-text:#79b7f8; --brand-soft:rgba(71,158,245,.15); --brand-line:rgba(71,158,245,.36);
+
+  --expense:#f4737d; --expense-text:#ff8f94; --expense-soft:rgba(229,72,77,.16); --expense-line:rgba(229,72,77,.32);
+  --income:#4ade80;  --income-text:#5fe096;  --income-soft:rgba(47,169,107,.16);  --income-line:rgba(47,169,107,.32);
+  --transfer:#4bb3fb;--transfer-text:#69c0fc;--transfer-soft:rgba(0,135,224,.18); --transfer-line:rgba(0,135,224,.34);
+  --repay:#b491e8;   --repay-text:#c6aaf2;   --repay-soft:rgba(142,92,214,.18);  --repay-line:rgba(142,92,214,.34);
+
+  --e1:0 1px 2px rgba(0,0,0,.45);
+  --e2:0 2px 6px rgba(0,0,0,.5);
+  --e3:0 10px 22px rgba(0,0,0,.55);
+  --e4:0 24px 48px rgba(0,0,0,.72);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:var(--font); font-size:14px; line-height:1.5;
+  background:var(--canvas); color:var(--fg);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  min-height:100vh;
+}
+body::before{
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:var(--canvas-glow);
+}
+.num{font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+:focus-visible{outline:2px solid var(--brand); outline-offset:2px; border-radius:4px}
+::selection{background:var(--brand-soft); color:var(--fg)}
+
+/* ============================ App shell ============================ */
+.app{position:relative; z-index:1; min-height:100vh; display:flex; flex-direction:column}
+.topbar{
+  position:sticky; top:0; z-index:50; height:60px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:0 12px;
+  background:var(--glass); backdrop-filter:blur(18px) saturate(1.4);
+  border-bottom:1px solid var(--line);
+  box-shadow:inset 0 -1px 0 var(--highlight-top);
+}
+@media(min-width:640px){.topbar{padding:0 24px}}
+.brand{display:flex; align-items:center; gap:10px; min-width:0}
+.brand-mark{
+  width:30px; height:30px; border-radius:var(--r-sm); flex:0 0 auto;
+  display:grid; place-items:center; color:#fff;
+  background:linear-gradient(160deg,var(--brand),#0a5fb4);
+  box-shadow:0 2px 6px rgba(0,120,212,.32), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.brand-name{font-size:16px; font-weight:650; letter-spacing:-.015em; white-space:nowrap}
+
+/* Segmented nav with shared-position indicator */
+.seg{position:relative; display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:2px; padding:3px;
+     background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--r-pill)}
+.seg[data-cols="3"] .seg-thumb{width:calc((100% - 6px)/3)}
+.seg-thumb{position:absolute; top:3px; bottom:3px; left:3px; border-radius:var(--r-pill);
+           background:var(--surface); box-shadow:var(--e1);
+           transition:transform var(--d2) var(--ease-out)}
+.seg[data-active="0"] .seg-thumb{transform:translateX(0)}
+.seg[data-active="1"] .seg-thumb{transform:translateX(100%)}
+.seg[data-active="2"] .seg-thumb{transform:translateX(200%)}
+.seg button{
+  position:relative; z-index:1; border:0; background:none; cursor:pointer; font:inherit;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  min-height:32px; padding:0 10px; border-radius:var(--r-pill);
+  color:var(--fg-3); font-size:13px; font-weight:500;
+  transition:color var(--d1) var(--ease-std); white-space:nowrap;
+}
+.seg button[aria-selected="true"]{color:var(--fg); font-weight:600}
+.seg button:hover{color:var(--fg)}
+@media(max-width:639px){.seg button{padding:0 8px}.seg button span{display:none}}
+
+.tools{display:flex; align-items:center; gap:4px}
+.icon-btn{
+  width:34px; height:34px; border:0; border-radius:var(--r-sm); background:none; cursor:pointer;
+  display:grid; place-items:center; color:var(--fg-3);
+  transition:background var(--d1) var(--ease-std), color var(--d1) var(--ease-std), transform var(--d1) var(--ease-out);
+}
+.icon-btn:hover{background:var(--surface-hover); color:var(--fg)}
+.icon-btn:active{transform:scale(.94)}
+.icon-btn.danger:hover{color:var(--expense-text); background:var(--expense-soft)}
+
+@media(min-width:640px){
+  .account{display:flex; align-items:center; gap:8px; padding:4px 10px 4px 4px;
+           background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--r-pill);
+           font-size:12.5px; color:var(--fg-2)}
+  .avatar{width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff;
+          font-size:11px; font-weight:700; display:grid; place-items:center}
+}
+@media(max-width:639px){.account{display:none}}
+
+/* ============================ Content ============================ */
+main{flex:1; display:flex; flex-direction:column; align-items:center; padding:24px 16px 120px; width:100%}
+@media(min-width:640px){main{padding:28px 28px 120px}}
+.view{width:100%; max-width:900px; animation:rise var(--d3) var(--ease-out) both}
+@keyframes rise{from{opacity:0; transform:translateY(8px)}to{opacity:1; transform:none}}
+
+.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--e1);
+      box-shadow:var(--e1), inset 0 1px 0 var(--highlight-top)}
+.section-title{font-size:15px; font-weight:650; letter-spacing:-.01em; color:var(--fg)}
+.eyebrow{font-size:11.5px; font-weight:600; letter-spacing:.02em; color:var(--fg-3)}
+
+/* ---------- Stream: month headline (no card chrome) ---------- */
+.headline{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap}
+.headline-k{display:flex; gap:22px; align-items:flex-end}
+.hk{display:flex; flex-direction:column; gap:2px}
+.hk b{font-size:22px; font-weight:650; letter-spacing:-.02em}
+.hk.small b{font-size:17px; font-weight:600}
+.hk span{font-size:12px; color:var(--fg-3)}
+.ratio-rail{width:132px; height:4px; border-radius:2px; overflow:hidden; background:var(--income); display:flex}
+.ratio-rail i{display:block; background:var(--expense); height:100%}
+
+/* ---------- Stream: day surfaces ---------- */
+.day{margin-bottom:16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-md);
+     box-shadow:var(--e1), inset 0 1px 0 var(--highlight-top); overflow:hidden}
+.day-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap;
+          padding:9px 14px; background:var(--surface-sunken); border-bottom:1px solid var(--line)}
+.day-date{display:flex; align-items:baseline; gap:6px}
+.day-date b{font-size:13px; font-weight:650; letter-spacing:-.01em}
+.day-date em{font-style:normal; font-size:11.5px; color:var(--fg-muted)}
+.day-sum{display:flex; gap:14px; font-size:12px; color:var(--fg-3)}
+.day-sum b{font-weight:600}
+
+.row{display:flex; align-items:center; gap:12px; padding:9px 14px; border-top:1px solid var(--line);
+     transition:background var(--d1) var(--ease-std)}
+.row:first-child{border-top:0}
+.row:hover{background:var(--surface-hover)}
+.tile{width:32px; height:32px; border-radius:var(--r-sm); flex:0 0 auto; display:grid; place-items:center}
+.tile svg{width:16px; height:16px}
+.row-main{flex:1; min-width:0}
+.row-title{font-size:14px; font-weight:550; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.row-meta{font-size:12px; color:var(--fg-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px}
+.row-meta s{text-decoration:none; color:var(--fg-muted); padding:0 4px}
+.amt{min-width:88px; text-align:right; font-size:15px; font-weight:650; white-space:nowrap; flex:0 0 auto}
+@media(max-width:639px){.amt{min-width:76px; font-size:14px}}
+.row-act{opacity:.55; display:flex; gap:2px; flex:0 0 auto}
+.row:hover .row-act,.row:focus-within .row-act{opacity:1}
+@media(max-width:639px){.row-act{opacity:1}}
+.mini-btn{width:28px; height:28px; border:0; border-radius:var(--r-xs); background:none; cursor:pointer;
+          display:grid; place-items:center; color:var(--fg-3); transition:background var(--d1), color var(--d1)}
+.mini-btn:hover{background:var(--surface-hover); color:var(--fg)}
+.mini-btn.danger:hover{background:var(--expense-soft); color:var(--expense-text)}
+
+/* ---------- Stats: net worth hero ---------- */
+.hero{position:relative; overflow:hidden; padding:22px 22px 20px; border-radius:var(--r-xl);
+      background:var(--surface); border:1px solid var(--brand-line);
+      box-shadow:var(--e3), inset 0 1px 0 var(--highlight-top);
+      display:grid; grid-template-columns:1fr; gap:18px}
+@media(min-width:720px){.hero{grid-template-columns:1fr auto; padding:26px 26px 22px}}
+.hero-label{font-size:12.5px; font-weight:600; color:var(--fg-3); letter-spacing:.01em}
+.hero-value{display:flex; align-items:baseline; gap:4px; margin-top:6px}
+.hero-value span{font-size:24px; font-weight:500; color:var(--fg-2)}
+.hero-value b{font-size:40px; font-weight:680; letter-spacing:-.028em; line-height:1.1}
+@media(max-width:719px){.hero-value b{font-size:34px}}
+.hero-foot{display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap}
+.pill{display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:var(--r-pill);
+      font-size:11.5px; font-weight:600}
+.pill.up{background:var(--income-soft); color:var(--income-text)}
+.pill.neutral{background:var(--surface-sunken); color:var(--fg-2); border:1px solid var(--line)}
+.hero-side{display:flex; flex-direction:column; gap:10px; min-width:210px}
+.hs-row{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.hs-row span{font-size:12px; color:var(--fg-3)}
+.hs-row b{font-size:14px; font-weight:650}
+.bar{height:6px; border-radius:3px; background:var(--surface-sunken); overflow:hidden; display:flex}
+.bar i{display:block; height:100%}
+.hero-cap{display:flex; justify-content:space-between; font-size:11.5px; color:var(--fg-muted)}
+
+/* ---------- Stats: hairline metric row ---------- */
+.metrics{margin-top:16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg);
+         box-shadow:var(--e1), inset 0 1px 0 var(--highlight-top);
+         display:grid; grid-template-columns:repeat(2,1fr)}
+@media(min-width:720px){.metrics{grid-template-columns:repeat(4,1fr)}}
+.metric{padding:16px 18px}
+.metric+.metric{border-top:1px solid var(--line)}
+@media(min-width:720px){
+  .metric+.metric{border-top:0; border-left:1px solid var(--line)}
+  .metrics>:nth-child(n+3){border-top:1px solid var(--line)}
+  .metrics>:nth-child(3){border-left:0}
+}
+.metric span{display:block; font-size:12px; color:var(--fg-3)}
+.metric b{display:block; margin-top:4px; font-size:19px; font-weight:650; letter-spacing:-.02em}
+.metric small{display:block; margin-top:6px; font-size:11.5px; color:var(--fg-muted)}
+
+.grid2{margin-top:16px; display:grid; grid-template-columns:1fr; gap:16px}
+@media(min-width:768px){.grid2{grid-template-columns:1fr 1fr}}
+.panel{padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg);
+       box-shadow:var(--e1), inset 0 1px 0 var(--highlight-top)}
+.panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:14px}
+.panel-head b{font-size:14px; font-weight:650}
+.panel-head span{font-size:12.5px; color:var(--fg-3)}
+
+.chan{display:flex; flex-direction:column; gap:6px; padding:10px 0; border-top:1px solid var(--line)}
+.chan:first-of-type{border-top:0}
+.chan-top{display:flex; align-items:center; gap:8px; font-size:13px}
+.dot{width:7px; height:7px; border-radius:50%; flex:0 0 auto}
+.chan-top b{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1}
+.chan-top i{font-style:normal; font-weight:650; font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+.chan-sub{display:flex; justify-content:space-between; font-size:11.5px; color:var(--fg-muted)}
+.rail{height:4px; border-radius:2px; background:var(--surface-sunken); overflow:hidden}
+.rail i{display:block; height:100%; border-radius:2px; transition:width var(--d3) var(--ease-out)}
+
+/* Donut + legend */
+.donut-wrap{display:flex; align-items:center; gap:20px; flex-wrap:wrap}
+.legend{flex:1; min-width:190px; display:flex; flex-direction:column; gap:2px}
+.lg{display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--r-xs); cursor:pointer;
+    border:1px solid transparent; transition:background var(--d1), border-color var(--d1)}
+.lg:hover{background:var(--surface-hover)}
+.lg[aria-pressed="true"]{background:var(--brand-soft); border-color:var(--brand-line)}
+.lg i{width:8px; height:8px; border-radius:2.5px; flex:0 0 auto}
+.lg b{flex:1; font-size:12.5px; font-weight:550; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.lg em{font-style:normal; font-size:12.5px; font-weight:650; font-variant-numeric:tabular-nums}
+.lg s{text-decoration:none; font-size:11.5px; color:var(--fg-3); width:42px; text-align:right}
+.drill{margin-top:12px; padding:12px; border-radius:var(--r-sm); background:var(--surface-sunken); border:1px solid var(--line)}
+.chip-row{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+.chip{display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:var(--r-xs);
+      background:var(--surface); border:1px solid var(--line); font-size:12px}
+.chip b{font-weight:600}
+.chip s{text-decoration:none; color:var(--fg-3); font-size:11px; font-variant-numeric:tabular-nums}
+
+/* ---------- Settings ---------- */
+.set-head{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px}
+.set-head h2{margin:0; font-size:20px; font-weight:680; letter-spacing:-.018em}
+.item{display:flex; align-items:center; gap:10px; padding:11px 0; border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item-main{flex:1; min-width:0}
+.item-main b{display:block; font-size:13.5px; font-weight:600}
+.item-main span{display:block; font-size:12px; color:var(--fg-3); margin-top:1px}
+.badge{padding:2px 8px; border-radius:var(--r-pill); font-size:11px; font-weight:600;
+       background:var(--surface-sunken); border:1px solid var(--line); color:var(--fg-3); flex:0 0 auto}
+.badge.sys{background:var(--brand-soft); border-color:var(--brand-line); color:var(--brand-text)}
+.btn{border:0; border-radius:var(--r-sm); cursor:pointer; font:inherit; font-weight:600;
+     display:inline-flex; align-items:center; gap:6px; transition:background var(--d1), transform var(--d1) var(--ease-out), box-shadow var(--d1)}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--brand); color:#fff; box-shadow:0 2px 8px rgba(0,120,212,.28)}
+.btn-primary:hover{background:var(--brand-hover)}
+.btn-subtle{background:var(--surface-sunken); color:var(--fg-2); border:1px solid var(--line)}
+.btn-subtle:hover{background:var(--surface-hover); color:var(--fg)}
+.btn-ghost{background:none; color:var(--fg-2)}
+.btn-ghost:hover{background:var(--surface-hover)}
+.btn-danger{background:var(--expense); color:#fff}
+.btn-danger:hover{filter:brightness(.94)}
+.btn-sm{padding:6px 11px; font-size:12.5px}
+.btn-md{padding:9px 16px; font-size:13.5px}
+.btn-lg{padding:11px 20px; font-size:14px}
+
+/* ---------- Floating bottom bar ---------- */
+.filterbar{position:fixed; left:12px; bottom:18px; z-index:40; display:flex; gap:2px; padding:4px;
+           background:var(--glass); backdrop-filter:blur(18px) saturate(1.4);
+           border:1px solid var(--line); border-radius:var(--r-pill); box-shadow:var(--e3);
+           box-shadow:var(--e3), inset 0 1px 0 var(--highlight-top)}
+@media(min-width:640px){.filterbar{left:50%; transform:translateX(-50%)}}
+.filterbar button{border:0; background:none; cursor:pointer; font:inherit; font-size:13px; font-weight:500;
+                  color:var(--fg-3); min-height:36px; padding:0 11px; border-radius:var(--r-pill);
+                  transition:background var(--d1), color var(--d1)}
+.filterbar button[aria-selected="true"]{background:var(--surface-sunken); color:var(--fg); font-weight:600}
+.filterbar button:hover{color:var(--fg)}
+.fab{position:fixed; right:16px; bottom:18px; z-index:40; width:52px; height:52px; border:0; cursor:pointer;
+     border-radius:50%; background:var(--brand); color:#fff; display:grid; place-items:center;
+     box-shadow:0 4px 14px rgba(0,120,212,.38), 0 2px 6px rgba(16,24,40,.12), inset 0 1px 0 rgba(255,255,255,.22);
+     transition:transform var(--d1) var(--ease-out), background var(--d1)}
+.fab:hover{background:var(--brand-hover); transform:scale(1.05)}
+.fab:active{transform:scale(.94)}
+@media(min-width:640px){.fab{right:28px}}
+
+/* ---------- Overlays ---------- */
+.scrim{position:fixed; inset:0; z-index:1000; background:rgba(8,12,20,.44); backdrop-filter:blur(4px);
+       display:none; align-items:center; justify-content:center; padding:12px}
+.scrim.on{display:flex; animation:fade var(--d2) var(--ease-out) both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.dialog{width:100%; max-width:520px; max-height:calc(100dvh - 24px); display:flex; flex-direction:column; overflow:hidden;
+        background:var(--surface); border:1px solid var(--line); border-radius:var(--r-xl); box-shadow:var(--e4);
+        box-shadow:var(--e4), inset 0 1px 0 var(--highlight-top);
+        animation:pop var(--d3) var(--ease-spring) both}
+@keyframes pop{from{opacity:0; transform:scale(.955) translateY(8px)}to{opacity:1; transform:none}}
+.dialog-head{padding:16px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between}
+.dialog-head b{font-size:15px; font-weight:650}
+.dialog-body{padding:18px; overflow-y:auto; display:flex; flex-direction:column; gap:14px}
+.dialog-foot{padding:12px 18px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:8px;
+             background:var(--surface)}
+
+/* Record form */
+.seg4{position:relative; display:grid; grid-template-columns:repeat(4,1fr); gap:2px; padding:3px;
+      background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--r-md)}
+.seg4 .seg-thumb{width:calc((100% - 6px)/4); border-radius:var(--r-sm); left:3px; top:3px; bottom:3px}
+.seg4[data-active="0"] .seg-thumb{transform:translateX(0)}
+.seg4[data-active="1"] .seg-thumb{transform:translateX(100%)}
+.seg4[data-active="2"] .seg-thumb{transform:translateX(200%)}
+.seg4[data-active="3"] .seg-thumb{transform:translateX(300%)}
+.seg4 button{position:relative; z-index:1; border:0; background:none; cursor:pointer; font:inherit;
+            display:flex; align-items:center; justify-content:center; gap:4px; padding:8px 2px;
+            border-radius:var(--r-sm); color:var(--fg-3); font-size:12.5px; font-weight:550;
+            transition:color var(--d1)}
+.seg4 button svg{width:14px; height:14px}
+.seg4 button[aria-selected="true"]{color:var(--fg); font-weight:650}
+.seg4 button:hover{color:var(--fg)}
+@media(max-width:400px){.seg4 button span{display:none}}
+
+.amtbox{padding:14px 16px; border-radius:var(--r-md); background:var(--surface-sunken); border:1px solid var(--line);
+        transition:border-color var(--d1), background var(--d1)}
+.amtbox:focus-within{border-color:var(--brand); background:var(--surface)}
+.amtbox-top{display:flex; align-items:center; justify-content:space-between}
+.amtbox-top span{font-size:12px; color:var(--fg-3)}
+.amtbox-top button{border:0; background:none; cursor:pointer; font:inherit; font-size:11.5px; font-weight:600;
+                   color:var(--fg-3); padding:2px 6px; border-radius:var(--r-xs)}
+.amtbox-top button:hover{color:var(--brand-text); background:var(--brand-soft)}
+.amtline{display:flex; align-items:baseline; gap:6px}
+.amtline i{font-style:normal; font-size:22px; font-weight:500; color:var(--fg-2)}
+.amtline input{flex:1; min-width:0; border:0; background:none; outline:none; font:inherit;
+               font-size:34px; font-weight:680; letter-spacing:-.03em; color:var(--fg); font-variant-numeric:tabular-nums}
+.amtline input::placeholder{color:var(--fg-muted)}
+.fee{margin-top:10px; padding-top:10px; border-top:1px dashed var(--line-strong); display:flex; align-items:center; justify-content:space-between}
+.fee input{width:80px; text-align:right; border:0; border-bottom:1px solid var(--line-strong); background:none; outline:none;
+           font:inherit; font-size:13px; font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; padding:2px 4px}
+
+.field{display:flex; flex-direction:column; gap:6px}
+.field>label{font-size:12px; font-weight:600; color:var(--fg-2)}
+.input{width:100%; padding:9px 12px; border-radius:var(--r-sm); background:var(--surface); color:var(--fg);
+       border:1px solid var(--line-strong); font:inherit; font-size:13.5px; outline:none;
+       transition:border-color var(--d1), box-shadow var(--d1)}
+.input::placeholder{color:var(--fg-muted)}
+.input:focus{border-color:var(--brand); box-shadow:0 0 0 3px var(--brand-soft)}
+.disclosure{display:flex; align-items:center; justify-content:space-between; width:100%; padding:9px 12px; cursor:pointer;
+            border-radius:var(--r-sm); background:var(--surface); border:1px solid var(--line-strong);
+            font:inherit; font-size:13.5px; color:var(--fg); text-align:left; transition:border-color var(--d1)}
+.disclosure:hover{border-color:var(--brand)}
+.disclosure svg{width:14px; height:14px; color:var(--fg-3); transition:transform var(--d2) var(--ease-out)}
+[data-open="true"] .disclosure svg:last-child{transform:rotate(180deg)}
+.locked{display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-radius:var(--r-sm);
+        background:var(--surface-sunken); border:1px solid var(--line); font-size:13px}
+.locked-right{display:flex; align-items:center; gap:4px; font-size:11.5px; color:var(--fg-3)}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.tagbtn{border:1px solid var(--line-strong); background:var(--surface); cursor:pointer; font:inherit; font-size:12.5px;
+        font-weight:550; color:var(--fg-2); padding:5px 10px; border-radius:var(--r-sm); transition:all var(--d1)}
+.tagbtn:hover{background:var(--surface-hover)}
+.tagbtn[aria-pressed="true"]{border-color:var(--brand); background:var(--brand-soft); color:var(--brand-text); font-weight:650}
+.tagbtn.solid[aria-pressed="true"]{background:var(--brand); color:#fff; border-color:var(--brand)}
+.grid4{display:grid; grid-template-columns:repeat(2,1fr); gap:8px}
+@media(min-width:480px){.grid4{grid-template-columns:repeat(4,1fr)}}
+.alert{padding:9px 12px; border-radius:var(--r-sm); font-size:12.5px; font-weight:550;
+       background:var(--expense-soft); border:1px solid var(--expense-line); color:var(--expense-text)}
+
+/* Drawer */
+.drawer{position:fixed; top:0; right:0; bottom:0; z-index:1001; width:min(420px,100%);
+        background:var(--surface); border-left:1px solid var(--line); box-shadow:var(--e4);
+        box-shadow:var(--e4), inset 1px 0 0 var(--highlight-top);
+        display:none; flex-direction:column; animation:slide var(--d3) var(--ease-spring) both}
+.drawer.on{display:flex}
+@keyframes slide{from{transform:translateX(100%)}to{transform:none}}
+.drawer-head{padding:14px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; flex:0 0 auto}
+.drawer-body{flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px}
+.drawer-foot{padding:12px 16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; flex:0 0 auto}
+
+/* Toast */
+.toasts{position:fixed; z-index:2000; display:flex; flex-direction:column; gap:8px; pointer-events:none;
+        left:12px; right:12px; bottom:88px; align-items:center}
+@media(min-width:640px){.toasts{left:auto; right:28px; top:72px; bottom:auto; align-items:flex-end}}
+.toast{pointer-events:auto; display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:var(--r-pill);
+       background:var(--surface); border:1px solid var(--line); box-shadow:var(--e3); font-size:13px; font-weight:550;
+       animation:toastIn var(--d3) var(--ease-spring) both}
+@keyframes toastIn{from{opacity:0; transform:translateY(12px) scale(.96)}to{opacity:1; transform:none}}
+.toast svg{width:16px; height:16px; flex:0 0 auto}
+.toast b{font-weight:600}
+.toast button{border:0; background:none; cursor:pointer; color:var(--fg-3); padding:2px; border-radius:4px}
+.toast button:hover{color:var(--fg)}
+
+/* Empty */
+.empty{display:flex; flex-direction:column; align-items:center; gap:4px; padding:56px 16px; text-align:center}
+.empty-mark{width:52px; height:52px; border-radius:50%; display:grid; place-items:center; margin-bottom:8px;
+            background:var(--surface-sunken); color:var(--fg-muted); border:1px solid var(--line)}
+.empty b{font-size:14px; font-weight:600}
+.empty span{font-size:12.5px; color:var(--fg-3); margin-bottom:10px}
+
+/* Skeleton */
+.sk{border-radius:var(--r-xs); background:var(--surface-sunken); animation:pulse 1.4s var(--ease-std) infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* Demo controller — detached HUD, collapsed by default, never part of product DOM */
+.ctrl-toggle{position:fixed; left:8px; top:8px; z-index:10000; border:1px solid #ffffff26; cursor:pointer;
+             background:#111820cc; color:#9fb0c0; padding:4px 9px; border-radius:999px;
+             font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.08em; text-transform:uppercase;
+             backdrop-filter:blur(6px); opacity:.55; transition:opacity var(--d1)}
+.ctrl-toggle:hover,.ctrl-toggle[aria-expanded="true"]{opacity:1; color:#e6edf3}
+.ctrl{position:fixed; left:8px; top:34px; z-index:9999; display:flex; flex-wrap:wrap; gap:6px; max-width:260px;
+      padding:8px; border-radius:12px; background:#111820ee; color:#e6edf3; border:1px solid #ffffff1f;
+      font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace; backdrop-filter:blur(8px)}
+.ctrl[hidden]{display:none}
+.ctrl b{width:100%; opacity:.55; font-weight:600; letter-spacing:.06em; text-transform:uppercase}
+.ctrl button{border:1px solid #ffffff24; background:#ffffff10; color:#e6edf3; cursor:pointer;
+             padding:4px 7px; border-radius:6px; font:inherit}
+.ctrl button:hover{background:#ffffff1e}
+.ctrl button[aria-pressed="true"]{background:#479ef5; border-color:#479ef5; color:#08121c}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important; transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<!-- Demo controller (prototype only) -->
+<button class="ctrl-toggle" id="ctrl-toggle" aria-expanded="false" aria-controls="ctrl">Prototype</button>
+<div class="ctrl" id="ctrl" hidden>
+  <b>Prototype</b>
+  <button data-theme>深色</button>
+  <button data-view="stream" aria-pressed="true">流水</button>
+  <button data-view="stats">统计</button>
+  <button data-view="settings">设置</button>
+  <button data-overlay="record">记账</button>
+  <button data-overlay="drawer">抽屉</button>
+  <button data-overlay="confirm">确认框</button>
+  <button data-toast>通知</button>
+  <button data-empty>空态</button>
+</div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+        </svg>
+      </div>
+      <span class="brand-name">Ledger</span>
+    </div>
+
+    <div class="seg" data-cols="3" data-active="0" role="tablist">
+      <div class="seg-thumb"></div>
+      <button role="tab" aria-selected="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18M8 14h8M8 18h5"/></svg>
+        <span>流水</span>
+      </button>
+      <button role="tab" aria-selected="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+        <span>统计</span>
+      </button>
+      <button role="tab" aria-selected="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.81 1.18V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0-1.18-2.81H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 2.81 1.18l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>设置</span>
+      </button>
+    </div>
+
+    <div class="tools">
+      <button class="icon-btn" aria-label="切换主题">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="account"><div class="avatar">A</div><span>admin</span></div>
+      <button class="icon-btn danger" aria-label="退出登录">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ STREAM ============ -->
+    <div class="view" id="view-stream">
+      <div class="headline">
+        <div class="headline-k">
+          <div class="hk">
+            <span>10月支出</span>
+            <b class="num" style="color:var(--expense-text)">¥8,426.30</b>
+          </div>
+          <div class="hk small">
+            <span>收入</span>
+            <b class="num" style="color:var(--income-text)">¥22,180.00</b>
+          </div>
+          <div class="hk small">
+            <span>结余</span>
+            <b class="num">¥13,753.70</b>
+          </div>
+        </div>
+        <div class="ratio-rail" title="收支比例"><i style="width:27.5%"></i></div>
+      </div>
+
+      <div id="stream-body">
+        <section class="day">
+          <div class="day-head">
+            <div class="day-date"><b>今天</b><em>10月14日 周三</em></div>
+            <div class="day-sum">
+              <span>支出 <b class="num" style="color:var(--expense-text)">¥264.50</b></span>
+              <span>收入 <b class="num" style="color:var(--income-text)">¥0.00</b></span>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="tile" style="background:var(--expense-soft); color:var(--expense-text)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 17 10-10"/><path d="M17 7H8v9"/></svg>
+            </div>
+            <div class="row-main">
+              <div class="row-title">午餐 · 公司楼下简餐</div>
+              <div class="row-meta">餐饮<s>·</s>午餐<s>·</s>微信零钱<s>·</s>12:40</div>
+            </div>
+            <div class="amt num" style="color:var(--expense-text)">−¥38.50</div>
+            <div class="row-act">
+              <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+              <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="tile" style="background:var(--expense-soft); color:var(--expense-text)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 17 10-10"/><path d="M17 7H8v9"/></svg>
+            </div>
+            <div class="row-main">
+              <div class="row-title">地铁通勤</div>
+              <div class="row-meta">交通<s>·</s>公共交通<s>·</s>支付宝<s>·</s>08:12</div>
+            </div>
+              <div class="amt num" style="color:var(--expense-text)">−¥4.00</div>
+            <div class="row-act">
+              <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+              <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="tile" style="background:var(--income-soft); color:var(--income-text)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M7 8v9h9"/></svg>
+            </div>
+            <div class="row-main">
+              <div class="row-title">十月工资</div>
+              <div class="row-meta">职业收入<s>·</s>月薪<s>·</s>招商银行<s>·</s>10:02</div>
+            </div>
+            <div class="amt num" style="color:var(--income-text)">+¥18,600.00</div>
+            <div class="row-act">
+              <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+              <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="day">
+          <div class="day-head">
+            <div class="day-date"><b>昨天</b><em>10月13日 周二</em></div>
+            <div class="day-sum"><span>支出 <b class="num" style="color:var(--expense-text)">¥222.00</b></span></div>
+          </div>
+          <div class="row">
+            <div class="tile" style="background:var(--transfer-soft); color:var(--transfer-text)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M15 4l4 4-4 4M20 16H4M9 12l-4 4 4 4"/></svg>
+            </div>
+            <div class="row-main">
+              <div class="row-title">备用金划转</div>
+              <div class="row-meta">账户转账<s>·</s>资金互转<s>·</s>招商银行 → 微信零钱<s>·</s>手续费 ¥1.50<s>·</s>20:31</div>
+            </div>
+            <div class="amt num" style="color:var(--transfer-text)">¥2,000.00</div>
+            <div class="row-act">
+              <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+              <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="tile" style="background:var(--repay-soft); color:var(--repay-text)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+            </div>
+            <div class="row-main">
+              <div class="row-title">偿还信用卡当期账单</div>
+              <div class="row-meta">债务偿还<s>·</s>负债还款<s>·</s>建设银行 → 招商信用卡<s>·</s>09:05</div>
+            </div>
+            <div class="amt num" style="color:var(--repay-text)">¥3,280.00</div>
+            <div class="row-act">
+              <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+              <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Empty state -->
+      <div class="card empty" id="stream-empty" style="display:none">
+        <div class="empty-mark">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+        </div>
+        <b>本月还没有记账</b>
+        <span>从第一笔开始，流水会按日自动归集</span>
+        <button class="btn btn-primary btn-md">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          记一笔
+        </button>
+      </div>
+    </div>
+
+    <!-- ============ STATS ============ -->
+    <div class="view" id="view-stats" style="display:none">
+      <div class="hero">
+        <div>
+          <div class="hero-label">净资产</div>
+          <div class="hero-value"><span>¥</span><b class="num">128,430.55</b></div>
+          <div class="hero-foot">
+            <span class="pill neutral">资产负债率 13.8%</span>
+            <span class="pill neutral">6 个在用渠道</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <div class="hs-row"><span>资产总计</span><b class="num">¥148,906.20</b></div>
+          <div class="hs-row"><span>负债总计</span><b class="num" style="color:var(--expense-text)">¥20,475.65</b></div>
+          <div class="bar" style="background:var(--surface-sunken)">
+            <i style="width:13.8%; background:var(--expense)"></i>
+          </div>
+          <div class="hero-cap"><span>负债 / 资产</span><span class="num">13.8%</span></div>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><span>本周花费</span><b class="num">¥1,286.40</b><small></small></div>
+        <div class="metric"><span>当月花费</span><b class="num" style="color:var(--expense-text)">¥8,426.30</b><small>较上月 −12.4%</small></div>
+        <div class="metric"><span>上月花费</span><b class="num">¥9,619.55</b><small></small></div>
+        <div class="metric"><span>当月结余</span><b class="num" style="color:var(--income-text)">¥13,753.70</b><small>储蓄率 62.0%</small></div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head"><b>资产渠道</b><span class="num">¥148,906.20</span></div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--brand)"></i><b>招商银行储蓄卡</b><i class="num">¥96,412.80</i></div>
+            <div class="rail"><i style="width:64.7%; background:var(--brand)"></i></div>
+            <div class="chan-sub"><span>初始 ¥80,000.00</span><span>占资产 64.7%</span></div>
+          </div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--brand)"></i><b>微信零钱</b><i class="num">¥28,150.40</i></div>
+            <div class="rail"><i style="width:18.9%; background:var(--brand)"></i></div>
+            <div class="chan-sub"><span>初始 ¥12,000.00</span><span>占资产 18.9%</span></div>
+          </div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--brand)"></i><b>支付宝余额</b><i class="num">¥24,343.00</i></div>
+            <div class="rail"><i style="width:16.3%; background:var(--brand)"></i></div>
+            <div class="chan-sub"><span>初始 ¥9,000.00</span><span>占资产 16.3%</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><b>负债渠道</b><span class="num" style="color:var(--expense-text)">¥20,475.65</span></div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--expense)"></i><b>招商银行信用卡</b><i class="num" style="color:var(--expense-text)">¥14,280.00</i></div>
+            <div class="rail"><i style="width:28.6%; background:var(--expense)"></i></div>
+            <div class="chan-sub"><span>剩余可用 ¥35,720.00</span><span>额度 ¥50,000.00 · 28.6%</span></div>
+          </div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--expense)"></i><b>花呗</b><i class="num" style="color:var(--expense-text)">¥5,120.65</i></div>
+            <div class="rail"><i style="width:85.3%; background:var(--expense)"></i></div>
+            <div class="chan-sub"><span style="color:var(--expense-text)">剩余可用 ¥879.35</span><span style="color:var(--expense-text)">额度 ¥6,000.00 · 85.3%</span></div>
+          </div>
+          <div class="chan">
+            <div class="chan-top"><i class="dot" style="background:var(--expense)"></i><b>京东白条</b><i class="num" style="color:var(--expense-text)">¥1,075.00</i></div>
+            <div class="rail"><i style="width:100%; background:var(--expense)"></i></div>
+            <div class="chan-sub"><span>不设额度上限</span><span>初始欠款 ¥1,075.00</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head"><b>当月支出构成</b><span class="num">¥8,426.30</span></div>
+          <div class="donut-wrap">
+            <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="支出构成环形图">
+              <g transform="rotate(-90 70 70)" fill="none" stroke-width="16" stroke-linecap="butt">
+                <circle cx="70" cy="70" r="54" stroke="var(--surface-sunken)"/>
+                <circle cx="70" cy="70" r="54" stroke="#0f6cbd" stroke-dasharray="109.93 339.29" stroke-dashoffset="0"/>
+                <circle cx="70" cy="70" r="54" stroke="#2f88dc" stroke-dasharray="89.23 339.29" stroke-dashoffset="-109.93"/>
+                <circle cx="70" cy="70" r="54" stroke="#57a6ee" stroke-dasharray="63.45 339.29" stroke-dashoffset="-199.16"/>
+                <circle cx="70" cy="70" r="54" stroke="#85c1f6" stroke-dasharray="48.18 339.29" stroke-dashoffset="-262.61"/>
+                <circle cx="70" cy="70" r="54" stroke="#bcdcfb" stroke-dasharray="28.50 339.29" stroke-dashoffset="-310.79"/>
+              </g>
+              <text x="70" y="66" text-anchor="middle" font-size="11" fill="var(--fg-3)" font-family="var(--font)">支出合计</text>
+              <text x="70" y="86" text-anchor="middle" font-size="17" font-weight="650" fill="var(--fg)" font-family="var(--font)" letter-spacing="-0.5">¥8,426</text>
+            </svg>
+            <div class="legend">
+              <div class="lg" aria-pressed="true"><i style="background:#0f6cbd"></i><b>居住</b><em class="num">¥2,215.40</em><s class="num">26.3%</s></div>
+              <div class="lg"><i style="background:#2f88dc"></i><b>餐饮</b><em class="num">¥2,730.10</em><s class="num">32.4%</s></div>
+              <div class="lg"><i style="background:#57a6ee"></i><b>交通</b><em class="num">¥1,575.70</em><s class="num">18.7%</s></div>
+              <div class="lg"><i style="background:#85c1f6"></i><b>购物</b><em class="num">¥1,196.50</em><s class="num">14.2%</s></div>
+              <div class="lg"><i style="background:#bcdcfb"></i><b>其他</b><em class="num">¥708.60</em><s class="num">8.4%</s></div>
+            </div>
+          </div>
+          <div class="drill">
+            <div style="display:flex; justify-content:space-between; align-items:baseline">
+              <b style="font-size:12.5px">居住 · 细分标签</b>
+              <span style="font-size:11.5px; color:var(--fg-3)">¥2,215.40</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip"><b>房租</b><s>¥1,800.00</s><s>81.2%</s></span>
+              <span class="chip"><b>物业</b><s>¥268.00</s><s>12.1%</s></span>
+              <span class="chip"><b>水电</b><s>¥147.40</s><s>6.7%</s></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="display:flex; flex-direction:column">
+          <div class="panel-head">
+            <b>近 6 个月收支</b>
+            <span style="display:flex; gap:10px; align-items:center">
+              <span style="display:flex; gap:4px; align-items:center"><i style="width:8px;height:8px;border-radius:2px;background:var(--expense);display:block"></i>支出</span>
+              <span style="display:flex; gap:4px; align-items:center"><i style="width:8px;height:8px;border-radius:2px;background:var(--income);display:block"></i>收入</span>
+            </span>
+          </div>
+          <svg viewBox="0 0 340 150" style="width:100%; height:auto; margin-top:4px" role="img" aria-label="近六个月收支趋势">
+            <defs>
+              <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--expense)" stop-opacity=".26"/>
+                <stop offset="100%" stop-color="var(--expense)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <g stroke="var(--line)" stroke-width="1">
+              <line x1="0" y1="30" x2="340" y2="30"/><line x1="0" y1="60" x2="340" y2="60"/>
+              <line x1="0" y1="90" x2="340" y2="90"/><line x1="0" y1="120" x2="340" y2="120"/>
+            </g>
+            <path d="M14 96 L79 88 L144 74 L209 82 L274 64 L326 71 L326 120 L14 120 Z" fill="url(#eg)"/>
+            <path d="M14 96 L79 88 L144 74 L209 82 L274 64 L326 71" fill="none" stroke="var(--expense)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 42 L79 46 L144 34 L209 40 L274 26 L326 30" fill="none" stroke="var(--income)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="0"/>
+            <g fill="var(--surface)" stroke="var(--expense)" stroke-width="2">
+              <circle cx="14" cy="96" r="3"/><circle cx="79" cy="88" r="3"/><circle cx="144" cy="74" r="3"/>
+              <circle cx="209" cy="82" r="3"/><circle cx="274" cy="64" r="3"/>
+              <circle cx="326" cy="71" r="4.5" fill="var(--expense)"/>
+            </g>
+            <g fill="var(--surface)" stroke="var(--income)" stroke-width="2">
+              <circle cx="14" cy="42" r="3"/><circle cx="79" cy="46" r="3"/><circle cx="144" cy="34" r="3"/>
+              <circle cx="209" cy="40" r="3"/><circle cx="274" cy="26" r="3"/>
+              <circle cx="326" cy="30" r="4.5" fill="var(--income)"/>
+            </g>
+            <g fill="var(--fg-3)" font-size="10.5" font-family="var(--font)" text-anchor="middle">
+              <text x="14" y="139">5月</text><text x="79" y="139">6月</text><text x="144" y="139">7月</text>
+              <text x="209" y="139">8月</text><text x="274" y="139">9月</text><text x="326" y="139">10月</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SETTINGS ============ -->
+    <div class="view" id="view-settings" style="display:none">
+      <div class="set-head">
+        <h2>设置</h2>
+        <div class="seg" data-cols="2" data-active="0" style="width:auto">
+          <div class="seg-thumb" style="width:calc((100% - 6px)/2)"></div>
+          <button aria-selected="true" style="padding:0 14px">分类与标签</button>
+          <button aria-selected="false" style="padding:0 14px">渠道与账户</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><b>支出分类</b><span class="eyebrow">6</span></div>
+        <div class="item">
+          <div class="item-main"><b>餐饮</b><span>5 个细分标签</span></div>
+          <span class="badge">常用</span>
+          <button class="mini-btn" aria-label="管理标签"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+          <button class="mini-btn" aria-label="上移"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="m5 15 7-7 7 7"/></svg></button>
+          <button class="mini-btn" aria-label="下移"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="m5 9 7 7 7-7"/></svg></button>
+          <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+        <div class="item">
+          <div class="item-main"><b>居住</b><span>3 个细分标签</span></div>
+          <button class="mini-btn" aria-label="管理标签"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+          <button class="mini-btn" aria-label="上移"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="m5 15 7-7 7 7"/></svg></button>
+          <button class="mini-btn" aria-label="下移"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="m5 9 7 7 7-7"/></svg></button>
+          <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+        <div class="item">
+          <div class="item-main"><b>债务偿还</b><span>1 个内置标签</span></div>
+          <span class="badge sys">系统内置</span>
+          <button class="mini-btn" aria-label="查看标签"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        </div>
+        <div style="margin-top:14px"><button class="btn btn-subtle btn-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          新增支出分类</button></div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-head"><b>资产渠道</b><span class="eyebrow">3</span></div>
+        <div class="item">
+          <div class="item-main"><b>招商银行储蓄卡</b><span>初始余额 ¥80,000.00</span></div>
+          <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+          <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+        <div class="item">
+          <div class="item-main"><b>微信零钱</b><span>初始余额 ¥12,000.00</span></div>
+          <button class="mini-btn" aria-label="编辑"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+          <button class="mini-btn danger" aria-label="删除"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- bottom controls -->
+  <div class="filterbar" role="tablist" id="filterbar">
+    <button aria-selected="true">全部</button>
+    <button>支出</button>
+    <button>收入</button>
+    <button>转账</button>
+    <button>还款</button>
+  </div>
+  <button class="fab" aria-label="记账">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</div>
+
+<!-- ============ RECORD MODAL ============ -->
+<div class="scrim" id="ov-record">
+  <div class="dialog" role="dialog" aria-modal="true" aria-label="记账">
+    <div class="dialog-head"><b>记账</b>
+      <button class="icon-btn" aria-label="关闭"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div class="seg4" data-active="0">
+        <div class="seg-thumb"></div>
+        <button aria-selected="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 17 10-10"/><path d="M17 7H8v9"/></svg>
+          <span>支出</span></button>
+        <button aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M7 8v9h9"/></svg>
+          <span>收入</span></button>
+        <button aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16M15 4l4 4-4 4M20 16H4M9 12l-4 4 4 4"/></svg>
+          <span>转账</span></button>
+        <button aria-selected="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          <span>还款</span></button>
+      </div>
+
+      <div class="amtbox">
+        <div class="amtbox-top"><span>账单金额</span>
+          <button>+ 手续费</button>
+        </div>
+        <div class="amtline"><i>¥</i><input value="38.50" inputmode="decimal" placeholder="0.00" aria-label="金额"/></div>
+      </div>
+
+      <div class="field">
+        <label for="rm-desc">用途说明</label>
+        <input class="input" id="rm-desc" value="公司楼下简餐" placeholder="这笔钱花在哪"/>
+      </div>
+
+      <div class="field" data-open="false">
+        <label>分类与细分标签</label>
+        <button class="disclosure">
+          <span style="display:flex; align-items:center; gap:6px">
+            <b>餐饮</b>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="color:var(--fg-muted)"><path d="m9 6 6 6-6 6"/></svg>
+            <span style="color:var(--brand-text); font-weight:550">午餐</span>
+          </span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="field">
+        <label>支付途径</label>
+        <div class="grid4">
+          <button class="tagbtn" aria-pressed="true" style="text-align:center">微信零钱</button>
+          <button class="tagbtn" style="text-align:center">支付宝</button>
+          <button class="tagbtn" style="text-align:center">招商银行</button>
+          <button class="tagbtn" style="text-align:center">交通银行</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="rm-at">记账时间</label>
+        <input class="input" id="rm-at" type="datetime-local" value="2026-10-14T12:40"/>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-ghost btn-md">取消</button>
+      <button class="btn btn-primary btn-md">记录此账单</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM DIALOG ============ -->
+<div class="scrim" id="ov-confirm">
+  <div class="dialog" style="max-width:400px" role="alertdialog" aria-modal="true">
+    <div class="dialog-head"><b>删除账单</b>
+      <button class="icon-btn" aria-label="关闭"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="dialog-body">
+      <div style="display:flex; gap:12px; align-items:flex-start">
+        <div style="width:36px; height:36px; border-radius:50%; flex:0 0 auto; display:grid; place-items:center; background:var(--expense-soft); color:var(--expense-text)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </div>
+        <div>
+          <div style="font-size:13.5px; line-height:1.6">删除后该笔记录不可恢复。</div>
+          <div style="font-size:12.5px; color:var(--fg-3); margin-top:2px">午餐 · 公司楼下简餐 · −¥38.50</div>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-ghost btn-md">取消</button>
+      <button class="btn btn-danger btn-md">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAG DRAWER ============ -->
+<div class="scrim" id="ov-drawer" style="justify-content:flex-end; padding:0">
+  <div class="drawer on" role="dialog" aria-modal="true" aria-label="细分标签">
+    <div class="drawer-head">
+      <div style="display:flex; align-items:center; gap:8px">
+        <b style="font-size:14px">餐饮 · 细分标签</b>
+        <span class="badge">5</span>
+      </div>
+      <button class="icon-btn" aria-label="关闭"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="drawer-body">
+      <div style="display:flex; gap:8px">
+        <input class="input" placeholder="添加细分标签"/>
+        <button class="btn btn-primary btn-sm" style="flex:0 0 auto">添加</button>
+      </div>
+      <div class="item">
+        <div class="item-main"><b>午餐</b></div>
+        <button class="mini-btn" aria-label="重命名"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        <button class="mini-btn danger" aria-label="删除"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+      </div>
+      <div class="item">
+        <div class="item-main"><b>外卖</b></div>
+        <button class="mini-btn" aria-label="重命名"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        <button class="mini-btn danger" aria-label="删除"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+      </div>
+      <div class="item">
+        <div class="item-main"><b>聚餐</b></div>
+        <button class="mini-btn" aria-label="重命名"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        <button class="mini-btn danger" aria-label="删除"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+      </div>
+    </div>
+    <div class="drawer-foot"><button class="btn btn-subtle btn-sm">完成</button></div>
+  </div>
+</div>
+
+<!-- ============ TOASTS ============ -->
+<div class="toasts" id="toasts"></div>
+
+<script>
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+
+/* demo-only controller */
+$('#ctrl-toggle').onclick = e => {
+  const open = $('#ctrl').hidden;
+  $('#ctrl').hidden = !open;
+  e.target.setAttribute('aria-expanded', String(open));
+};
+$('[data-theme]').onclick = e => {
+  document.body.classList.toggle('dark');
+  e.target.textContent = document.body.classList.contains('dark') ? '浅色' : '深色';
+};
+$$('[data-view]').forEach(b => b.onclick = () => {
+  $$('[data-view]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  ['stream','stats','settings'].forEach(v => {
+    $('#view-' + v).style.display = v === b.dataset.view ? '' : 'none';
+  });
+  $('#filterbar').style.display = b.dataset.view === 'stream' ? '' : 'none';
+});
+$$('[data-overlay]').forEach(b => b.onclick = () => $('#ov-' + b.dataset.overlay).classList.add('on'));
+$$('.scrim').forEach(s => {
+  s.addEventListener('click', e => { if (e.target === s) s.classList.remove('on'); });
+  const close = s.querySelector('.dialog-head .icon-btn, .drawer-head .icon-btn, .dialog-foot .btn-ghost, .drawer-foot .btn');
+  if (close) close.onclick = () => s.classList.remove('on');
+});
+$('[data-toast]').onclick = () => toast('success', '账单已记录', '午餐 · −¥38.50');
+$('[data-empty]').onclick = () => {
+  const p = $('#stream-body'), e = $('#stream-empty');
+  const hidden = p.style.display === 'none';
+  p.style.display = hidden ? '' : 'none';
+  e.style.display = hidden ? 'none' : '';
+};
+
+function toast(type, title, detail){
+  const map = {
+    success: ['var(--income-text)', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'],
+    error:   ['var(--expense-text)', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'],
+    info:    ['var(--brand-text)',   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 8h.01M11 12h1v5h1"/></svg>']
+  };
+  const [color, icon] = map[type];
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.color = color;
+  el.innerHTML = `${icon}<b style="color:var(--fg)">${title}</b>` +
+    (detail ? `<span style="color:var(--fg-3); font-size:12px">${detail}</span>` : '') +
+    `<button aria-label="关闭"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+  el.querySelector('button').onclick = () => el.remove();
+  $('#toasts').append(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+/* segmented controls inside the product surfaces are prototype-only state */
+document.addEventListener('click', e => {
+  const seg = e.target.closest('.seg, .seg4');
+  if (!seg || seg.closest('.ctrl')) return;
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const idx = [...seg.querySelectorAll('button')].indexOf(btn);
+  seg.dataset.active = idx;
+  seg.querySelectorAll('button').forEach((b,i) => b.setAttribute('aria-selected', String(i === idx)));
+});
+$('#filterbar').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  $$('#filterbar button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+});
+</script>
+</body>
+</html>

@@ -1,7 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FC, FormEvent } from 'react';
-import { CloseIcon, ChevronDownIcon, LockIcon } from './Icons';
+import {
+  CloseIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LockIcon,
+  ExpenseIcon,
+  IncomeIcon,
+  TransferIcon,
+  RepaymentIcon,
+} from './Icons';
+import { SegmentedControl, Button } from './primitives';
 import { Category, PaymentMethod, Transaction } from '../lib/api';
+import { toLocalInputValue, fromLocalInputValue } from '../lib/format.ts';
+
+type RecordType = 'expense' | 'income' | 'transfer' | 'repayment';
 
 interface RecordModalProps {
   isOpen: boolean;
@@ -23,6 +36,12 @@ interface RecordModalProps {
   }) => Promise<void>;
 }
 
+const INPUT_CLASS =
+  'w-full px-3 py-2 rounded-[var(--r-sm)] bg-[var(--surface)] border border-[var(--line-strong)] ' +
+  'text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] ' +
+  'focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)] ' +
+  'transition-[border-color,box-shadow] duration-[var(--d1)]';
+
 export const RecordModal: FC<RecordModalProps> = ({
   isOpen,
   onClose,
@@ -32,7 +51,7 @@ export const RecordModal: FC<RecordModalProps> = ({
   initialTransaction,
   onSubmit,
 }) => {
-  const [recordType, setRecordType] = useState<'expense' | 'income' | 'transfer' | 'repayment'>('expense');
+  const [recordType, setRecordType] = useState<RecordType>('expense');
   const [amountStr, setAmountStr] = useState('');
   const [description, setDescription] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState<number>(0);
@@ -86,14 +105,7 @@ export const RecordModal: FC<RecordModalProps> = ({
         setFeeStr('');
       }
 
-      try {
-        const d = new Date(initialTransaction.transacted_at);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const localDT = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        setTransactedAt(localDT);
-      } catch {
-        setTransactedAt('');
-      }
+      setTransactedAt(toLocalInputValue(initialTransaction.transacted_at));
     } else {
       setRecordType('expense');
       setAmountStr('');
@@ -118,11 +130,7 @@ export const RecordModal: FC<RecordModalProps> = ({
         setTagId(defaultExpCat.tags?.[0]?.id || 0);
       }
 
-      // Default to current local time
-      const now = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const localDT = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-      setTransactedAt(localDT);
+      setTransactedAt(toLocalInputValue(new Date().toISOString()));
     }
 
     setTimeout(() => {
@@ -153,7 +161,7 @@ export const RecordModal: FC<RecordModalProps> = ({
 
   const hoverCategory = categories.find((c) => c.id === hoverCategoryId) || currentCategory;
 
-  const handleSwitchType = (newType: 'expense' | 'income' | 'transfer' | 'repayment') => {
+  const handleSwitchType = (newType: RecordType) => {
     if (initialTransaction) return;
     setRecordType(newType);
     setInlineCatOpen(false);
@@ -315,12 +323,10 @@ export const RecordModal: FC<RecordModalProps> = ({
       }
     }
 
-    let finalTransactedAt: string | undefined = undefined;
-    if (transactedAt) {
-      const d = new Date(transactedAt);
-      if (!isNaN(d.getTime())) {
-        finalTransactedAt = d.toISOString();
-      }
+    const finalTransactedAt = transactedAt ? fromLocalInputValue(transactedAt) : '';
+    if (transactedAt && !finalTransactedAt) {
+      setError('请输入有效的记账时间');
+      return;
     }
 
     setSubmitting(true);
@@ -339,8 +345,8 @@ export const RecordModal: FC<RecordModalProps> = ({
         transacted_at: finalTransactedAt || new Date().toISOString(),
       });
       onClose();
-    } catch (err: any) {
-      setError(err?.message || '保存失败');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSubmitting(false);
     }
@@ -354,120 +360,61 @@ export const RecordModal: FC<RecordModalProps> = ({
     return (c.type === 'expense' || !c.type) && c.name !== '债务偿还' && c.name !== '账户转账';
   });
 
+  const TYPE_ITEMS = [
+    { key: 'expense', label: '支出', icon: <ExpenseIcon size={14} /> },
+    { key: 'income', label: '收入', icon: <IncomeIcon size={14} /> },
+    { key: 'transfer', label: '转账', icon: <TransferIcon size={14} /> },
+    { key: 'repayment', label: '还款', icon: <RepaymentIcon size={14} /> },
+  ];
+
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/45 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-[1000] bg-[rgba(8,12,20,.44)] backdrop-blur-[4px] flex items-center justify-center p-3 sm:p-4 animate-fade">
       {/* Modal Card - 100dvh Dynamic Viewport Height & Column Flex */}
-      <div className="w-full max-w-[520px] max-h-[calc(100dvh-24px)] bg-[var(--color-card-bg)] rounded-2xl shadow-[var(--shadow-modal)] border border-[var(--color-neutral-stroke)] flex flex-col overflow-hidden animate-fade-in relative">
-        {/* Header - Fixed flex-shrink-0 */}
-        <div className="px-5 sm:px-6 py-4 border-b border-[var(--color-neutral-stroke)] flex items-center justify-between flex-shrink-0 bg-[var(--color-card-bg)]">
-          <h3 className="text-base font-semibold text-[var(--color-neutral-fg-1)]">
-            {initialTransaction ? '编辑账单' : '记账'}
-          </h3>
+      <div className="w-full max-w-[520px] max-h-[calc(100dvh-24px)] bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] flex flex-col overflow-hidden animate-pop relative">
+        {/* Header */}
+        <div className="px-[18px] py-3.5 border-b border-[var(--line)] flex items-center justify-between flex-shrink-0">
+          <b className="text-[15px] font-[650] text-[var(--fg)]">{initialTransaction ? '编辑账单' : '记账'}</b>
           <button
             type="button"
+            aria-label="关闭"
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
+            className="w-[34px] h-[34px] rounded-[var(--r-sm)] flex items-center justify-center text-[var(--fg-3)] hover:text-[var(--fg)] hover:bg-[var(--surface-hover)] cursor-pointer transition-colors duration-[var(--d1)]"
           >
-            <CloseIcon size={16} />
+            <CloseIcon size={15} />
           </button>
         </div>
 
-        {/* Form Container with Scrollable Body and Constant Footer */}
         <form onSubmit={handleFormSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          {/* Scrollable Form Body - flex-1 overflow-y-auto */}
-          <div className="p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
-            {/* Top 4-Segment Capsule Slider */}
-            <div
-              className={`relative bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-1 grid grid-cols-4 select-none ${
-                initialTransaction ? 'opacity-85' : ''
-              }`}
-            >
-              {/* Smooth hardware-accelerated sliding indicator */}
-              <div
-                className={`absolute top-1 bottom-1 left-1 w-[calc((100%-8px)/4)] rounded-lg transition-transform duration-200 ease-out shadow-sm ${
-                  recordType === 'expense'
-                    ? 'translate-x-0 bg-[var(--color-expense-bg)] border border-[var(--color-expense-stroke)]'
-                    : recordType === 'income'
-                    ? 'translate-x-full bg-[var(--color-income-bg)] border border-[var(--color-income-stroke)]'
-                    : recordType === 'transfer'
-                    ? 'translate-x-[200%] bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)]'
-                    : 'translate-x-[300%] bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)]'
-                }`}
+          {/* Scrollable Form Body */}
+          <div className="p-[18px] flex flex-col gap-3.5 overflow-y-auto flex-1 min-h-0">
+            {/* 4-Segment Type Slider with shared-position indicator */}
+            <div className={initialTransaction ? 'opacity-60' : ''}>
+              <SegmentedControl
+                items={TYPE_ITEMS}
+                value={recordType}
+                onChange={(key) => handleSwitchType(key as RecordType)}
+                ariaLabel="记账类型"
+                compact="xs"
+                className="rounded-[var(--r-md)]"
               />
-              <button
-                type="button"
-                disabled={!!initialTransaction}
-                onClick={() => handleSwitchType('expense')}
-                className={`relative z-10 py-2 text-center text-xs font-semibold transition-colors duration-150 ${
-                  initialTransaction ? 'cursor-not-allowed' : 'cursor-pointer'
-                } ${
-                  recordType === 'expense'
-                    ? 'text-[var(--color-expense-dark)]'
-                    : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
-                }`}
-              >
-                − 支出
-              </button>
-              <button
-                type="button"
-                disabled={!!initialTransaction}
-                onClick={() => handleSwitchType('income')}
-                className={`relative z-10 py-2 text-center text-xs font-semibold transition-colors duration-150 ${
-                  initialTransaction ? 'cursor-not-allowed' : 'cursor-pointer'
-                } ${
-                  recordType === 'income'
-                    ? 'text-[var(--color-income-dark)]'
-                    : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
-                }`}
-              >
-                + 收入
-              </button>
-              <button
-                type="button"
-                disabled={!!initialTransaction}
-                onClick={() => handleSwitchType('transfer')}
-                className={`relative z-10 py-2 text-center text-xs font-semibold transition-colors duration-150 ${
-                  initialTransaction ? 'cursor-not-allowed' : 'cursor-pointer'
-                } ${
-                  recordType === 'transfer'
-                    ? 'text-[var(--color-brand)]'
-                    : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
-                }`}
-              >
-                ⇄ 转账
-              </button>
-              <button
-                type="button"
-                disabled={!!initialTransaction}
-                onClick={() => handleSwitchType('repayment')}
-                className={`relative z-10 py-2 text-center text-xs font-semibold transition-colors duration-150 ${
-                  initialTransaction ? 'cursor-not-allowed' : 'cursor-pointer'
-                } ${
-                  recordType === 'repayment'
-                    ? 'text-[var(--color-brand)]'
-                    : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)]'
-                }`}
-              >
-                ↺ 还款
-              </button>
             </div>
 
-            {/* Hero Amount Box */}
-            <div className="bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] rounded-xl p-3.5 focus-within:border-[var(--color-brand)] focus-within:bg-[var(--color-card-bg)] transition-colors">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-xs text-[var(--color-neutral-fg-3)]">账单金额</span>
+            {/* Hero Amount Box — the single protagonist */}
+            <div className="p-3.5 px-4 rounded-[var(--r-md)] bg-[var(--surface-sunken)] border border-[var(--line)] focus-within:border-[var(--brand)] focus-within:bg-[var(--surface)] transition-[border-color,background-color] duration-[var(--d1)]">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs text-[var(--fg-3)]">账单金额</span>
                 {recordType === 'transfer' && !showFee && (
                   <button
                     type="button"
                     onClick={() => setShowFee(true)}
-                    className="text-[11px] font-medium text-[var(--color-neutral-fg-3)] hover:text-[var(--color-brand)] px-1.5 py-0.5 rounded transition-colors cursor-pointer"
+                    className="text-[11.5px] font-semibold text-[var(--fg-3)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-soft)] px-1.5 py-0.5 rounded-[var(--r-xs)] transition-colors cursor-pointer"
                   >
                     + 手续费
                   </button>
                 )}
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-semibold text-[var(--color-neutral-fg-2)]">¥</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[22px] font-medium text-[var(--fg-2)]">¥</span>
                 <input
                   ref={amountInputRef}
                   type="text"
@@ -475,16 +422,17 @@ export const RecordModal: FC<RecordModalProps> = ({
                   value={amountStr}
                   onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder="0.00"
-                  className="w-full bg-transparent border-none outline-none text-3xl font-bold text-[var(--color-neutral-fg-1)] tabular-num placeholder-[var(--color-neutral-fg-subtle)]"
+                  aria-label="金额"
+                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-[34px] font-[680] tracking-[-.03em] text-[var(--fg)] num placeholder:text-[var(--fg-muted)]"
                 />
               </div>
 
               {/* Inline Collapsible Fee Row */}
               {recordType === 'transfer' && showFee && (
-                <div className="mt-2.5 pt-2 border-t border-dashed border-[var(--color-neutral-stroke-strong)] flex items-center justify-between animate-fade-in">
-                  <span className="text-xs font-medium text-[var(--color-neutral-fg-2)]">手续费</span>
+                <div className="mt-2.5 pt-2.5 border-t border-dashed border-[var(--line-strong)] flex items-center justify-between animate-fade">
+                  <span className="text-xs font-semibold text-[var(--fg-2)]">手续费</span>
                   <div className="flex items-center gap-1">
-                    <span className="text-xs text-[var(--color-neutral-fg-3)]">¥</span>
+                    <span className="text-xs text-[var(--fg-3)]">¥</span>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -496,7 +444,8 @@ export const RecordModal: FC<RecordModalProps> = ({
                         }
                       }}
                       placeholder="0.00"
-                      className="w-20 text-right bg-transparent border-b border-[var(--color-neutral-stroke-strong)] focus:border-[var(--color-brand)] outline-none px-1 py-0.5 text-xs font-semibold text-[var(--color-neutral-fg-1)] tabular-nums transition-colors"
+                      aria-label="手续费"
+                      className="w-20 text-right bg-transparent border-b border-[var(--line-strong)] focus:border-[var(--brand)] outline-none px-1 py-0.5 text-[13px] font-semibold text-[var(--fg)] num transition-colors"
                     />
                     <button
                       type="button"
@@ -504,7 +453,7 @@ export const RecordModal: FC<RecordModalProps> = ({
                         setFeeStr('');
                         setShowFee(false);
                       }}
-                      className="p-1 text-[11px] text-[var(--color-neutral-fg-subtle)] hover:text-[var(--color-neutral-fg-1)] rounded hover:bg-[var(--color-hover-bg)] transition-colors cursor-pointer leading-none ml-0.5"
+                      className="p-1 text-[11px] text-[var(--fg-muted)] hover:text-[var(--fg)] rounded hover:bg-[var(--surface-hover)] transition-colors cursor-pointer leading-none ml-0.5"
                       title="清除手续费"
                     >
                       ✕
@@ -516,7 +465,7 @@ export const RecordModal: FC<RecordModalProps> = ({
 
             {/* Description */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">用途说明</label>
+              <label className="text-xs font-semibold text-[var(--fg-2)]">用途说明</label>
               <input
                 type="text"
                 value={description}
@@ -530,58 +479,58 @@ export const RecordModal: FC<RecordModalProps> = ({
                     ? '如：主业工资、投资分红等'
                     : '如：午餐商务简餐、地铁交通等'
                 }
-                className="w-full px-3.5 py-2 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-sm text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)] transition-colors"
+                className={INPUT_CLASS}
               />
             </div>
 
-            {/* Category Section: Locked Card (Transfer / Repayment) OR Inline Progressive Disclosure (Expense / Income) */}
+            {/* Category Section: Locked Card (Transfer / Repayment) OR Inline Progressive Disclosure */}
             {recordType === 'transfer' || recordType === 'repayment' ? (
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">分类与细分标签</label>
-                <div className="w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] flex items-center justify-between text-xs select-none">
+                <label className="text-xs font-semibold text-[var(--fg-2)]">分类与细分标签</label>
+                <div className="w-full px-3 py-2.5 rounded-[var(--r-sm)] bg-[var(--surface-sunken)] border border-[var(--line)] flex items-center justify-between text-[13px] select-none">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-[var(--color-neutral-fg-1)]">
+                    <span className="font-semibold text-[var(--fg)]">
                       {recordType === 'transfer' ? '账户转账' : '债务偿还'}
                     </span>
-                    <span className="text-xs text-[var(--color-neutral-fg-subtle)]">·</span>
-                    <span className="text-[var(--color-brand)] font-medium">
+                    <span className="text-xs text-[var(--fg-muted)]">·</span>
+                    <span className="text-[var(--brand-text)] font-medium">
                       {recordType === 'transfer' ? '资金互转' : '负债还款'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1 text-[11px] text-[var(--color-neutral-fg-3)]">
-                    <LockIcon size={13} className="text-[var(--color-neutral-fg-3)]" />
+                  <div className="flex items-center gap-1 text-[11.5px] text-[var(--fg-3)]">
+                    <LockIcon size={13} />
                     <span>系统固定</span>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">分类与细分标签</label>
+                <label className="text-xs font-semibold text-[var(--fg-2)]">分类与细分标签</label>
                 <button
                   type="button"
                   onClick={() => setInlineCatOpen(!inlineCatOpen)}
-                  className="w-full px-3.5 py-2.5 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] hover:border-[var(--color-brand)] flex items-center justify-between cursor-pointer transition-colors text-left"
+                  className="w-full px-3 py-2.5 rounded-[var(--r-sm)] bg-[var(--surface)] border border-[var(--line-strong)] hover:border-[var(--brand)] flex items-center justify-between cursor-pointer transition-colors duration-[var(--d1)] text-left text-[13.5px]"
                 >
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="font-semibold text-[var(--color-neutral-fg-1)]">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--fg)]">
                       {currentCategory?.name || '请选择分类'}
                     </span>
-                    <span className="text-xs text-[var(--color-neutral-fg-subtle)]">›</span>
-                    <span className="text-[var(--color-brand)] font-medium">
+                    <ChevronRight />
+                    <span className="text-[var(--brand-text)] font-medium">
                       {currentTag?.name || '请选择标签'}
                     </span>
                   </div>
                   <ChevronDownIcon
                     size={14}
-                    className={`text-[var(--color-neutral-fg-3)] transition-transform duration-150 ${inlineCatOpen ? 'rotate-180' : ''}`}
+                    className={`text-[var(--fg-3)] transition-transform duration-[var(--d2)] [transition-timing-function:var(--ease-out)] ${inlineCatOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
 
                 {/* Inline Collapsible Category & Tag Grid */}
                 {inlineCatOpen && (
-                  <div className="border border-[var(--color-neutral-stroke)] rounded-xl bg-[var(--color-subtle-bg)] p-3 flex flex-col gap-2.5 animate-fade-in">
+                  <div className="border border-[var(--line)] rounded-[var(--r-md)] bg-[var(--surface-sunken)] p-3 flex flex-col gap-2.5 animate-fade">
                     <div>
-                      <div className="text-[11px] font-medium text-[var(--color-neutral-fg-3)] mb-1.5">
+                      <div className="text-[11px] font-semibold text-[var(--fg-3)] mb-1.5">
                         {recordType === 'income' ? '收入分类' : '支出分类'}
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -591,13 +540,12 @@ export const RecordModal: FC<RecordModalProps> = ({
                             <button
                               key={cat.id}
                               type="button"
-                              onClick={() => {
-                                setHoverCategoryId(cat.id);
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                              aria-pressed={isHovered}
+                              onClick={() => setHoverCategoryId(cat.id)}
+                              className={`px-2.5 py-1 rounded-[var(--r-sm)] text-xs font-medium cursor-pointer transition-all duration-[var(--d1)] ${
                                 isHovered
-                                  ? 'bg-[var(--color-brand-light)] border border-[var(--color-brand-stroke)] text-[var(--color-brand)] font-semibold shadow-xs'
-                                  : 'bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
+                                  ? 'bg-[var(--brand-soft)] border border-[var(--brand-line)] text-[var(--brand-text)] font-semibold'
+                                  : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--fg-2)] hover:bg-[var(--surface-hover)]'
                               }`}
                             >
                               {cat.name}
@@ -607,10 +555,10 @@ export const RecordModal: FC<RecordModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="h-[1px] bg-[var(--color-neutral-stroke)]" />
+                    <div className="h-px bg-[var(--line)]" />
 
                     <div>
-                      <div className="text-[11px] font-medium text-[var(--color-neutral-fg-3)] mb-1.5">
+                      <div className="text-[11px] font-semibold text-[var(--fg-3)] mb-1.5">
                         {hoverCategory?.name} · 细分标签
                       </div>
                       <div className="flex flex-wrap gap-1.5">
@@ -621,15 +569,16 @@ export const RecordModal: FC<RecordModalProps> = ({
                               <button
                                 key={tg.id}
                                 type="button"
+                                aria-pressed={isSelected}
                                 onClick={() => {
                                   setCategoryId(hoverCategory.id);
                                   setTagId(tg.id);
                                   setInlineCatOpen(false);
                                 }}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                                className={`px-2.5 py-1 rounded-[var(--r-sm)] text-xs font-medium cursor-pointer transition-all duration-[var(--d1)] ${
                                   isSelected
-                                    ? 'bg-[var(--color-brand)] text-white font-semibold shadow-xs'
-                                    : 'bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
+                                    ? 'bg-[var(--brand)] border border-[var(--brand)] text-white font-semibold'
+                                    : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--fg-2)] hover:bg-[var(--surface-hover)]'
                                 }`}
                               >
                                 {tg.name}
@@ -637,7 +586,7 @@ export const RecordModal: FC<RecordModalProps> = ({
                             );
                           })
                         ) : (
-                          <span className="text-xs text-[var(--color-neutral-fg-subtle)]">暂无细分标签</span>
+                          <span className="text-xs text-[var(--fg-muted)]">暂无细分标签</span>
                         )}
                       </div>
                     </div>
@@ -649,206 +598,167 @@ export const RecordModal: FC<RecordModalProps> = ({
             {/* Channels Selection depending on recordType */}
             {recordType === 'transfer' ? (
               <>
-                {/* Source Asset Channel */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">转出资产账户</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {assetMethods.map((pm) => {
-                      const isSelected = pm.id === sourcePaymentMethodId;
-                      const isTarget = pm.id === paymentMethodId;
-                      return (
-                        <button
-                          key={pm.id}
-                          type="button"
-                          disabled={isTarget}
-                          onClick={() => setSourcePaymentMethodId(pm.id)}
-                          className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                              : isTarget
-                              ? 'border-[var(--color-neutral-stroke)] bg-[var(--color-subtle-bg)] text-[var(--color-neutral-fg-subtle)] cursor-not-allowed opacity-40'
-                              : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
-                          }`}
-                        >
-                          {pm.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <ChannelField label="转出资产账户">
+                  {assetMethods.map((pm) => {
+                    const isSelected = pm.id === sourcePaymentMethodId;
+                    const isTarget = pm.id === paymentMethodId;
+                    return (
+                      <ChannelButton
+                        key={pm.id}
+                        name={pm.name}
+                        selected={isSelected}
+                        disabled={isTarget}
+                        onClick={() => setSourcePaymentMethodId(pm.id)}
+                      />
+                    );
+                  })}
+                </ChannelField>
 
-                {/* Target Asset Channel */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">转入资产账户</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {assetMethods.map((pm) => {
-                      const isSelected = pm.id === paymentMethodId;
-                      const isSource = pm.id === sourcePaymentMethodId;
-                      return (
-                        <button
-                          key={pm.id}
-                          type="button"
-                          disabled={isSource}
-                          onClick={() => setPaymentMethodId(pm.id)}
-                          className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                              : isSource
-                              ? 'border-[var(--color-neutral-stroke)] bg-[var(--color-subtle-bg)] text-[var(--color-neutral-fg-subtle)] cursor-not-allowed opacity-40'
-                              : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
-                          }`}
-                        >
-                          {pm.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <ChannelField label="转入资产账户">
+                  {assetMethods.map((pm) => {
+                    const isSelected = pm.id === paymentMethodId;
+                    const isSource = pm.id === sourcePaymentMethodId;
+                    return (
+                      <ChannelButton
+                        key={pm.id}
+                        name={pm.name}
+                        selected={isSelected}
+                        disabled={isSource}
+                        onClick={() => setPaymentMethodId(pm.id)}
+                      />
+                    );
+                  })}
+                </ChannelField>
               </>
             ) : recordType === 'repayment' ? (
               <>
-                {/* Target Liability Channel */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">还入负债账户</label>
+                <ChannelField label="还入负债账户">
                   {liabilityMethods.length === 0 ? (
-                    <div className="px-3.5 py-2.5 rounded-lg bg-[var(--color-subtle-bg)] border border-[var(--color-neutral-stroke)] text-xs text-[var(--color-expense-dark)] flex items-center justify-between">
+                    <div className="col-span-2 min-[480px]:col-span-4 px-3 py-2.5 rounded-[var(--r-sm)] bg-[var(--surface-sunken)] border border-[var(--line)] text-xs text-[var(--fg-2)] flex items-center justify-between gap-2">
                       <span>暂无负债渠道，无法记录还款</span>
                       {onNavigateToSettings && (
                         <button
                           type="button"
                           onClick={onNavigateToSettings}
-                          className="text-xs font-semibold text-[var(--color-brand)] hover:underline cursor-pointer ml-2 flex-shrink-0"
+                          className="text-xs font-semibold text-[var(--brand-text)] hover:underline cursor-pointer flex-shrink-0"
                         >
                           前往设置添加 →
                         </button>
                       )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {liabilityMethods.map((pm) => {
-                        const isSelected = pm.id === paymentMethodId;
-                        return (
-                          <button
-                            key={pm.id}
-                            type="button"
-                            onClick={() => setPaymentMethodId(pm.id)}
-                            className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                              isSelected
-                                ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                                : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
-                            }`}
-                          >
-                            {pm.name}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    liabilityMethods.map((pm) => (
+                      <ChannelButton
+                        key={pm.id}
+                        name={pm.name}
+                        selected={pm.id === paymentMethodId}
+                        onClick={() => setPaymentMethodId(pm.id)}
+                      />
+                    ))
                   )}
-                </div>
+                </ChannelField>
 
-                {/* Source Asset Channel */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">转出资产账户</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {assetMethods.map((pm) => {
-                      const isSelected = pm.id === sourcePaymentMethodId;
-                      return (
-                        <button
-                          key={pm.id}
-                          type="button"
-                          onClick={() => setSourcePaymentMethodId(pm.id)}
-                          className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                              : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
-                          }`}
-                        >
-                          {pm.name}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setSourcePaymentMethodId(undefined)}
-                      className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                        sourcePaymentMethodId === undefined
-                          ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                          : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-3)] hover:bg-[var(--color-hover-bg)]'
-                      }`}
-                    >
-                      外部/未记录资金
-                    </button>
-                  </div>
-                </div>
+                <ChannelField label="转出资产账户">
+                  {assetMethods.map((pm) => (
+                    <ChannelButton
+                      key={pm.id}
+                      name={pm.name}
+                      selected={pm.id === sourcePaymentMethodId}
+                      onClick={() => setSourcePaymentMethodId(pm.id)}
+                    />
+                  ))}
+                  <ChannelButton
+                    name="外部/未记录资金"
+                    selected={sourcePaymentMethodId === undefined}
+                    onClick={() => setSourcePaymentMethodId(undefined)}
+                  />
+                </ChannelField>
               </>
             ) : (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">
-                  {recordType === 'income' ? '存入渠道' : '支付途径'}
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {(recordType === 'income' ? assetMethods : paymentMethods).map((pm) => {
-                    const isSelected = pm.id === paymentMethodId;
-                    return (
-                      <button
-                        key={pm.id}
-                        type="button"
-                        onClick={() => setPaymentMethodId(pm.id)}
-                        className={`py-2 px-1 rounded-lg text-xs font-medium border text-center cursor-pointer transition-all ${
-                          isSelected
-                            ? 'border-[var(--color-brand)] bg-[var(--color-brand-light)] text-[var(--color-brand)] font-semibold'
-                            : 'border-[var(--color-neutral-stroke-strong)] bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)]'
-                        }`}
-                      >
-                        {pm.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <ChannelField label={recordType === 'income' ? '存入渠道' : '支付途径'}>
+                {(recordType === 'income' ? assetMethods : paymentMethods).map((pm) => (
+                  <ChannelButton
+                    key={pm.id}
+                    name={pm.name}
+                    selected={pm.id === paymentMethodId}
+                    onClick={() => setPaymentMethodId(pm.id)}
+                  />
+                ))}
+              </ChannelField>
             )}
 
             {/* Date & Time */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-[var(--color-neutral-fg-2)]">记账时间</label>
+              <label className="text-xs font-semibold text-[var(--fg-2)]">记账时间</label>
               <input
                 type="datetime-local"
                 value={transactedAt}
                 onChange={(e) => setTransactedAt(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-lg bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] text-sm text-[var(--color-neutral-fg-1)] outline-none focus:border-[var(--color-brand)] transition-colors"
+                className={INPUT_CLASS}
               />
             </div>
 
             {error && (
-              <div className="text-xs text-[var(--color-expense-dark)] bg-[var(--color-expense-bg)] px-3 py-2 rounded-lg border border-[var(--color-expense-stroke)]">
+              <div className="text-[12.5px] font-medium text-[var(--expense-text)] bg-[var(--expense-soft)] border border-[var(--expense-line)] px-3 py-2 rounded-[var(--r-sm)]">
                 {error}
               </div>
             )}
           </div>
 
-          {/* Root-cause fix: Pinned constant Footer - flex-shrink-0 border-t */}
-          <div className="px-5 sm:px-6 py-3.5 border-t border-[var(--color-neutral-stroke)] bg-[var(--color-card-bg)] flex items-center justify-end gap-3 flex-shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-[var(--color-neutral-stroke-strong)] text-xs font-medium text-[var(--color-neutral-fg-2)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
-            >
+          {/* Pinned constant Footer */}
+          <div className="px-[18px] py-3 border-t border-[var(--line)] flex items-center justify-end gap-2 flex-shrink-0">
+            <Button variant="ghost" size="md" onClick={onClose} disabled={submitting}>
               取消
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
+              size="md"
               disabled={
                 submitting ||
                 (recordType === 'repayment' && liabilityMethods.length === 0) ||
                 (recordType === 'transfer' && assetMethods.length < 2)
               }
-              className="px-5 py-2 rounded-lg bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_2px_8px_rgba(0,120,212,0.3)]"
             >
-              {submitting ? '保存中...' : initialTransaction ? '保存修改' : '记录此账单'}
-            </button>
+              {submitting ? '保存中…' : initialTransaction ? '保存修改' : '记录此账单'}
+            </Button>
           </div>
         </form>
       </div>
     </div>
   );
 };
+
+/* ---- local field helpers ---- */
+
+const ChevronRight = () => <ChevronRightIcon size={12} className="text-[var(--fg-muted)]" />;
+
+const ChannelField: FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-xs font-semibold text-[var(--fg-2)]">{label}</label>
+    <div className="grid grid-cols-2 min-[480px]:grid-cols-4 gap-2">{children}</div>
+  </div>
+);
+
+const ChannelButton: FC<{
+  name: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}> = ({ name, selected, disabled, onClick }) => (
+  <button
+    type="button"
+    aria-pressed={selected}
+    disabled={disabled}
+    onClick={onClick}
+    className={`py-2 px-1 rounded-[var(--r-sm)] text-xs font-medium border text-center cursor-pointer transition-all duration-[var(--d1)] ${
+      selected
+        ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand-text)] font-semibold'
+        : disabled
+        ? 'border-[var(--line)] bg-[var(--surface-sunken)] text-[var(--fg-muted)] cursor-not-allowed opacity-40'
+        : 'border-[var(--line-strong)] bg-[var(--surface)] text-[var(--fg-2)] hover:bg-[var(--surface-hover)]'
+    }`}
+  >
+    {name}
+  </button>
+);

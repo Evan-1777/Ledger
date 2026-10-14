@@ -26,32 +26,49 @@ export const BottomBar: FC<BottomBarProps> = ({
 }) => {
   return (
     <>
-      {/* Bottom Floating Filter Capsule (Desktop centered, Mobile safe left-aligned) */}
+      {/* Floating Filter Capsule: glass + blur; ≥640px centered, <640px left-safe */}
       {showFilter && (
-        <div className="fixed bottom-6 left-3 sm:left-1/2 sm:-translate-x-1/2 z-40 backdrop-blur-md bg-[var(--color-card-bg)]/85 rounded-full p-1 inline-flex items-center gap-0.5 sm:gap-1 shadow-[var(--shadow-capsule)] border border-[var(--color-neutral-stroke)] transition-all duration-200">
-          {FILTER_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => onFilterChange(opt.key)}
-              className={`min-h-[40px] px-2.5 sm:px-4 py-1.5 rounded-full text-[13px] cursor-pointer transition-all duration-150 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
-                filter === opt.key
-                  ? 'bg-[var(--color-canvas-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)]'
-                  : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div
+          role="tablist"
+          aria-label="流水筛选"
+          className="fixed bottom-[18px] left-3 z-40 flex gap-[2px] p-1 rounded-[var(--r-pill)]
+            bg-[var(--glass)] backdrop-blur-[18px] saturate-150
+            border border-[var(--line)] shadow-[var(--e3),inset_0_1px_0_var(--highlight-top)]
+            min-[640px]:left-1/2 min-[640px]:right-auto min-[640px]:-translate-x-1/2"
+        >
+          {FILTER_OPTIONS.map((opt) => {
+            const selected = filter === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => onFilterChange(opt.key)}
+                className={`min-h-[36px] px-2.5 min-[640px]:px-[11px] rounded-[var(--r-pill)] text-[13px] cursor-pointer whitespace-nowrap transition-colors duration-[var(--d1)] ${
+                  selected
+                    ? 'bg-[var(--surface-sunken)] text-[var(--fg)] font-semibold'
+                    : 'text-[var(--fg-3)] font-medium hover:text-[var(--fg)]'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Bottom Right Floating Action Button (FAB) */}
+      {/* FAB */}
       <button
         type="button"
+        aria-label="记账"
         title="记账 (快捷键 N)"
         onClick={onOpenRecord}
-        className="fixed bottom-6 right-4 sm:right-8 z-40 w-[52px] h-[52px] rounded-full bg-[var(--color-brand)] text-white border-none cursor-pointer flex items-center justify-center shadow-[var(--shadow-fab)] hover:scale-105 hover:bg-[var(--color-brand-hover)] active:scale-95 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-brand)]"
+        className="fixed bottom-[18px] right-4 min-[640px]:right-7 z-40 w-[52px] h-[52px] rounded-full
+          bg-[var(--brand)] text-white border-none cursor-pointer flex items-center justify-center
+          shadow-[0_4px_14px_rgba(0,120,212,.38),0_2px_6px_rgba(16,24,40,.12),inset_0_1px_0_rgba(255,255,255,.22)]
+          hover:bg-[var(--brand-hover)] hover:scale-105 active:scale-[.94]
+          transition-all duration-[var(--d1)] [transition-timing-function:var(--ease-out)]"
       >
         <PlusIcon size={22} />
       </button>

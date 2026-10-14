@@ -1,13 +1,8 @@
-import { useState, useEffect, type FC } from 'react';
-import {
-  CalendarIcon,
-  ExpenseIcon,
-  IncomeIcon,
-  TransferIcon,
-  RepaymentIcon,
-  MoreVerticalIcon,
-} from '../components/Icons';
+import type { FC } from 'react';
+import { CalendarIcon, EditIcon, TrashIcon } from '../components/Icons';
+import { TypeTile, Amount, SkeletonList, EmptyState, IconButton } from '../components/primitives';
 import { Transaction } from '../lib/api';
+import { formatMoney } from '../lib/format.ts';
 import { getDayInfo, buildMetaParts, formatAmount } from './streamUtils';
 
 interface StreamPageProps {
@@ -15,6 +10,48 @@ interface StreamPageProps {
   loading: boolean;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: number) => void;
+  onAddRecord: () => void;
+}
+
+/** Local-timezone `YYYY-MM-DD` key from an ISO timestamp */
+function toDateKey(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+interface MonthHeadline {
+  expense: number;
+  income: number;
+  balance: number;
+  ratio: number | null;
+  label: string;
+}
+
+/** Current-calendar-month aggregation, strictly excluding transfer & repayment */
+function computeMonthHeadline(transactions: Transaction[]): MonthHeadline {
+  const now = new Date();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  let expense = 0;
+  let income = 0;
+  transactions.forEach((tx) => {
+    const key = toDateKey(tx.transacted_at);
+    if (!key || !key.startsWith(monthPrefix)) return;
+    if (tx.type === 'expense' || (!tx.type && tx.amount_cents < 0)) {
+      expense += Math.abs(tx.amount);
+    } else if (tx.type === 'income' || (!tx.type && tx.amount_cents > 0)) {
+      income += tx.amount;
+    }
+  });
+  const denom = expense + income;
+  return {
+    expense,
+    income,
+    balance: income - expense,
+    ratio: denom > 0 ? (expense / denom) * 100 : null,
+    label: `${now.getMonth() + 1}月支出`,
+  };
 }
 
 export const StreamPage: FC<StreamPageProps> = ({
@@ -22,254 +59,186 @@ export const StreamPage: FC<StreamPageProps> = ({
   loading,
   onEdit,
   onDelete,
+  onAddRecord,
 }) => {
-  const [openMenuTxId, setOpenMenuTxId] = useState<number | null>(null);
-
-  // Close flyout on outside click or Escape key
-  useEffect(() => {
-    if (openMenuTxId === null) return;
-    const handleDocClick = () => {
-      setOpenMenuTxId(null);
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpenMenuTxId(null);
-      }
-    };
-    document.addEventListener('click', handleDocClick);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('click', handleDocClick);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [openMenuTxId]);
-
   if (loading) {
     return (
-      <div className="w-full max-w-[900px] flex flex-col items-center justify-center py-20 text-[var(--color-neutral-fg-3)]">
-        <div className="w-8 h-8 border-2 border-[var(--color-brand)] border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-xs">加载账目流水中...</span>
-      </div>
-    );
-  }
-
-  if (transactions.length === 0) {
-    return (
-      <div className="w-full max-w-[900px] flex flex-col items-center justify-center py-24 text-[var(--color-neutral-fg-3)]">
-        <div className="text-[var(--color-neutral-fg-subtle)] mb-3">
-          <CalendarIcon size={28} />
+      <div className="flex flex-col gap-4">
+        {/* Headline placeholder keeps the layout rhythm */}
+        <div className="flex items-end justify-between mb-1">
+          <div className="flex gap-5">
+            <div className="w-24 h-9 rounded bg-[var(--surface-sunken)] animate-pulse-soft" />
+            <div className="w-20 h-7 rounded bg-[var(--surface-sunken)] animate-pulse-soft" />
+          </div>
+          <div className="w-[132px] h-1 rounded-full bg-[var(--surface-sunken)] animate-pulse-soft" />
         </div>
-        <span className="text-sm font-medium text-[var(--color-neutral-fg-2)] mb-1">暂无账单数据</span>
-        <span className="text-xs">点击右下角 “+” 开始记账</span>
+        <SkeletonList groups={2} />
       </div>
     );
   }
 
-  // Group transactions by date string (YYYY-MM-DD)
+  const headline = computeMonthHeadline(transactions);
+
+  // Group transactions by local date
   const groups: { [dateKey: string]: Transaction[] } = {};
   transactions.forEach((tx) => {
-    let key = '其他';
-    try {
-      const d = new Date(tx.transacted_at);
-      if (!isNaN(d.getTime())) {
-        const pad = (n: number) => String(n).padStart(2, '0');
-        key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      }
-    } catch {
-      key = '其他';
-    }
+    const key = toDateKey(tx.transacted_at) ?? '其他';
     if (!groups[key]) groups[key] = [];
     groups[key].push(tx);
   });
-
   const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a));
 
+  if (transactions.length === 0) {
+    return (
+      <EmptyState
+        icon={<CalendarIcon size={22} />}
+        title="本月还没有记账"
+        subtitle="从第一笔开始，流水会按日自动归集"
+        action={{ label: '记一笔', onClick: onAddRecord }}
+      />
+    );
+  }
+
   return (
-    <div className="w-full max-w-[900px] flex flex-col gap-6 animate-fade-in pb-12">
-      {sortedKeys.map((dateKey) => {
-        const items = groups[dateKey];
-        const dayInfo = getDayInfo(dateKey);
-
-        // Sum group expense & income (strictly exclude repayment & transfer to prevent pollution)
-        let groupExpense = 0;
-        let groupIncome = 0;
-        items.forEach((item) => {
-          if (item.type === 'expense' || (!item.type && item.amount_cents < 0)) {
-            groupExpense += Math.abs(item.amount);
-          } else if (item.type === 'income' || (!item.type && item.amount_cents > 0)) {
-            groupIncome += item.amount;
-          }
-        });
-
-        return (
-          <div
-            key={dateKey}
-            className="bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke)] rounded-xl shadow-[var(--shadow-card)]"
-          >
-            {/* Day Header */}
-            <div className="flex items-baseline justify-between gap-x-3 gap-y-1 flex-wrap px-4 py-3 bg-[var(--color-subtle-bg)] border-b border-[var(--color-neutral-stroke)] rounded-t-[11px]">
-              <div className="flex items-baseline gap-1.5 text-[13px] font-semibold text-[var(--color-neutral-fg-1)] tracking-tight">
-                <span>{dayInfo.primary}</span>
-                {dayInfo.sub && (
-                  <span className="text-[11px] font-normal text-[var(--color-neutral-fg-subtle)]">
-                    {dayInfo.sub}
-                  </span>
-                )}
-              </div>
-
-              {/* Day Subtotals */}
-              <div className="flex items-baseline gap-3.5 text-xs text-[var(--color-neutral-fg-3)] whitespace-nowrap">
-                {groupExpense > 0 && (
-                  <span>
-                    支出{' '}
-                    <b className="font-semibold tabular-num text-[var(--color-expense-dark)]">
-                      ¥{groupExpense.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </b>
-                  </span>
-                )}
-                {groupIncome > 0 && (
-                  <span>
-                    收入{' '}
-                    <b className="font-semibold tabular-num text-[var(--color-income-dark)]">
-                      ¥{groupIncome.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </b>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* List of Rows */}
-            <div className="divide-y divide-[var(--color-neutral-stroke)]">
-              {items.map((item) => {
-                const isRepayment = item.type === 'repayment';
-                const isTransfer = item.type === 'transfer';
-                const isNeutral = isRepayment || isTransfer;
-                const isExp = item.type === 'expense' || (!item.type && item.amount_cents < 0);
-
-                // Build meta parts: category · tag · account / flow · time
-                const metaParts = buildMetaParts(item);
-
-                // Unified contract: ${sign}¥${amount}
-                const { formattedText: formattedAmountText } = formatAmount(
-                  item.amount,
-                  item.type,
-                  item.amount_cents
-                );
-
-                const isMenuOpen = openMenuTxId === item.id;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="group flex items-center gap-3 px-4 py-2 sm:py-2.5 hover:bg-[var(--color-hover-bg)] last:rounded-b-[11px] transition-colors duration-150"
-                  >
-                    {/* Left: 32px Type Icon Tile */}
-                    <div
-                      className={`w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${
-                        isNeutral
-                          ? 'bg-[var(--color-brand-light)] text-[var(--color-brand)]'
-                          : isExp
-                          ? 'bg-[var(--color-expense-bg)] text-[var(--color-expense-dark)]'
-                          : 'bg-[var(--color-income-bg)] text-[var(--color-income-dark)]'
-                      }`}
-                    >
-                      {isRepayment ? (
-                        <RepaymentIcon size={16} />
-                      ) : isTransfer ? (
-                        <TransferIcon size={16} />
-                      ) : isExp ? (
-                        <ExpenseIcon size={16} />
-                      ) : (
-                        <IncomeIcon size={16} />
-                      )}
-                    </div>
-
-                    {/* Center: Description & Four-part Meta */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                      <div className="text-[15px] leading-5 font-medium text-[var(--color-neutral-fg-1)] truncate">
-                        {item.description}
-                      </div>
-                      <div className="text-xs leading-4 text-[var(--color-neutral-fg-3)] truncate">
-                        {metaParts.map((part, pIdx) => (
-                          <span key={pIdx}>
-                            {pIdx > 0 && (
-                              <span className="text-[var(--color-neutral-fg-subtle)] px-1">·</span>
-                            )}
-                            {part}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Right: Aligned Amount */}
-                    <div
-                      className={`min-w-[76px] sm:min-w-[88px] text-right font-semibold text-[15px] sm:text-base tabular-num flex-shrink-0 whitespace-nowrap ${
-                        isNeutral
-                          ? 'text-[var(--color-brand)]'
-                          : isExp
-                          ? 'text-[var(--color-expense-dark)]'
-                          : 'text-[var(--color-income-dark)]'
-                      }`}
-                    >
-                      {formattedAmountText}
-                    </div>
-
-                    {/* Action: Single More Entry with Secondary Flyout */}
-                    <div className="relative flex-shrink-0">
-                      <button
-                        type="button"
-                        title="更多操作"
-                        aria-label="更多操作"
-                        aria-haspopup="true"
-                        aria-expanded={isMenuOpen}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenuTxId(isMenuOpen ? null : item.id);
-                        }}
-                        className={`w-7 h-7 rounded-md flex items-center justify-center cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
-                          isMenuOpen
-                            ? 'opacity-100 bg-[var(--color-hover-bg)] text-[var(--color-neutral-fg-1)]'
-                            : 'text-[var(--color-neutral-fg-3)] hover:text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] opacity-60 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100'
-                        }`}
-                      >
-                        <MoreVerticalIcon size={14} />
-                      </button>
-
-                      {isMenuOpen && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-[calc(100%+4px)] w-28 bg-[var(--color-card-bg)] border border-[var(--color-neutral-stroke-strong)] rounded-lg shadow-[var(--shadow-flyout)] py-1 z-30 flex flex-col text-xs animate-fade-in"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenuTxId(null);
-                              onEdit(item);
-                            }}
-                            className="px-3 py-1.5 text-left text-[var(--color-neutral-fg-1)] hover:bg-[var(--color-hover-bg)] cursor-pointer transition-colors"
-                          >
-                            编辑账单
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenuTxId(null);
-                              onDelete(item.id);
-                            }}
-                            className="px-3 py-1.5 text-left text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] cursor-pointer transition-colors"
-                          >
-                            删除账单
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+    <div className="flex flex-col pb-4">
+      {/* Month Headline — canvas-level, no card chrome */}
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-[18px]">
+        <div className="flex gap-[22px] items-end">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--fg-3)]">{headline.label}</span>
+            <Amount value={formatMoney(headline.expense, { sign: 'none' })} tone="expense" size="lg" className="!text-[22px]" />
           </div>
-        );
-      })}
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--fg-3)]">收入</span>
+            <Amount value={formatMoney(headline.income, { sign: 'none' })} tone="income" className="!text-[17px] !font-semibold" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-[var(--fg-3)]">结余</span>
+            <span
+              className={`num text-[17px] font-semibold ${
+                headline.balance >= 0 ? 'text-[var(--fg)]' : 'text-[var(--expense-text)]'
+              }`}
+            >
+              {headline.balance >= 0
+                ? formatMoney(headline.balance, { sign: 'none' })
+                : formatMoney(headline.balance)}
+            </span>
+          </div>
+        </div>
+        {/* Expense/Income ratio rail — hidden when there is nothing to divide */}
+        {headline.ratio !== null && (
+          <div
+            className="w-[132px] h-1 rounded-[2px] overflow-hidden flex bg-[var(--income)] mb-1.5"
+            title="收支比例"
+            role="img"
+            aria-label={`支出占收支合计 ${headline.ratio.toFixed(1)}%`}
+          >
+            <i className="block h-full bg-[var(--expense)]" style={{ width: `${headline.ratio}%` }} />
+          </div>
+        )}
+      </div>
+
+      {/* Day Surfaces */}
+      <div className="flex flex-col gap-4">
+        {sortedKeys.map((dateKey) => {
+          const items = groups[dateKey];
+          const dayInfo = getDayInfo(dateKey);
+
+          // Day subtotals strictly exclude transfer & repayment
+          let groupExpense = 0;
+          let groupIncome = 0;
+          items.forEach((item) => {
+            if (item.type === 'expense' || (!item.type && item.amount_cents < 0)) {
+              groupExpense += Math.abs(item.amount);
+            } else if (item.type === 'income' || (!item.type && item.amount_cents > 0)) {
+              groupIncome += item.amount;
+            }
+          });
+
+          return (
+            <section
+              key={dateKey}
+              className="bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-md)]
+                shadow-[var(--e1),inset_0_1px_0_var(--highlight-top)] overflow-hidden"
+            >
+              {/* Day Header */}
+              <div className="flex items-baseline justify-between gap-3 flex-wrap px-3.5 py-[9px] bg-[var(--surface-sunken)] border-b border-[var(--line)]">
+                <div className="flex items-baseline gap-1.5">
+                  <b className="text-[13px] font-[650] tracking-[-.01em] text-[var(--fg)]">{dayInfo.primary}</b>
+                  {dayInfo.sub && <em className="not-italic text-[11.5px] text-[var(--fg-muted)]">{dayInfo.sub}</em>}
+                </div>
+                <div className="flex gap-3.5 text-xs text-[var(--fg-3)] whitespace-nowrap">
+                  {groupExpense > 0 && (
+                    <span>
+                      支出{' '}
+                      <b className="num font-semibold text-[var(--expense-text)]">
+                        {formatMoney(groupExpense, { sign: 'none' })}
+                      </b>
+                    </span>
+                  )}
+                  {groupIncome > 0 && (
+                    <span>
+                      收入{' '}
+                      <b className="num font-semibold text-[var(--income-text)]">
+                        {formatMoney(groupIncome, { sign: 'none' })}
+                      </b>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Rows */}
+              <div>
+                {items.map((item, idx) => {
+                  const metaParts = buildMetaParts(item);
+                  const { formattedText } = formatAmount(item.amount, item.type, item.amount_cents);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`group flex items-center gap-3 px-3.5 py-2 transition-colors duration-[var(--d1)] [transition-timing-function:var(--ease-std)] hover:bg-[var(--surface-hover)] ${
+                        idx > 0 ? 'border-t border-[var(--line)]' : ''
+                      }`}
+                    >
+                      <TypeTile type={item.type} />
+
+                      {/* Title & Meta */}
+                      <div className="flex-1 min-w-0 flex flex-col">
+                        <div className="text-sm font-medium text-[var(--fg)] truncate">{item.description}</div>
+                        <div className="text-xs text-[var(--fg-3)] truncate mt-px">
+                          {metaParts.map((part, pIdx) => (
+                            <span key={pIdx}>
+                              {pIdx > 0 && <span className="text-[var(--fg-muted)] px-1">·</span>}
+                              {part}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Amount */}
+                      <Amount
+                        value={formattedText}
+                        type={item.type}
+                        className="min-w-[76px] min-[640px]:min-w-[88px] text-right whitespace-nowrap flex-shrink-0 !text-[14px] min-[640px]:!text-[15px]"
+                      />
+
+                      {/* Row Actions */}
+                      <div className="flex gap-0.5 flex-shrink-0 opacity-100 min-[640px]:opacity-55 min-[640px]:group-hover:opacity-100 min-[640px]:group-focus-within:opacity-100 transition-opacity duration-[var(--d1)]">
+                        <IconButton label="编辑" size={28} onClick={() => onEdit(item)}>
+                          <EditIcon size={14} />
+                        </IconButton>
+                        <IconButton label="删除" tone="danger" size={28} onClick={() => onDelete(item.id)}>
+                          <TrashIcon size={14} />
+                        </IconButton>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 };

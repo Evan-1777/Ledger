@@ -1,7 +1,15 @@
 import type { FC } from 'react';
 import { BrandIcon, StreamIcon, StatsIcon, SettingsIcon, MoonIcon, SunIcon, LogoutIcon } from './Icons';
+import { SegmentedControl, IconButton } from './primitives';
+import type { SegmentedItem } from './primitives';
 
 export type TabType = 'stream' | 'stats' | 'settings';
+
+const TAB_ITEMS: SegmentedItem[] = [
+  { key: 'stream', label: '账目流水', icon: <StreamIcon size={15} /> },
+  { key: 'stats', label: '收支统计', icon: <StatsIcon size={15} /> },
+  { key: 'settings', label: '基础设置', icon: <SettingsIcon size={15} /> },
+];
 
 interface NavbarProps {
   currentTab: TabType;
@@ -17,100 +25,60 @@ export const Navbar: FC<NavbarProps> = ({
   darkMode,
   onToggleDarkMode,
   onLogout,
-}) => {
-  return (
-    <header className="sticky top-0 z-50 h-[60px] backdrop-blur-md bg-[var(--color-card-bg)]/85 border-b border-[var(--color-neutral-stroke)] flex items-center justify-between px-3 sm:px-8 transition-colors duration-200">
-      {/* Left: Brand */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        <div className="w-8 h-8 rounded-lg bg-[var(--color-brand)] flex items-center justify-center text-white shadow-[0_2px_6px_rgba(0,120,212,0.28)] flex-shrink-0">
-          <BrandIcon size={18} />
+}) => (
+  <header
+    className="sticky top-0 z-50 h-[60px] flex items-center justify-between gap-3 px-3 min-[640px]:px-6
+      bg-[var(--glass)] backdrop-blur-[18px] saturate-150
+      border-b border-[var(--line)] shadow-[inset_0_-1px_0_var(--highlight-top)]"
+  >
+    {/* Brand */}
+    <div className="flex items-center gap-2.5 min-w-0">
+      <div
+        className="w-[30px] h-[30px] rounded-[var(--r-sm)] flex items-center justify-center text-white flex-shrink-0
+          bg-[linear-gradient(160deg,var(--brand),#0a5fb4)]
+          shadow-[0_2px_6px_rgba(0,120,212,.32),inset_0_1px_0_rgba(255,255,255,.25)]"
+      >
+        <BrandIcon size={16} />
+      </div>
+      <span className="text-base font-[650] tracking-[-.015em] text-[var(--fg)] whitespace-nowrap">
+        Ledger
+      </span>
+    </div>
+
+    {/* Segmented Navigation */}
+    <nav>
+      <SegmentedControl
+        items={TAB_ITEMS}
+        value={currentTab}
+        onChange={(key) => onTabChange(key as TabType)}
+        ariaLabel="主导航"
+        compact
+      />
+    </nav>
+
+    {/* Action Cluster */}
+    <div className="flex items-center gap-1">
+      <IconButton
+        label={darkMode ? '切换浅色模式' : '切换暗黑模式'}
+        onClick={onToggleDarkMode}
+      >
+        {darkMode ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+      </IconButton>
+
+      <div
+        className="hidden min-[640px]:flex items-center gap-2 py-1 pl-1 pr-2.5
+          bg-[var(--surface-sunken)] border border-[var(--line)] rounded-[var(--r-pill)]
+          text-[12.5px] text-[var(--fg-2)] select-none"
+      >
+        <div className="w-[22px] h-[22px] rounded-full bg-[var(--brand)] text-white text-[11px] font-bold flex items-center justify-center">
+          A
         </div>
-        <span className="text-base sm:text-lg font-semibold tracking-tight text-[var(--color-neutral-fg-1)]">
-          Ledger
-        </span>
+        <span>admin</span>
       </div>
 
-      {/* Center: Segmented Capsule Navigation */}
-      <nav className="bg-[var(--color-canvas-bg)] rounded-full p-[3px] inline-flex items-center gap-0.5 sm:gap-1 border border-[var(--color-neutral-stroke)]">
-        <button
-          type="button"
-          title="账目流水"
-          aria-label="账目流水"
-          onClick={() => onTabChange('stream')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
-            currentTab === 'stream'
-              ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
-              : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-          }`}
-        >
-          <StreamIcon size={16} />
-          <span className="hidden sm:inline">账目流水</span>
-        </button>
-
-        <button
-          type="button"
-          title="收支统计"
-          aria-label="收支统计"
-          onClick={() => onTabChange('stats')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
-            currentTab === 'stats'
-              ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
-              : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-          }`}
-        >
-          <StatsIcon size={16} />
-          <span className="hidden sm:inline">收支统计</span>
-        </button>
-
-        <button
-          type="button"
-          title="基础设置"
-          aria-label="基础设置"
-          onClick={() => onTabChange('settings')}
-          className={`flex items-center justify-center gap-1 sm:gap-1.5 w-9 sm:w-auto px-2 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] ${
-            currentTab === 'settings'
-              ? 'bg-[var(--color-card-bg)] text-[var(--color-neutral-fg-1)] font-semibold shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
-              : 'text-[var(--color-neutral-fg-3)] font-medium hover:text-[var(--color-neutral-fg-1)]'
-          }`}
-        >
-          <SettingsIcon size={16} />
-          <span className="hidden sm:inline">基础设置</span>
-        </button>
-      </nav>
-
-      {/* Right: Actions Cluster */}
-      <div className="flex items-center gap-1.5 sm:gap-3">
-        <button
-          type="button"
-          title={darkMode ? '切换浅色模式' : '切换暗黑模式'}
-          aria-label={darkMode ? '切换浅色模式' : '切换暗黑模式'}
-          onClick={onToggleDarkMode}
-          className="w-[34px] h-[34px] rounded-lg border border-transparent flex items-center justify-center text-[var(--color-neutral-fg-3)] hover:bg-[var(--color-hover-bg)] hover:text-[var(--color-neutral-fg-1)] hover:border-[var(--color-neutral-stroke)] cursor-pointer transition-all duration-150"
-        >
-          {darkMode ? <SunIcon size={16} /> : <MoonIcon size={16} />}
-        </button>
-
-        <div
-          className="hidden sm:flex items-center gap-2 py-1 px-2.5 bg-[var(--color-hover-bg)] border border-[var(--color-neutral-stroke)] rounded-full text-[13px] text-[var(--color-neutral-fg-2)] select-none"
-          title="管理员状态"
-        >
-          <div className="w-[22px] h-[22px] rounded-full bg-[var(--color-brand)] text-white text-[11px] font-bold flex items-center justify-center">
-            A
-          </div>
-          <span>admin</span>
-        </div>
-
-        <button
-          type="button"
-          title="退出登录"
-          aria-label="退出登录"
-          onClick={onLogout}
-          className="w-[34px] h-[34px] sm:w-auto flex items-center justify-center gap-1 sm:gap-1.5 text-xs text-[var(--color-neutral-fg-3)] hover:text-[var(--color-expense-dark)] hover:bg-[var(--color-expense-bg)] sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-md cursor-pointer transition-all duration-150"
-        >
-          <LogoutIcon size={15} />
-          <span className="hidden sm:inline">登出</span>
-        </button>
-      </div>
-    </header>
-  );
-};
+      <IconButton label="退出登录" tone="danger" onClick={onLogout}>
+        <LogoutIcon size={15} />
+      </IconButton>
+    </div>
+  </header>
+);
