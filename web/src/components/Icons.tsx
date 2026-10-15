@@ -225,3 +225,14 @@ export function CloseIcon({ size = 14 }: IconProps) {
     </svg>
   );
 }
+
+export function MoreHorizontalIcon({ size = 16 }: IconProps) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+

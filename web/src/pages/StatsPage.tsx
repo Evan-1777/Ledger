@@ -181,7 +181,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                 balance={ac.remaining_balance}
                 railValue={Math.min(ac.percentage, 100)}                railColor="var(--brand)"
                 tone="text-[var(--fg)]"
-                subLeft={`初始 ${formatMoney(ac.initial_balance, { sign: 'none' })}`}
+                subLeft={null}
                 subRight={`占资产 ${formatPercent(ac.percentage)}`}
               />
             ))
@@ -219,11 +219,11 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
                     </span>
                   }
                   subRight={
-                    <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
-                      {lc.credit_limit > 0
-                        ? `额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${formatPercent(lc.usage_rate)}`
-                        : `初始欠款 ${formatMoney(lc.initial_debt, { sign: 'none' })}`}
-                    </span>
+                    lc.credit_limit > 0 ? (
+                      <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
+                        {`额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${formatPercent(lc.usage_rate)}`}
+                      </span>
+                    ) : null
                   }
                 />
               );

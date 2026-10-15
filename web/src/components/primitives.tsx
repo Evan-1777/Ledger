@@ -6,6 +6,7 @@ import {
   IncomeIcon,
   TransferIcon,
   RepaymentIcon,
+  MoreHorizontalIcon,
 } from './Icons';
 import { resolveTone } from '../lib/format.ts';
 import type { AmountTone } from '../lib/format.ts';
@@ -446,3 +447,120 @@ export const ConfirmDialog: FC<ConfirmDialogProps> = ({
     document.body
   );
 };
+
+/* ============================== OverflowMenu ============================== */
+
+export type OverflowMenuItem =
+  | {
+      label: string;
+      onSelect: () => void;
+      disabled?: boolean;
+      tone?: 'danger';
+    }
+  | 'divider';
+
+interface OverflowMenuProps {
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  items: OverflowMenuItem[];
+  className?: string;
+}
+
+export const OverflowMenu: FC<OverflowMenuProps> = ({
+  label,
+  open,
+  onOpenChange,
+  items,
+  className = '',
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const firstItemRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (open) {
+      firstItemRef.current?.focus();
+    }
+  }, [open]);
+
+  // ponytail: no viewport flip or Portal positioning; inside scrollable containers (e.g. drawer with overflow-y-auto), menu expands with scroll area and bottom items must be scrolled into view
+  return (
+    <div ref={containerRef} className={`relative inline-block ${className}`}>
+      <button
+        type="button"
+        aria-label={`${label} 更多操作`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenChange(!open);
+        }}
+        className={`w-8 h-8 rounded-[var(--r-sm)] flex items-center justify-center flex-shrink-0 cursor-pointer transition-all duration-[var(--d1)] active:scale-[.94] ${
+          open
+            ? 'bg-[var(--surface-sunken)] text-[var(--fg)]'
+            : 'text-[var(--fg-3)] hover:text-[var(--fg)] hover:bg-[var(--surface-sunken)]'
+        }`}
+      >
+        <MoreHorizontalIcon size={16} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label={`${label} 操作菜单`}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-1 z-[50] min-w-[140px] p-1 bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-md)] shadow-[var(--e4)] animate-pop"
+        >
+          {(() => {
+            let hasFocusedFirst = false;
+            return items.map((item, idx) => {
+              if (item === 'divider') {
+                return <hr key={`div-${idx}`} className="border-0 h-px bg-[var(--line)] my-1 mx-0.5" />;
+              }
+
+              const isFirstAvailable = !item.disabled && !hasFocusedFirst;
+              if (isFirstAvailable) {
+                hasFocusedFirst = true;
+              }
+
+              return (
+                <button
+                  key={`${item.label}-${idx}`}
+                  ref={isFirstAvailable ? firstItemRef : undefined}
+                  role="menuitem"
+                  type="button"
+                  disabled={item.disabled}
+                  onClick={() => {
+                    onOpenChange(false);
+                    item.onSelect();
+                  }}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--r-sm)] text-[13px] text-left cursor-pointer transition-colors disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+                    item.tone === 'danger'
+                      ? 'text-[var(--expense-text)] hover:bg-[var(--expense-soft)]'
+                      : 'text-[var(--fg)] hover:bg-[var(--surface-hover)]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            });
+          })()}
+        </div>
+      )}
+    </div>
+  );
+};
+

@@ -1,21 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import type { FC, FormEvent, ReactNode } from 'react';
+import type { FC, FormEvent } from 'react';
 import { Category, PaymentMethod, Tag } from '../lib/api';
 import { formatMoney } from '../lib/format.ts';
-import { Panel, SegmentedControl, IconButton, Button, Chip, EmptyState, ConfirmDialog } from '../components/primitives';
+import {
+  Panel,
+  SegmentedControl,
+  IconButton,
+  Button,
+  Chip,
+  EmptyState,
+  ConfirmDialog,
+  Skeleton,
+  OverflowMenu,
+} from '../components/primitives';
 import {
   PlusIcon,
-  ChevronUpIcon,
-  ChevronDownIcon,
-  TrashIcon,
-  EditIcon,
   CloseIcon,
+  ChevronRightIcon,
+  LockIcon,
 } from '../components/Icons';
 
 interface SettingsPageProps {
   categories: Category[];
   paymentMethods: PaymentMethod[];
+  loading?: boolean;
   onAddPaymentMethod: (name: string, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onUpdatePaymentMethod: (id: number, name: string, sort_order: number, type: 'asset' | 'liability', initialBalance: number, creditLimit: number) => Promise<void>;
   onDeletePaymentMethod: (id: number) => Promise<void>;
@@ -31,15 +40,34 @@ interface SettingsPageProps {
 
 type PendingDelete = { kind: 'category' | 'channel' | 'tag'; id: number; name: string } | null;
 
+type ChannelDialogState =
+  | { mode: 'create'; type: 'asset' | 'liability' }
+  | { mode: 'edit'; pm: PaymentMethod }
+  | null;
+
 const INPUT_CLASS =
   'px-3 py-1.5 rounded-[var(--r-sm)] bg-[var(--surface)] border border-[var(--line-strong)] ' +
-  'text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] ' +
+  'text-[16px] min-[640px]:text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] ' +
   'focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)] ' +
   'transition-[border-color,box-shadow] duration-[var(--d1)]';
+
+const SkeletonList: FC = () => (
+  <div className="p-1.5 flex flex-col">
+    {[1, 2, 3, 4].map((i) => (
+      <div key={i} className="min-h-[52px] px-3 py-2 flex items-center">
+        <div className="flex-1 flex flex-col gap-1.5">
+          <Skeleton className="w-[30%] h-3.5" />
+          <Skeleton className="w-[55%] h-2.5" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export const SettingsPage: FC<SettingsPageProps> = ({
   categories,
   paymentMethods,
+  loading = false,
   onAddPaymentMethod,
   onUpdatePaymentMethod,
   onDeletePaymentMethod,
@@ -55,22 +83,11 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   // Navigation tab state: 2 core business sections
   const [activeTab, setActiveTab] = useState<'categories' | 'paymentMethods'>('categories');
 
-  // Channel inline add states
-  const [showAddAssetInput, setShowAddAssetInput] = useState(false);
-  const [newAssetName, setNewAssetName] = useState('');
-  const [newAssetBalance, setNewAssetBalance] = useState('');
+  // Single controlled overflow menu state
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
 
-  const [showAddLiabilityInput, setShowAddLiabilityInput] = useState(false);
-  const [newLiabilityName, setNewLiabilityName] = useState('');
-  const [newLiabilityDebt, setNewLiabilityDebt] = useState('');
-  const [newLiabilityLimit, setNewLiabilityLimit] = useState('');
-
-  // Channel inline edit states
-  const [editingPmId, setEditingPmId] = useState<number | null>(null);
-  const [editingPmName, setEditingPmName] = useState('');
-  const [editingPmInitBal, setEditingPmInitBal] = useState('');
-  const [editingPmLimit, setEditingPmLimit] = useState('');
-  const [editingPmType, setEditingPmType] = useState<'asset' | 'liability'>('asset');
+  // Channel dialog state
+  const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
 
   // Category inline add & type tab state
   const [categoryTypeTab, setCategoryTypeTab] = useState<'expense' | 'income'>('expense');
@@ -102,6 +119,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
 
   const openDrawer = (catId: number, triggerEl?: HTMLElement | null) => {
+    setOpenMenu(null);
     drawerTriggerRef.current = triggerEl ?? (document.activeElement as HTMLElement | null);
     setActiveDrawerCategoryId(catId);
     setDrawerNewTagName('');
@@ -151,11 +169,20 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     prevDrawerCatIdRef.current = activeDrawerCategoryId;
   }, [activeDrawerCategoryId, activeDrawerCategory?.type]);
 
-  // ESC key listener to close drawer or editing state; yields to ConfirmDialog when open
+  // ESC key listener with prioritized arbitration chain
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (pendingDelete !== null) {
+          // Yield to ConfirmDialog
+          return;
+        }
+        if (channelDialog !== null) {
+          setChannelDialog(null);
+          return;
+        }
+        if (openMenu !== null) {
+          setOpenMenu(null);
           return;
         }
         if (activeDrawerCategory) {
@@ -169,20 +196,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({
         }
         if (editingCatId !== null) {
           setEditingCatId(null);
-        } else if (editingPmId !== null) {
-          setEditingPmId(null);
         } else if (showAddCatInput) {
           setShowAddCatInput(false);
           setNewCatName('');
-        } else if (showAddAssetInput) {
-          setShowAddAssetInput(false);
-          setNewAssetName('');
-          setNewAssetBalance('');
-        } else if (showAddLiabilityInput) {
-          setShowAddLiabilityInput(false);
-          setNewLiabilityName('');
-          setNewLiabilityDebt('');
-          setNewLiabilityLimit('');
         }
       }
     };
@@ -190,106 +206,13 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     pendingDelete,
+    channelDialog,
+    openMenu,
     activeDrawerCategory,
     editingTagId,
     editingCatId,
-    editingPmId,
     showAddCatInput,
-    showAddAssetInput,
-    showAddLiabilityInput,
   ]);
-
-  const handleCreateAssetChannel = async (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = newAssetName.trim();
-    if (!trimmed) return;
-    if (paymentMethods.some((pm) => pm.name.toLowerCase() === trimmed.toLowerCase())) {
-      onToast?.('error', '该渠道名称已存在');
-      return;
-    }
-    const balance = parseFloat(newAssetBalance) || 0;
-    if (balance < 0) {
-      onToast?.('error', '初始余额不能为负数');
-      return;
-    }
-    try {
-      await onAddPaymentMethod(trimmed, 'asset', balance, 0);
-      setNewAssetName('');
-      setNewAssetBalance('');
-      setShowAddAssetInput(false);
-    } catch {
-      // Handled in parent
-    }
-  };
-
-  const handleCreateLiabilityChannel = async (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = newLiabilityName.trim();
-    if (!trimmed) return;
-    if (paymentMethods.some((pm) => pm.name.toLowerCase() === trimmed.toLowerCase())) {
-      onToast?.('error', '该渠道名称已存在');
-      return;
-    }
-    const debt = parseFloat(newLiabilityDebt) || 0;
-    const limit = parseFloat(newLiabilityLimit) || 0;
-    if (debt < 0) {
-      onToast?.('error', '初始欠款不能为负数');
-      return;
-    }
-    if (limit < 0) {
-      onToast?.('error', '授信额度不能为负数');
-      return;
-    }
-    try {
-      await onAddPaymentMethod(trimmed, 'liability', debt, limit);
-      setNewLiabilityName('');
-      setNewLiabilityDebt('');
-      setNewLiabilityLimit('');
-      setShowAddLiabilityInput(false);
-    } catch {
-      // Handled in parent
-    }
-  };
-
-  const handleStartEditPm = (pm: PaymentMethod) => {
-    setEditingPmId(pm.id);
-    setEditingPmName(pm.name);
-    setEditingPmInitBal(String(pm.initial_balance));
-    setEditingPmLimit(String(pm.credit_limit));
-    setEditingPmType(pm.type || 'asset');
-  };
-
-  const handleSavePmEdit = async (pm: PaymentMethod, e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = editingPmName.trim();
-    if (!trimmed) {
-      onToast?.('error', '渠道名称不能为空');
-      return;
-    }
-    const isDuplicate = paymentMethods.some(
-      (p) => p.id !== pm.id && p.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (isDuplicate) {
-      onToast?.('error', '该渠道名称已存在');
-      return;
-    }
-    const initBal = parseFloat(editingPmInitBal) || 0;
-    const limit = parseFloat(editingPmLimit) || 0;
-    if (initBal < 0) {
-      onToast?.('error', editingPmType === 'liability' ? '初始欠款不能为负数' : '初始余额不能为负数');
-      return;
-    }
-    if (limit < 0) {
-      onToast?.('error', '授信额度不能为负数');
-      return;
-    }
-    try {
-      await onUpdatePaymentMethod(pm.id, trimmed, pm.sort_order, editingPmType, initBal, limit);
-      setEditingPmId(null);
-    } catch {
-      // Keep edit state open
-    }
-  };
 
   const expenseCategories = categories.filter((c) => (c.type || 'expense') === 'expense');
   const incomeCategories = categories.filter((c) => c.type === 'income');
@@ -437,95 +360,24 @@ export const SettingsPage: FC<SettingsPageProps> = ({
     else await onDeleteTag(id);
   };
 
+  const handleSaveChannel = async (
+    name: string,
+    type: 'asset' | 'liability',
+    initialBal: number,
+    creditLimit: number
+  ) => {
+    if (!channelDialog) return;
+    if (channelDialog.mode === 'create') {
+      await onAddPaymentMethod(name, type, initialBal, creditLimit);
+    } else {
+      const pm = channelDialog.pm;
+      await onUpdatePaymentMethod(pm.id, name, pm.sort_order, type, initialBal, creditLimit);
+    }
+  };
+
   // Derive asset and liability channels
   const assetChannels = paymentMethods.filter((pm) => pm.type === 'asset' || !pm.type);
   const liabilityChannels = paymentMethods.filter((pm) => pm.type === 'liability');
-
-  const channelRow = (pm: PaymentMethod) => {
-    if (editingPmId === pm.id) {
-      return (
-        <form
-          key={pm.id}
-          onSubmit={(e) => handleSavePmEdit(pm, e)}
-          className="col-span-1 p-3 rounded-[var(--r-md)] border border-[var(--brand)] bg-[var(--surface)] flex flex-col gap-2"
-        >
-          <input
-            type="text"
-            autoFocus
-            value={editingPmName}
-            onChange={(e) => setEditingPmName(e.target.value)}
-            placeholder="渠道名称"
-            className="w-full px-2.5 py-1 rounded-[var(--r-sm)] bg-[var(--surface-sunken)] border border-[var(--line-strong)] text-xs text-[var(--fg)] outline-none focus:border-[var(--brand)]"
-          />
-          <div className={editingPmType === 'liability' ? 'grid grid-cols-2 gap-2' : ''}>
-            <div className={editingPmType === 'liability' ? 'flex flex-col gap-0.5' : 'flex items-center gap-1.5'}>
-              <span className={editingPmType === 'liability' ? 'text-[10px] text-[var(--fg-3)]' : 'text-[11px] text-[var(--fg-3)] flex-shrink-0'}>
-                {editingPmType === 'liability' ? '初始欠款' : '初始余额'}
-              </span>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={editingPmInitBal}
-                onChange={(e) => setEditingPmInitBal(e.target.value)}
-                className="w-full px-2 py-1 rounded-[var(--r-sm)] bg-[var(--surface-sunken)] border border-[var(--line-strong)] text-xs text-[var(--fg)] outline-none focus:border-[var(--brand)]"
-              />
-            </div>
-            {editingPmType === 'liability' && (
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-[var(--fg-3)]">授信额度</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={editingPmLimit}
-                  onChange={(e) => setEditingPmLimit(e.target.value)}
-                  className="w-full px-2 py-1 rounded-[var(--r-sm)] bg-[var(--surface-sunken)] border border-[var(--line-strong)] text-xs text-[var(--fg)] outline-none focus:border-[var(--brand)]"
-                />
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 justify-end mt-1">
-            <Button type="submit" variant="primary" size="sm">保存</Button>
-            <Button variant="subtle" size="sm" onClick={() => setEditingPmId(null)}>取消</Button>
-          </div>
-        </form>
-      );
-    }
-
-    const isLiability = (pm.type || 'asset') === 'liability';
-    return (
-      <div
-        key={pm.id}
-        className="flex items-center gap-2.5 py-2.5 border-t border-[var(--line)] first:border-t-0"
-      >
-        <i
-          className="w-[7px] h-[7px] rounded-full flex-shrink-0"
-          style={{ background: isLiability ? 'var(--expense)' : 'var(--brand)' }}
-        />
-        <div className="flex-1 min-w-0">
-          <b className="block text-[13.5px] font-semibold text-[var(--fg)] truncate">{pm.name}</b>
-          <span className="block text-xs text-[var(--fg-3)] mt-px num">
-            {isLiability
-              ? `额度 ${pm.credit_limit > 0 ? formatMoney(pm.credit_limit, { sign: 'none' }) : '不限'} · 初始欠款 ${formatMoney(pm.initial_balance, { sign: 'none' })}`
-              : `初始余额 ${formatMoney(pm.initial_balance, { sign: 'none' })}`}
-          </span>
-        </div>
-        {/* Actions always visible — mobile has no hover */}
-        <IconButton label={`编辑渠道 ${pm.name}`} size={28} onClick={() => handleStartEditPm(pm)}>
-          <EditIcon size={13} />
-        </IconButton>
-        <IconButton
-          label={`删除渠道 ${pm.name}`}
-          tone="danger"
-          size={28}
-          onClick={() => setPendingDelete({ kind: 'channel', id: pm.id, name: pm.name })}
-        >
-          <TrashIcon size={13} />
-        </IconButton>
-      </div>
-    );
-  };
 
   return (
     <div className="flex flex-col pb-4">
@@ -538,7 +390,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
             { key: 'paymentMethods', label: '渠道与账户' },
           ]}
           value={activeTab}
-          onChange={(key) => setActiveTab(key as 'categories' | 'paymentMethods')}
+          onChange={(key) => {
+            setActiveTab(key as 'categories' | 'paymentMethods');
+            setOpenMenu(null);
+          }}
           ariaLabel="设置分区"
           className="[&>button]:px-3.5"
         />
@@ -547,335 +402,398 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       {/* ==================== Section 1: Categories & Tags ==================== */}
       {activeTab === 'categories' && (
         <div className="flex flex-col gap-4">
-          <PanelCard
-            title={`${categoryTypeTab === 'income' ? '收入分类' : '支出分类'}`}
-            count={currentCategories.length}
-            action={
-              !showAddCatInput ? (
-                <Button variant="subtle" size="sm" onClick={() => setShowAddCatInput(true)}>
-                  <PlusIcon size={13} />
-                  新增{categoryTypeTab === 'income' ? '收入分类' : '支出分类'}
-                </Button>
-              ) : undefined
-            }
-          >
-            {/* Secondary type switch */}
-            <div className="mb-1">
+          <Panel className="p-0 overflow-visible">
+            {/* Panel Header */}
+            <div className="flex items-center justify-between gap-2.5 px-[18px] pt-3.5 pb-2.5">
               <SegmentedControl
                 items={[
-                  { key: 'expense', label: `支出分类 (${expenseCategories.length})` },
-                  { key: 'income', label: `收入分类 (${incomeCategories.length})` },
+                  { key: 'expense', label: '支出' },
+                  { key: 'income', label: '收入' },
                 ]}
                 value={categoryTypeTab}
                 onChange={(key) => {
                   setCategoryTypeTab(key as 'expense' | 'income');
                   setShowAddCatInput(false);
+                  setOpenMenu(null);
                 }}
                 ariaLabel="分类类型"
-                className="[&>button]:px-3 [&>button]:text-xs w-fit"
+                className="[&>button]:px-3 [&>button]:py-1 [&>button]:text-xs"
               />
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => {
+                  setShowAddCatInput(true);
+                  setOpenMenu(null);
+                }}
+              >
+                <PlusIcon size={13} />
+                新建分类
+              </Button>
             </div>
 
             {/* Inline Creation Form */}
             {showAddCatInput && (
-              <form
-                onSubmit={handleCreateCategory}
-                className="flex items-center gap-2 p-3 bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-[var(--line)] animate-fade"
-              >
-                <input
-                  type="text"
-                  autoFocus
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder={categoryTypeTab === 'income' ? '输入收入分类名称 (如：职业收入、理财利息)' : '输入支出分类名称 (如：数码科技、宠物养护)'}
-                  className={`flex-1 ${INPUT_CLASS}`}
-                />
-                <Button type="submit" variant="primary" size="sm">确定</Button>
-                <Button
-                  variant="subtle"
-                  size="sm"
-                  onClick={() => {
-                    setShowAddCatInput(false);
-                    setNewCatName('');
-                  }}
+              <div className="px-3 pb-3">
+                <form
+                  onSubmit={handleCreateCategory}
+                  className="flex items-center gap-2 p-3 bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-[var(--line)] animate-fade"
                 >
-                  取消
-                </Button>
-              </form>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder={
+                      categoryTypeTab === 'income'
+                        ? '输入收入分类名称 (如：职业收入、理财利息)'
+                        : '输入支出分类名称 (如：数码科技、宠物养护)'
+                    }
+                    className={`flex-1 ${INPUT_CLASS}`}
+                  />
+                  <Button type="submit" variant="primary" size="sm">
+                    确定
+                  </Button>
+                  <Button
+                    variant="subtle"
+                    size="sm"
+                    onClick={() => {
+                      setShowAddCatInput(false);
+                      setNewCatName('');
+                    }}
+                  >
+                    取消
+                  </Button>
+                </form>
+              </div>
             )}
 
-            {/* Hairline Category List */}
-            {currentCategories.length === 0 ? (
+            {/* List or Skeleton or Empty */}
+            {loading ? (
+              <SkeletonList />
+            ) : currentCategories.length === 0 ? (
               <EmptyState
                 title={`暂无${categoryTypeTab === 'income' ? '收入分类' : '支出分类'}`}
-                subtitle="创建第一个分类后开始记账"
-                action={{ label: '立即新增', onClick: () => setShowAddCatInput(true) }}
+                subtitle="新建后即可在记账时选择"
+                action={{
+                  label: '新建分类',
+                  onClick: () => {
+                    setShowAddCatInput(true);
+                    setOpenMenu(null);
+                  },
+                }}
               />
             ) : (
-              currentCategories.map((cat, index) => (
-                <div key={cat.id} className="py-2.5 border-t border-[var(--line)] first:border-t-0">
-                  {editingCatId === cat.id ? (
-                    <form
-                      onSubmit={(e) => handleSaveCatRename(cat, e)}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 animate-fade"
+              <div className="p-1.5 flex flex-col">
+                {currentCategories.map((cat, index) => {
+                  if (editingCatId === cat.id) {
+                    return (
+                      <div key={cat.id} className="p-2 border-t border-[var(--line)] first:border-t-0">
+                        <form
+                          onSubmit={(e) => handleSaveCatRename(cat, e)}
+                          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 animate-fade"
+                        >
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingCatName}
+                            onChange={(e) => setEditingCatName(e.target.value)}
+                            className={`flex-1 ${INPUT_CLASS}`}
+                          />
+                          <div className="flex items-center gap-1 bg-[var(--surface-sunken)] p-0.5 rounded-[var(--r-sm)] border border-[var(--line)] text-xs">
+                            {(['expense', 'income'] as const).map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                aria-pressed={editingCatType === t}
+                                onClick={() => setEditingCatType(t)}
+                                className={`px-2.5 py-1 rounded-[var(--r-xs)] text-xs font-medium cursor-pointer transition-colors ${
+                                  editingCatType === t
+                                    ? 'bg-[var(--surface)] text-[var(--fg)] font-semibold shadow-[var(--e1)]'
+                                    : 'text-[var(--fg-3)] hover:text-[var(--fg-2)]'
+                                }`}
+                              >
+                                {t === 'expense' ? '支出' : '收入'}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Button type="submit" variant="primary" size="sm">
+                              保存
+                            </Button>
+                            <Button variant="subtle" size="sm" onClick={() => setEditingCatId(null)}>
+                              取消
+                            </Button>
+                          </div>
+                        </form>
+                      </div>
+                    );
+                  }
+
+                  const tagSummary =
+                    cat.tags && cat.tags.length > 0
+                      ? cat.tags.map((t) => t.name).join(' · ')
+                      : '暂无细分标签';
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="group relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                     >
-                      <input
-                        type="text"
-                        autoFocus
-                        value={editingCatName}
-                        onChange={(e) => setEditingCatName(e.target.value)}
-                        className={`flex-1 ${INPUT_CLASS}`}
-                      />
-                      <div className="flex items-center gap-1 bg-[var(--surface-sunken)] p-0.5 rounded-[var(--r-sm)] border border-[var(--line)] text-xs">
-                        {(['expense', 'income'] as const).map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            aria-pressed={editingCatType === t}
-                            onClick={() => setEditingCatType(t)}
-                            className={`px-2.5 py-1 rounded-[var(--r-xs)] text-xs font-medium cursor-pointer transition-colors ${
-                              editingCatType === t
-                                ? 'bg-[var(--surface)] text-[var(--fg)] font-semibold shadow-[var(--e1)]'
-                                : 'text-[var(--fg-3)] hover:text-[var(--fg-2)]'
-                            }`}
-                          >
-                            {t === 'expense' ? '支出' : '收入'}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1.5 justify-end">
-                        <Button type="submit" variant="primary" size="sm">保存</Button>
-                        <Button variant="subtle" size="sm" onClick={() => setEditingCatId(null)}>取消</Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <b className="text-[13.5px] font-semibold text-[var(--fg)] truncate">{cat.name}</b>
-                          <Chip>{cat.tags?.length || 0} 个细分标签</Chip>
-                        </div>
-                      </div>
-                      <Button
-                        variant="subtle"
-                        size="sm"
+                      <button
+                        type="button"
                         onClick={(e) => openDrawer(cat.id, e.currentTarget)}
+                        className="flex-1 min-w-0 text-left flex flex-col justify-center cursor-pointer"
                       >
-                        <EditIcon size={12} />
-                        {cat.type === 'system' ? '查看标签' : '管理标签'}
-                      </Button>
-                      {cat.type !== 'system' && (
-                        <>
-                          <IconButton
-                            label={`上移 ${cat.name}`}
-                            size={28}
-                            disabled={index === 0}
-                            onClick={() => handleMoveCategory(index, 'up')}
-                          >
-                            <ChevronUpIcon size={13} />
-                          </IconButton>
-                          <IconButton
-                            label={`下移 ${cat.name}`}
-                            size={28}
-                            disabled={index === currentCategories.length - 1}
-                            onClick={() => handleMoveCategory(index, 'down')}
-                          >
-                            <ChevronDownIcon size={13} />
-                          </IconButton>
-                          <IconButton
-                            label={`编辑 ${cat.name}`}
-                            size={28}
-                            onClick={() => {
+                        <span className="text-[13.5px] font-semibold text-[var(--fg)] truncate">
+                          {cat.name}
+                        </span>
+                        <span className="text-xs text-[var(--fg-3)] truncate mt-0.5">
+                          {tagSummary}
+                        </span>
+                      </button>
+
+                      <span className="text-xs text-[var(--fg-muted)] num flex-shrink-0">
+                        {cat.tags?.length || 0}
+                      </span>
+
+                      <OverflowMenu
+                        label={cat.name}
+                        open={openMenu === `cat-${cat.id}`}
+                        onOpenChange={(isOpen) => setOpenMenu(isOpen ? `cat-${cat.id}` : null)}
+                        items={[
+                          {
+                            label: '重命名',
+                            onSelect: () => {
                               setEditingCatId(cat.id);
                               setEditingCatName(cat.name);
                               setEditingCatType(cat.type === 'income' ? 'income' : 'expense');
-                            }}
-                          >
-                            <EditIcon size={13} />
-                          </IconButton>
-                          <IconButton
-                            label={`删除 ${cat.name}`}
-                            tone="danger"
-                            size={28}
-                            onClick={() => setPendingDelete({ kind: 'category', id: cat.id, name: cat.name })}
-                          >
-                            <TrashIcon size={13} />
-                          </IconButton>
-                        </>
-                      )}
+                            },
+                          },
+                          {
+                            label: '上移',
+                            disabled: index === 0,
+                            onSelect: () => handleMoveCategory(index, 'up'),
+                          },
+                          {
+                            label: '下移',
+                            disabled: index === currentCategories.length - 1,
+                            onSelect: () => handleMoveCategory(index, 'down'),
+                          },
+                          'divider',
+                          {
+                            label: '删除',
+                            tone: 'danger',
+                            onSelect: () =>
+                              setPendingDelete({ kind: 'category', id: cat.id, name: cat.name }),
+                          },
+                        ]}
+                      />
                     </div>
-                  )}
-                </div>
-              ))
-            )}
-
-            {/* System Categories */}
-            {systemCategories.length > 0 && (
-              <div className="mt-2 pt-4 border-t border-[var(--line)] flex flex-col gap-2">
-                <span className="text-xs font-semibold text-[var(--fg-3)] px-0.5">系统内置分类</span>
-                {systemCategories.map((cat) => (
-                  <div key={cat.id} className="flex items-center gap-2.5 py-1">
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <b className="text-[13.5px] font-semibold text-[var(--fg)] truncate">{cat.name}</b>
-                      <Chip tone="brand">系统内置</Chip>
-                      <Chip>{cat.tags?.length || 0} 个内置标签</Chip>
-                    </div>
-                    <Button
-                      variant="subtle"
-                      size="sm"
-                      onClick={(e) => openDrawer(cat.id, e.currentTarget)}
-                    >
-                      <EditIcon size={12} />
-                      查看标签
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
-          </PanelCard>
+          </Panel>
+
+          {/* System Categories Panel */}
+          {systemCategories.length > 0 && !loading && (
+            <Panel className="p-0 overflow-visible">
+              <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
+                <h2 className="text-sm font-[650] text-[var(--fg)]">系统分类</h2>
+              </div>
+              <div className="p-1.5 flex flex-col">
+                {systemCategories.map((cat) => {
+                  const tagSummary =
+                    cat.tags && cat.tags.length > 0
+                      ? cat.tags.map((t) => t.name).join(' · ')
+                      : '暂无细分标签';
+
+                  return (
+                    <div
+                      key={cat.id}
+                      className="group relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => openDrawer(cat.id, e.currentTarget)}
+                        className="flex-1 min-w-0 text-left flex flex-col justify-center cursor-pointer"
+                      >
+                        <span className="text-[13.5px] font-semibold text-[var(--fg)] truncate">
+                          {cat.name}
+                        </span>
+                        <span className="text-xs text-[var(--fg-3)] truncate mt-0.5">
+                          {tagSummary}
+                        </span>
+                      </button>
+
+                      <span className="inline-flex items-center gap-1 text-[11.5px] text-[var(--fg-3)] flex-shrink-0">
+                        <LockIcon size={12} />
+                        系统
+                      </span>
+                      <ChevronRightIcon size={14} className="text-[var(--fg-muted)] flex-shrink-0" />
+                    </div>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
         </div>
       )}
 
       {/* ==================== Section 2: Channels & Accounts ==================== */}
       {activeTab === 'paymentMethods' && (
-        <div className="flex flex-col gap-4">
-          <PanelCard
-            title="资产渠道"
-            count={assetChannels.length}
-            action={
-              !showAddAssetInput ? (
-                <Button variant="subtle" size="sm" onClick={() => setShowAddAssetInput(true)}>
-                  <PlusIcon size={13} />
-                  添加资产渠道
-                </Button>
-              ) : undefined
-            }
-          >
-            {showAddAssetInput && (
-              <form
-                onSubmit={handleCreateAssetChannel}
-                className="flex flex-wrap items-center gap-2 p-3 bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-[var(--line)] animate-fade"
+        <div className="grid grid-cols-1 min-[720px]:grid-cols-2 gap-4">
+          {/* Asset Channels Panel */}
+          <Panel className="p-0 overflow-visible flex flex-col">
+            <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
+              <h2 className="text-sm font-[650] text-[var(--fg)] flex items-baseline gap-2">
+                资产渠道
+                <span className="text-[11.5px] font-semibold text-[var(--fg-3)] num">
+                  {assetChannels.length}
+                </span>
+              </h2>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => {
+                  setChannelDialog({ mode: 'create', type: 'asset' });
+                  setOpenMenu(null);
+                }}
               >
-                <input
-                  type="text"
-                  autoFocus
-                  value={newAssetName}
-                  onChange={(e) => setNewAssetName(e.target.value)}
-                  placeholder="渠道名称 (如: 工商银行卡、微信零钱)"
-                  className={`flex-2 min-w-[150px] ${INPUT_CLASS}`}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newAssetBalance}
-                  onChange={(e) => setNewAssetBalance(e.target.value)}
-                  placeholder="初始余额 (元)"
-                  className={`flex-1 min-w-[110px] ${INPUT_CLASS}`}
-                />
-                <Button type="submit" variant="primary" size="sm">保存</Button>
-                <Button
-                  variant="subtle"
-                  size="sm"
-                  onClick={() => {
-                    setShowAddAssetInput(false);
-                    setNewAssetName('');
-                    setNewAssetBalance('');
-                  }}
-                >
-                  取消
-                </Button>
-              </form>
-            )}
-
-            <div className="grid grid-cols-1 min-[640px]:grid-cols-2">
-              {assetChannels.length === 0 ? (
-                <div className="col-span-full">
-                  <EmptyState
-                    title="暂无资产渠道"
-                    subtitle="添加后用于记录支出与收入"
-                    action={{ label: '添加资产渠道', onClick: () => setShowAddAssetInput(true) }}
-                  />
-                </div>
-              ) : (
-                assetChannels.map(channelRow)
-              )}
+                <PlusIcon size={13} />
+                添加
+              </Button>
             </div>
-          </PanelCard>
 
-          <PanelCard
-            title="负债渠道"
-            count={liabilityChannels.length}
-            action={
-              !showAddLiabilityInput ? (
-                <Button variant="subtle" size="sm" onClick={() => setShowAddLiabilityInput(true)}>
-                  <PlusIcon size={13} />
-                  添加负债渠道
-                </Button>
-              ) : undefined
-            }
-          >
-            {showAddLiabilityInput && (
-              <form
-                onSubmit={handleCreateLiabilityChannel}
-                className="flex flex-wrap items-center gap-2 p-3 bg-[var(--surface-sunken)] rounded-[var(--r-md)] border border-[var(--line)] animate-fade"
+            {loading ? (
+              <SkeletonList />
+            ) : assetChannels.length === 0 ? (
+              <EmptyState
+                title="暂无资产渠道"
+                subtitle="用于记录支出与收入"
+                action={{
+                  label: '添加资产渠道',
+                  onClick: () => {
+                    setChannelDialog({ mode: 'create', type: 'asset' });
+                    setOpenMenu(null);
+                  },
+                }}
+              />
+            ) : (
+              <div className="p-1.5 flex flex-col">
+                {assetChannels.map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                  >
+                    <i className="w-2 h-2 rounded-full flex-shrink-0 bg-[var(--brand)]" />
+                    <div className="flex-1 min-w-0">
+                      <b className="block text-[13.5px] font-semibold text-[var(--fg)] truncate">
+                        {pm.name}
+                      </b>
+                    </div>
+                    <OverflowMenu
+                      label={pm.name}
+                      open={openMenu === `pm-${pm.id}`}
+                      onOpenChange={(isOpen) => setOpenMenu(isOpen ? `pm-${pm.id}` : null)}
+                      items={[
+                        {
+                          label: '编辑',
+                          onSelect: () => setChannelDialog({ mode: 'edit', pm }),
+                        },
+                        'divider',
+                        {
+                          label: '删除',
+                          tone: 'danger',
+                          onSelect: () =>
+                            setPendingDelete({ kind: 'channel', id: pm.id, name: pm.name }),
+                        },
+                      ]}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          {/* Liability Channels Panel */}
+          <Panel className="p-0 overflow-visible flex flex-col">
+            <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
+              <h2 className="text-sm font-[650] text-[var(--fg)] flex items-baseline gap-2">
+                负债渠道
+                <span className="text-[11.5px] font-semibold text-[var(--fg-3)] num">
+                  {liabilityChannels.length}
+                </span>
+              </h2>
+              <Button
+                variant="subtle"
+                size="sm"
+                onClick={() => {
+                  setChannelDialog({ mode: 'create', type: 'liability' });
+                  setOpenMenu(null);
+                }}
               >
-                <input
-                  type="text"
-                  autoFocus
-                  value={newLiabilityName}
-                  onChange={(e) => setNewLiabilityName(e.target.value)}
-                  placeholder="渠道名称 (如: 招商信用卡、花呗)"
-                  className={`flex-2 min-w-[150px] ${INPUT_CLASS}`}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newLiabilityDebt}
-                  onChange={(e) => setNewLiabilityDebt(e.target.value)}
-                  placeholder="初始欠款 (元)"
-                  className={`flex-1 min-w-[100px] ${INPUT_CLASS}`}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newLiabilityLimit}
-                  onChange={(e) => setNewLiabilityLimit(e.target.value)}
-                  placeholder="授信额度 (0为不限)"
-                  className={`flex-1 min-w-[110px] ${INPUT_CLASS}`}
-                />
-                <Button type="submit" variant="primary" size="sm">保存</Button>
-                <Button
-                  variant="subtle"
-                  size="sm"
-                  onClick={() => {
-                    setShowAddLiabilityInput(false);
-                    setNewLiabilityName('');
-                    setNewLiabilityDebt('');
-                    setNewLiabilityLimit('');
-                  }}
-                >
-                  取消
-                </Button>
-              </form>
-            )}
-
-            <div className="grid grid-cols-1 min-[640px]:grid-cols-2">
-              {liabilityChannels.length === 0 ? (
-                <div className="col-span-full">
-                  <EmptyState
-                    title="暂无负债渠道"
-                    subtitle="添加后用于记录还款与额度"
-                    action={{ label: '添加负债渠道', onClick: () => setShowAddLiabilityInput(true) }}
-                  />
-                </div>
-              ) : (
-                liabilityChannels.map(channelRow)
-              )}
+                <PlusIcon size={13} />
+                添加
+              </Button>
             </div>
-          </PanelCard>
+
+            {loading ? (
+              <SkeletonList />
+            ) : liabilityChannels.length === 0 ? (
+              <EmptyState
+                title="暂无负债渠道"
+                subtitle="用于记录还款与额度"
+                action={{
+                  label: '添加负债渠道',
+                  onClick: () => {
+                    setChannelDialog({ mode: 'create', type: 'liability' });
+                    setOpenMenu(null);
+                  },
+                }}
+              />
+            ) : (
+              <div className="p-1.5 flex flex-col">
+                {liabilityChannels.map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                  >
+                    <i className="w-2 h-2 rounded-full flex-shrink-0 bg-[var(--expense)]" />
+                    <div className="flex-1 min-w-0">
+                      <b className="block text-[13.5px] font-semibold text-[var(--fg)] truncate">
+                        {pm.name}
+                      </b>
+                      <span className="block text-xs text-[var(--fg-3)] mt-0.5 num">
+                        {pm.credit_limit > 0
+                          ? `额度 ${formatMoney(pm.credit_limit, { sign: 'none' })}`
+                          : '不设额度'}
+                      </span>
+                    </div>
+                    <OverflowMenu
+                      label={pm.name}
+                      open={openMenu === `pm-${pm.id}`}
+                      onOpenChange={(isOpen) => setOpenMenu(isOpen ? `pm-${pm.id}` : null)}
+                      items={[
+                        {
+                          label: '编辑',
+                          onSelect: () => setChannelDialog({ mode: 'edit', pm }),
+                        },
+                        'divider',
+                        {
+                          label: '删除',
+                          tone: 'danger',
+                          onSelect: () =>
+                            setPendingDelete({ kind: 'channel', id: pm.id, name: pm.name }),
+                        },
+                      ]}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
         </div>
       )}
 
@@ -903,8 +821,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
               <div className="px-4 py-3 border-b border-[var(--line)] flex items-center justify-between flex-shrink-0 bg-[var(--surface-sunken)]">
                 <div className="flex items-center gap-2 min-w-0">
                   <b className="text-sm font-[650] text-[var(--fg)] truncate">
-                    {activeDrawerCategory.name} · 细分标签
+                    {activeDrawerCategory.name}
                   </b>
+                  {activeDrawerCategory.type === 'system' && (
+                    <span className="inline-flex items-center gap-1 text-[11.5px] text-[var(--fg-3)]">
+                      <LockIcon size={12} />
+                      系统
+                    </span>
+                  )}
                   <Chip>{activeDrawerCategory.tags?.length || 0}</Chip>
                 </div>
                 <IconButton
@@ -919,14 +843,17 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
               {/* Drawer Body */}
               <div className="p-4 flex flex-col gap-3.5 overflow-y-auto flex-1 min-h-0">
-                {activeDrawerCategory.type !== 'system' ? (
-                  <form onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)} className="flex items-center gap-2 min-w-0">
+                {activeDrawerCategory.type !== 'system' && (
+                  <form
+                    onSubmit={(e) => handleCreateTagInDrawer(activeDrawerCategory.id, e)}
+                    className="flex items-center gap-2 min-w-0"
+                  >
                     <input
                       ref={drawerNewTagInputRef}
                       type="text"
                       value={drawerNewTagName}
                       onChange={(e) => setDrawerNewTagName(e.target.value)}
-                      placeholder="添加细分标签 (如：午餐、地铁)"
+                      placeholder="新标签名称"
                       className={`flex-1 min-w-0 ${INPUT_CLASS}`}
                     />
                     <Button
@@ -939,10 +866,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                       {isSubmittingTag ? '添加中…' : '添加'}
                     </Button>
                   </form>
-                ) : (
-                  <div className="p-3 rounded-[var(--r-sm)] bg-[var(--brand-soft)] border border-[var(--brand-line)] text-xs text-[var(--brand-text)]">
-                    系统分类标签由底层调度引擎固定保护，不可增删改
-                  </div>
                 )}
 
                 {/* Tag List */}
@@ -965,7 +888,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                               onChange={(e) => setEditingTagName(e.target.value)}
                               className={`flex-1 min-w-0 ${INPUT_CLASS}`}
                             />
-                            <Button type="submit" variant="primary" size="sm">保存</Button>
+                            <Button type="submit" variant="primary" size="sm">
+                              保存
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -979,30 +904,31 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                           </form>
                         ) : (
                           <>
-                            <b className="flex-1 min-w-0 text-[13.5px] font-semibold text-[var(--fg)] truncate">{tag.name}</b>
-                            {activeDrawerCategory.type !== 'system' ? (
-                              <>
-                                <IconButton
-                                  label={`重命名 ${tag.name}`}
-                                  size={28}
-                                  onClick={() => {
-                                    setEditingTagId(tag.id);
-                                    setEditingTagName(tag.name);
-                                  }}
-                                >
-                                  <EditIcon size={13} />
-                                </IconButton>
-                                <IconButton
-                                  label={`删除 ${tag.name}`}
-                                  tone="danger"
-                                  size={28}
-                                  onClick={() => setPendingDelete({ kind: 'tag', id: tag.id, name: tag.name })}
-                                >
-                                  <TrashIcon size={13} />
-                                </IconButton>
-                              </>
-                            ) : (
-                              <Chip tone="brand">系统固定</Chip>
+                            <b className="flex-1 min-w-0 text-[13.5px] font-semibold text-[var(--fg)] truncate">
+                              {tag.name}
+                            </b>
+                            {activeDrawerCategory.type !== 'system' && (
+                              <OverflowMenu
+                                label={tag.name}
+                                open={openMenu === `tag-${tag.id}`}
+                                onOpenChange={(isOpen) => setOpenMenu(isOpen ? `tag-${tag.id}` : null)}
+                                items={[
+                                  {
+                                    label: '重命名',
+                                    onSelect: () => {
+                                      setEditingTagId(tag.id);
+                                      setEditingTagName(tag.name);
+                                    },
+                                  },
+                                  'divider',
+                                  {
+                                    label: '删除',
+                                    tone: 'danger',
+                                    onSelect: () =>
+                                      setPendingDelete({ kind: 'tag', id: tag.id, name: tag.name }),
+                                  },
+                                ]}
+                              />
                             )}
                           </>
                         )}
@@ -1015,21 +941,20 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   )}
                 </div>
               </div>
-
-              {/* Drawer Footer */}
-              <div className="px-4 py-3 border-t border-[var(--line)] flex justify-end flex-shrink-0">
-                <Button
-                  variant="subtle"
-                  size="sm"
-                  onClick={closeDrawer}
-                >
-                  完成
-                </Button>
-              </div>
             </div>
           </div>,
           document.body
         )}
+
+      {/* Channel Dialog (Modal for Create & Edit) */}
+      {channelDialog && (
+        <ChannelDialog
+          dialog={channelDialog}
+          paymentMethods={paymentMethods}
+          onClose={() => setChannelDialog(null)}
+          onSave={handleSaveChannel}
+        />
+      )}
 
       {/* Single ConfirmDialog shared by category / channel / tag deletion */}
       <ConfirmDialog
@@ -1051,21 +976,199 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   );
 };
 
-/* Local panel card with head + hairline content (surface comes from the shared Panel) */
-const PanelCard: FC<{ title: string; count?: number; action?: ReactNode; children: ReactNode }> = ({
-  title,
-  count,
-  action,
-  children,
-}) => (
-  <Panel className="p-[18px] flex flex-col gap-3">
-    <div className="flex items-center justify-between gap-2.5">
-      <div className="flex items-baseline gap-2">
-        <b className="text-sm font-[650] text-[var(--fg)]">{title}</b>
-        {count !== undefined && <span className="text-[11.5px] font-semibold text-[var(--fg-3)] num">{count}</span>}
+/* ============================== ChannelDialog ============================== */
+
+interface ChannelDialogProps {
+  dialog: { mode: 'create'; type: 'asset' | 'liability' } | { mode: 'edit'; pm: PaymentMethod };
+  paymentMethods: PaymentMethod[];
+  onClose: () => void;
+  onSave: (name: string, type: 'asset' | 'liability', initialBal: number, creditLimit: number) => Promise<void>;
+}
+
+const ChannelDialog: FC<ChannelDialogProps> = ({ dialog, paymentMethods, onClose, onSave }) => {
+  const isEdit = dialog.mode === 'edit';
+  const pm = isEdit ? dialog.pm : null;
+  const channelType = isEdit ? (dialog.pm.type || 'asset') : dialog.type;
+  const isLiability = channelType === 'liability';
+
+  const [name, setName] = useState(pm ? pm.name : '');
+  const [balanceStr, setBalanceStr] = useState(pm && pm.initial_balance !== 0 ? String(pm.initial_balance) : '');
+  const [limitStr, setLimitStr] = useState(pm && pm.credit_limit > 0 ? String(pm.credit_limit) : '');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [limitError, setLimitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setNameError(null);
+    setBalanceError(null);
+    setLimitError(null);
+
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setNameError('请输入名称');
+      nameInputRef.current?.focus();
+      return;
+    }
+
+    const isDuplicate = paymentMethods.some(
+      (p) => (!isEdit || p.id !== pm?.id) && p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      setNameError('该渠道名称已存在');
+      nameInputRef.current?.focus();
+      return;
+    }
+
+    const parsedBal = balanceStr.trim() === '' ? 0 : parseFloat(balanceStr);
+    if (isNaN(parsedBal) || parsedBal < 0) {
+      setBalanceError(isLiability ? '初始欠款不能为负数' : '初始余额不能为负数');
+      return;
+    }
+
+    let parsedLimit = 0;
+    if (isLiability) {
+      parsedLimit = limitStr.trim() === '' ? 0 : parseFloat(limitStr);
+      if (isNaN(parsedLimit) || parsedLimit < 0) {
+        setLimitError('授信额度不能为负数');
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    try {
+      await onSave(trimmed, channelType, parsedBal, parsedLimit);
+      onClose();
+    } catch {
+      // Keep dialog open on failure so user can retry or adjust input
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const title = isEdit ? '编辑渠道' : isLiability ? '添加负债渠道' : '添加资产渠道';
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[1100] bg-[var(--overlay)] backdrop-blur-[4px] flex items-center justify-center p-3 animate-fade"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="channel-dialog-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[420px] bg-[var(--surface)] border border-[var(--line)] rounded-[var(--r-xl)] shadow-[var(--e4),inset_0_1px_0_var(--highlight-top)] animate-pop"
+      >
+        <div className="flex justify-between items-center px-[18px] py-3.5 border-b border-[var(--line)]">
+          <b id="channel-dialog-title" className="text-[15px] font-semibold text-[var(--fg)]">
+            {title}
+          </b>
+          <IconButton label="关闭" size={28} onClick={onClose}>
+            <CloseIcon size={14} />
+          </IconButton>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-[18px] flex flex-col gap-3.5">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="channel-name" className="text-xs font-semibold text-[var(--fg-2)]">
+              名称
+            </label>
+            <input
+              id="channel-name"
+              ref={nameInputRef}
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (nameError) setNameError(null);
+              }}
+              placeholder={isLiability ? '招商信用卡' : '工商银行卡'}
+              className={`w-full px-3 py-2 rounded-[var(--r-sm)] bg-[var(--surface)] border text-[16px] min-[640px]:text-[13.5px] text-[var(--fg)] outline-none transition-[border-color,box-shadow] duration-[var(--d1)] placeholder:text-[var(--fg-muted)] ${
+                nameError
+                  ? 'border-[var(--expense)]'
+                  : 'border-[var(--line-strong)] focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)]'
+              }`}
+            />
+            {nameError && <span className="text-xs text-[var(--expense-text)]">{nameError}</span>}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="channel-balance" className="text-xs font-semibold text-[var(--fg-2)]">
+              {isLiability ? '初始欠款' : '初始余额'}
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--fg-3)] pointer-events-none">
+                ¥
+              </span>
+              <input
+                id="channel-balance"
+                type="text"
+                inputMode="decimal"
+                value={balanceStr}
+                onChange={(e) => {
+                  setBalanceStr(e.target.value);
+                  if (balanceError) setBalanceError(null);
+                }}
+                placeholder="0.00"
+                className={`w-full pl-7 pr-3 py-2 rounded-[var(--r-sm)] bg-[var(--surface)] border text-[16px] min-[640px]:text-[13.5px] text-[var(--fg)] outline-none transition-[border-color,box-shadow] duration-[var(--d1)] placeholder:text-[var(--fg-muted)] ${
+                  balanceError
+                    ? 'border-[var(--expense)]'
+                    : 'border-[var(--line-strong)] focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)]'
+                }`}
+              />
+            </div>
+            {balanceError && <span className="text-xs text-[var(--expense-text)]">{balanceError}</span>}
+          </div>
+
+          {isLiability && (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="channel-limit" className="text-xs font-semibold text-[var(--fg-2)]">
+                授信额度
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--fg-3)] pointer-events-none">
+                  ¥
+                </span>
+                <input
+                  id="channel-limit"
+                  type="text"
+                  inputMode="decimal"
+                  value={limitStr}
+                  onChange={(e) => {
+                    setLimitStr(e.target.value);
+                    if (limitError) setLimitError(null);
+                  }}
+                  placeholder="不设额度"
+                  className={`w-full pl-7 pr-3 py-2 rounded-[var(--r-sm)] bg-[var(--surface)] border text-[16px] min-[640px]:text-[13.5px] text-[var(--fg)] outline-none transition-[border-color,box-shadow] duration-[var(--d1)] placeholder:text-[var(--fg-muted)] ${
+                    limitError
+                      ? 'border-[var(--expense)]'
+                      : 'border-[var(--line-strong)] focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)]'
+                  }`}
+                />
+              </div>
+              {limitError && <span className="text-xs text-[var(--expense-text)]">{limitError}</span>}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-[var(--line)]">
+            <Button variant="ghost" size="md" onClick={onClose} disabled={submitting}>
+              取消
+            </Button>
+            <Button type="submit" variant="primary" size="md" disabled={submitting}>
+              {submitting ? '保存中…' : '保存'}
+            </Button>
+          </div>
+        </form>
       </div>
-      {action}
-    </div>
-    {children}
-  </Panel>
-);
+    </div>,
+    document.body
+  );
+};

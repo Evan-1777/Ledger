@@ -38,7 +38,7 @@ interface RecordModalProps {
 
 const INPUT_CLASS =
   'w-full px-3 py-2 rounded-[var(--r-sm)] bg-[var(--surface)] border border-[var(--line-strong)] ' +
-  'text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] ' +
+  'text-[16px] min-[640px]:text-[13.5px] text-[var(--fg)] outline-none placeholder:text-[var(--fg-muted)] ' +
   'focus:border-[var(--brand)] focus:shadow-[0_0_0_3px_var(--brand-soft)] ' +
   'transition-[border-color,box-shadow] duration-[var(--d1)]';
 
@@ -75,6 +75,10 @@ export const RecordModal: FC<RecordModalProps> = ({
 
   const assetMethods = paymentMethods.filter((pm) => pm.type === 'asset' || !pm.type);
   const liabilityMethods = paymentMethods.filter((pm) => pm.type === 'liability');
+
+  // Track recordType via ref for the fallback effect without triggering unwanted re-runs
+  const recordTypeRef = useRef(recordType);
+  recordTypeRef.current = recordType;
 
   // Initialize or reset when modal opens or initialTransaction changes
   useEffect(() => {
@@ -118,6 +122,8 @@ export const RecordModal: FC<RecordModalProps> = ({
       // Default payment method
       if (paymentMethods.length > 0) {
         setPaymentMethodId(paymentMethods[0].id);
+      } else {
+        setPaymentMethodId(0);
       }
 
       // Default category and tag for expense
@@ -128,15 +134,43 @@ export const RecordModal: FC<RecordModalProps> = ({
         setCategoryId(defaultExpCat.id);
         setHoverCategoryId(defaultExpCat.id);
         setTagId(defaultExpCat.tags?.[0]?.id || 0);
+      } else {
+        setCategoryId(0);
+        setHoverCategoryId(0);
+        setTagId(0);
       }
 
       setTransactedAt(toLocalInputValue(new Date().toISOString()));
     }
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       amountInputRef.current?.focus();
     }, 50);
-  }, [isOpen, initialTransaction, categories, paymentMethods]);
+    return () => clearTimeout(timer);
+  }, [isOpen, initialTransaction]);
+
+  // Fill defaults if config data arrives after modal was opened
+  useEffect(() => {
+    if (!isOpen || initialTransaction) return;
+
+    setPaymentMethodId((prev) => (prev === 0 && paymentMethods.length > 0 ? paymentMethods[0].id : prev));
+
+    setCategoryId((prev) => {
+      if (prev === 0 && categories.length > 0) {
+        const targetType = recordTypeRef.current === 'income' ? 'income' : 'expense';
+        const defaultCat =
+          categories.find((c) => c.type === targetType) ||
+          categories.find((c) => c.name !== '债务偿还' && c.name !== '账户转账') ||
+          categories[0];
+        if (defaultCat) {
+          setHoverCategoryId(defaultCat.id);
+          setTagId(defaultCat.tags?.[0]?.id || 0);
+          return defaultCat.id;
+        }
+      }
+      return prev;
+    });
+  }, [isOpen, categories, paymentMethods]);
 
   // Keyboard shortcut: ESC to close
   useEffect(() => {

@@ -46,6 +46,7 @@ export default function App() {
   // Loading states
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   // Modals & Toasts
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -109,6 +110,8 @@ export default function App() {
       setPaymentMethods(pms);
     } catch {
       // Ignored if unauthorized
+    } finally {
+      setConfigLoaded(true);
     }
   }, []);
 
@@ -407,6 +410,7 @@ export default function App() {
 
           {currentTab === 'settings' && (
             <SettingsPage
+              loading={!configLoaded}
               categories={categories}
               paymentMethods={paymentMethods}
               onAddPaymentMethod={handleAddPaymentMethod}

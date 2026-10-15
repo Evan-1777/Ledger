@@ -54,19 +54,19 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog（Portal 视口挂载、单一删除确认宿主契约、首焦点与关闭焦点自动恢复）
+│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog/OverflowMenu（受控溢出菜单、首项自聚焦、外边界 pointerdown 监听、无视口翻转）
 │  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
 │  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、SegmentedControl 主导航（滑动指示器）、主题切换与登出
 │  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
-│  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块（SegmentedControl translateX 指示器）、34px 金额输入区、转账手续费内联展开、收支分类渐进披露、双渠道互斥、日期走 format.ts 工具、常驻底部操作栏
+│  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块、初始化与自动聚焦收敛至打开转换（防输入法中文打断）、配置晚到自动补全、移动端 16px 视口防缩放、转账手续费内联展开、双渠道互斥
 │  │  │  ├─ AuthModal.tsx    # 管理员安全解锁浮层（pop 弹性入场、内联错误提示条、品牌淡底锁形牌）
-│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标与基础图标，圆头线帽 2–2.4 描边约定）
+│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标、MoreHorizontalIcon 三点与基础图标，圆头线帽 2–2.4 描边约定）
 │  │  │  └─ Toast.tsx        # 弹簧入场胶囊通知（success/error/info 语义图标、移动端底部居中避开作业条、桌面右上锚定、aria-live）
 │  │  ├─ pages/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：当月概览头条（自然月聚合、不受筛选影响、除零保护、收支比例导轨）+ 日表层组（sunken 表头 + 发丝行分隔）+ TypeTile 语义瓦片 + 金额对齐契约 + 骨架/空态
 │  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装含转账手续费），金额格式化再导出自 lib/format.ts
-│  │  │  ├─ StatsPage.tsx    # 统计看板：净资产 Hero（40px 主数值 + 资产负债率导轨，可派生指标零虚构）+ 发丝分节四格指标行（花费环比/储蓄率注脚）+ 资产负债渠道双列明细（额度导轨、≥80% 使用率语义切换）+ 当月支付途径分布 + 环形/趋势图
-│  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户）、发丝线列表、操作入口常驻可见、单一 pendingDelete 状态 + 单一 ConfirmDialog 实例宿主、细分标签抽屉（Portal 视口挂载脱离祖先动画上下文、桌面贴右 / 窄屏底部面板、滚动锁定、初次打开自聚焦与关闭焦点恢复、Esc 分层仲裁、同步锁防抖与失败保留输入草稿）
+│  │  │  ├─ StatsPage.tsx    # 统计看板：净资产 Hero（40px 主数值 + 资产负债率导轨，可派生指标零虚构）+ 发丝分节四格指标行（花费环比/储蓄率注脚）+ 资产负债渠道双列明细（移除初始金额噪音、额度导轨、≥80% 使用率语义切换）+ 当月支付途径分布 + 环形/趋势图
+│  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户）；分类行整行点击打开抽屉 + 行尾受控 OverflowMenu（调序/重命名/删除）；系统分类独立面板；资产与负债双列面板 + 渠道对话框（ChannelDialog，Portal 视口挂载、decimal 输入）；细分标签抽屉去噪（移除横幅与完成按钮）；配置加载骨架屏；Esc 分层仲裁链（删除确认 → 渠道对话框 → 溢出菜单 → 抽屉编辑 → 抽屉 → 分类编辑 → 新增输入）
 │  │  ├─ lib/
 │  │  │  ├─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
 │  │  │  └─ format.ts        # 唯一格式化模块：formatAmount/formatMoney/formatPercent/resolveTone/本地时间输入互转工具
@@ -85,7 +85,7 @@ Ledger/
 │  └─ workflows/
 │     └─ docker-publish.yml  # GitHub Actions 自动化构建并推送 Docker 镜像至 GHCR
 ├─ Dockerfile                # 多阶段构建：node 静态构建 → golang 静态编译 → alpine 轻量运行时
-├─ temp/                     # 规划期设计 Demo 暂存区（redesign-demo.html 作为 Fluent 2 设计基准资产保留）
+├─ temp/                     # 规划期设计 Demo 暂存区
 ├─ docker-compose.yml        # VPS 生产部署编排配置（拉取 ghcr.io/evan-1777/ledger 镜像）
 ├─ .dockerignore             # Docker 构建上下文排除规则
 ├─ Makefile                  # 统一构建编排（build, test, dev, clean）
@@ -157,6 +157,9 @@ Ledger/
 - 2026-10-14 复审修复轮（吸收 Review 审计报告）——流水头条统计与底部筛选解耦（App 层并行拉取不带筛选数据源，`computeMonthHeadline` 独立消费，修复筛选档位下头条归零缺陷）；`:focus-visible` 移除强制 `border-radius` 修复杂圆形控件变形；`.num` 移入 `@layer components` 使 `tracking-*` utility 可覆盖；统计页补回被静默删除的「当月支付途径分布」面板；新增 `--overlay`/`--brand-glow`/`--donut-1..5`/`--r-nano` 令牌并清除全部 JSX 十六进制色值与 rgba 字面量（Navbar 渐变第二停改用 `--brand-pressed`）；删除零消费令牌 `--surface-raised`/`--e2`/`--transfer`/`--repay` 基色与死导出 `Badge`/`MoreVerticalIcon`，`formatPercent` 落地至全部百分比呈现点；SegmentedControl 补 aria-label 与 disabled（记账编辑态类型滑块真锁定）；RecordModal 表单标签程序化关联；RecordModal/AuthModal 补 dialog 语义；ConfirmDialog 焦点仅在打开时夺取；设置页空态去「点击右上角」指引改 EmptyState 直达按钮；表面材质收敛至 Panel 单一来源（日表圆角统一 16px）；`color-scheme` 与 meta theme-color 跟随应用主题而非系统；320px 筛选胶囊与 FAB 防重叠（<400px 收紧内边距与字号）
 - 2026-10-14 复审驳回项备案——客户端 7 处重名预校验收敛（既有代码，后端 409 映射已兜底，改动风险大于收益）；Panel hero 变体保留（StatsPage 有真实调用方）；模态焦点陷阱留待后续专项（已有首焦点落点与 dialog 语义）
 - 2026-10-14 金额焦点层级归位与模态视口级挂载——全局 `:focus-visible` 移入 `@layer base`，使控件级 `outline-none`（v4 即 `outline-style: none`）正常覆盖默认轮廓，消除记账金额输入框内外双重焦点边框；细分标签抽屉与共享 `ConfirmDialog` 一律 `createPortal` 挂载至 `document.body`，脱离祖先动画容器的包含块与层叠上下文（后续新增模态覆盖层沿用此约定，不在带动画的容器内直接渲染 `fixed` 覆盖层）；抽屉关闭路径统一为 `closeDrawer`，Escape 按确认 → 编辑 → 抽屉分层仲裁，打开自聚焦与关闭焦点恢复以 `isConnected` 守卫；新增标签以同步 ref 提交锁防重、失败保留草稿并由父级单次 Toast 提示，输入框不禁用以避免提交期间丢失焦点
+- 2026-10-15 初始金额展示收敛与去噪——初始余额/初始欠款定位为账户真实状态校准参数，不再作为前台展示信息；设置页渠道行与统计页渠道明细彻底移除初始金额副文案，仅在新建/编辑渠道表单中保留；负债渠道保留额度与可用额度呈现
+- 2026-10-15 设置页成熟列表重构与受控溢出菜单——分类行收敛为整行主操作（点击打开细分标签抽屉）+ 行尾受控 OverflowMenu（重命名/上移/下移/删除），行内清除常驻图标组与多余 Chip；系统分类独立为下方独立面板；资产与负债拆分为双面板双列并排；渠道编辑重构为应用内 ChannelDialog（Portal 视口挂载、decimal 输入、内联校验），彻底清零 type="number" 与行内表单噪音；细分标签抽屉移除冗余政策横幅与底部完成按钮；App 层提供 configLoaded 状态并在设置页展示 4 行骨架屏；全局 Esc 分层仲裁严格按层级响应
+- 2026-10-15 RecordModal 初始化与输入法防打断收敛——将表单初始化与自动聚焦重构为单一「打开」转换（依赖收敛为 [isOpen, initialTransaction]），彻底解决因父组件配置回刷导致 effect 反复触发、清空描述并抢回 decimal 焦点的输入法打断根因；配置晚到场景以增量 fallback effect 补齐默认选中；输入框字号适配移动端 16px 防止 iOS 聚焦缩放打断键盘
 
 ## 术语
 
