@@ -402,7 +402,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       {/* ==================== Section 1: Categories & Tags ==================== */}
       {activeTab === 'categories' && (
         <div className="flex flex-col gap-4">
-          <Panel className="p-0 overflow-visible">
+          <Panel className="p-0">
             {/* Panel Header */}
             <div className="flex items-center justify-between gap-2.5 px-[18px] pt-3.5 pb-2.5">
               <SegmentedControl
@@ -538,7 +538,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   return (
                     <div
                       key={cat.id}
-                      className="group relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                      className="flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                     >
                       <button
                         type="button"
@@ -598,7 +598,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
           {/* System Categories Panel */}
           {systemCategories.length > 0 && !loading && (
-            <Panel className="p-0 overflow-visible">
+            <Panel className="p-0">
               <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
                 <h2 className="text-sm font-[650] text-[var(--fg)]">系统分类</h2>
               </div>
@@ -612,7 +612,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                   return (
                     <div
                       key={cat.id}
-                      className="group relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                      className="flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                     >
                       <button
                         type="button"
@@ -645,7 +645,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       {activeTab === 'paymentMethods' && (
         <div className="grid grid-cols-1 min-[720px]:grid-cols-2 gap-4">
           {/* Asset Channels Panel */}
-          <Panel className="p-0 overflow-visible flex flex-col">
+          <Panel className="p-0 flex flex-col">
             <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
               <h2 className="text-sm font-[650] text-[var(--fg)] flex items-baseline gap-2">
                 资产渠道
@@ -685,7 +685,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 {assetChannels.map((pm) => (
                   <div
                     key={pm.id}
-                    className="relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                    className="flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                   >
                     <i className="w-2 h-2 rounded-full flex-shrink-0 bg-[var(--brand)]" />
                     <div className="flex-1 min-w-0">
@@ -718,7 +718,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           </Panel>
 
           {/* Liability Channels Panel */}
-          <Panel className="p-0 overflow-visible flex flex-col">
+          <Panel className="p-0 flex flex-col">
             <div className="flex items-center justify-between gap-2.5 px-[18px] py-3.5 border-b border-[var(--line)]">
               <h2 className="text-sm font-[650] text-[var(--fg)] flex items-baseline gap-2">
                 负债渠道
@@ -758,7 +758,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 {liabilityChannels.map((pm) => (
                   <div
                     key={pm.id}
-                    className="relative flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
+                    className="flex items-center gap-2.5 min-h-[52px] px-3 py-2 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                   >
                     <i className="w-2 h-2 rounded-full flex-shrink-0 bg-[var(--expense)]" />
                     <div className="flex-1 min-w-0">

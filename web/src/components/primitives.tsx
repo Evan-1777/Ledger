@@ -496,9 +496,32 @@ export const OverflowMenu: FC<OverflowMenuProps> = ({
     }
   }, [open]);
 
+  // Arrow/Home/End navigation among enabled items — role="menu" requires it.
+  // Escape stays out of the atom: the host's Esc arbitration chain owns it.
+  const enabledItems = () =>
+    Array.from(containerRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])') ?? []);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    const nodes = enabledItems();
+    if (nodes.length === 0) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const delta = e.key === 'ArrowDown' ? 1 : -1;
+      const idx = nodes.indexOf(document.activeElement as HTMLButtonElement);
+      const next = idx === -1 ? (delta > 0 ? 0 : nodes.length - 1) : (idx + delta + nodes.length) % nodes.length;
+      nodes[next].focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      nodes[0].focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      nodes[nodes.length - 1].focus();
+    }
+  };
+
   // ponytail: no viewport flip or Portal positioning; inside scrollable containers (e.g. drawer with overflow-y-auto), menu expands with scroll area and bottom items must be scrolled into view
   return (
-    <div ref={containerRef} className={`relative inline-block ${className}`}>
+    <div ref={containerRef} onKeyDown={handleMenuKeyDown} className={`relative inline-block ${className}`}>
       <button
         type="button"
         aria-label={`${label} 更多操作`}

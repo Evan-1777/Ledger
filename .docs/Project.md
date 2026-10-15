@@ -54,11 +54,11 @@ Ledger/
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
-│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog/OverflowMenu（受控溢出菜单、首项自聚焦、外边界 pointerdown 监听、无视口翻转）
+│  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog/OverflowMenu（受控溢出菜单、首项自聚焦、方向键与 Home/End 项间导航、外边界 pointerdown 监听、无视口翻转）
 │  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
 │  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、SegmentedControl 主导航（滑动指示器）、主题切换与登出
 │  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
-│  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块、初始化与自动聚焦收敛至打开转换（防输入法中文打断）、配置晚到自动补全、移动端 16px 视口防缩放、转账手续费内联展开、双渠道互斥
+│  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块、初始化与自动聚焦收敛至打开转换（防输入法中文打断）、配置晚到自动补全（含类型化目标渠道默认）、移动端 16px 视口防缩放、转账手续费内联展开、双渠道互斥
 │  │  │  ├─ AuthModal.tsx    # 管理员安全解锁浮层（pop 弹性入场、内联错误提示条、品牌淡底锁形牌）
 │  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标、MoreHorizontalIcon 三点与基础图标，圆头线帽 2–2.4 描边约定）
 │  │  │  └─ Toast.tsx        # 弹簧入场胶囊通知（success/error/info 语义图标、移动端底部居中避开作业条、桌面右上锚定、aria-live）
@@ -160,6 +160,7 @@ Ledger/
 - 2026-10-15 初始金额展示收敛与去噪——初始余额/初始欠款定位为账户真实状态校准参数，不再作为前台展示信息；设置页渠道行与统计页渠道明细彻底移除初始金额副文案，仅在新建/编辑渠道表单中保留；负债渠道保留额度与可用额度呈现
 - 2026-10-15 设置页成熟列表重构与受控溢出菜单——分类行收敛为整行主操作（点击打开细分标签抽屉）+ 行尾受控 OverflowMenu（重命名/上移/下移/删除），行内清除常驻图标组与多余 Chip；系统分类独立为下方独立面板；资产与负债拆分为双面板双列并排；渠道编辑重构为应用内 ChannelDialog（Portal 视口挂载、decimal 输入、内联校验），彻底清零 type="number" 与行内表单噪音；细分标签抽屉移除冗余政策横幅与底部完成按钮；App 层提供 configLoaded 状态并在设置页展示 4 行骨架屏；全局 Esc 分层仲裁严格按层级响应
 - 2026-10-15 RecordModal 初始化与输入法防打断收敛——将表单初始化与自动聚焦重构为单一「打开」转换（依赖收敛为 [isOpen, initialTransaction]），彻底解决因父组件配置回刷导致 effect 反复触发、清空描述并抢回 decimal 焦点的输入法打断根因；配置晚到场景以增量 fallback effect 补齐默认选中；输入框字号适配移动端 16px 防止 iOS 聚焦缩放打断键盘
+- 2026-10-15 初审意见吸收——类型→目标渠道规则归位为 RecordModal 内单一 `targetChannels`，由类型切换与配置晚到回填共用（原先该规则只存在于切换分支，配置晚到时回填猜 `paymentMethods[0]`，还款/转账会落到资产渠道且提交校验不拦）；OverflowMenu 补齐 `role="menu"` 所需的方向键与 Home/End 项间导航，Escape 仍由宿主仲裁链持有；清除 SettingsPage 冗余类名（`group`/`relative`/`overflow-visible`，均为无消费者或默认值）。驳回：`temp/redesign-demo.html` 为工作区未暂存的用户删除动作，不代为提交
 
 ## 术语
 

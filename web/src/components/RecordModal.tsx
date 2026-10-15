@@ -76,6 +76,10 @@ export const RecordModal: FC<RecordModalProps> = ({
   const assetMethods = paymentMethods.filter((pm) => pm.type === 'asset' || !pm.type);
   const liabilityMethods = paymentMethods.filter((pm) => pm.type === 'liability');
 
+  // Channels a record type may target; the first entry is the default selection
+  const targetChannels = (type: RecordType) =>
+    type === 'repayment' ? liabilityMethods : type === 'expense' ? paymentMethods : assetMethods;
+
   // Track recordType via ref for the fallback effect without triggering unwanted re-runs
   const recordTypeRef = useRef(recordType);
   recordTypeRef.current = recordType;
@@ -153,7 +157,7 @@ export const RecordModal: FC<RecordModalProps> = ({
   useEffect(() => {
     if (!isOpen || initialTransaction) return;
 
-    setPaymentMethodId((prev) => (prev === 0 && paymentMethods.length > 0 ? paymentMethods[0].id : prev));
+    setPaymentMethodId((prev) => (prev === 0 ? (targetChannels(recordTypeRef.current)[0]?.id ?? 0) : prev));
 
     setCategoryId((prev) => {
       if (prev === 0 && categories.length > 0) {
@@ -205,6 +209,15 @@ export const RecordModal: FC<RecordModalProps> = ({
       setFeeStr('');
     }
 
+    // Target channel must belong to the type's own list; reassign only when the current one is invalid
+    const targets = targetChannels(newType);
+    const targetId = targets.length > 0 && !targets.some((pm) => pm.id === paymentMethodId)
+      ? targets[0].id
+      : paymentMethodId;
+    if (targetId !== paymentMethodId) {
+      setPaymentMethodId(targetId);
+    }
+
     if (newType === 'transfer') {
       const transCat = categories.find((c) => c.name === '账户转账');
       if (transCat) {
@@ -212,28 +225,10 @@ export const RecordModal: FC<RecordModalProps> = ({
         setHoverCategoryId(transCat.id);
         setTagId(transCat.tags?.[0]?.id || 0);
       }
-      // Target channel must be an asset channel
-      let targetId = paymentMethodId;
-      if (assetMethods.length > 0 && !assetMethods.some((pm) => pm.id === targetId)) {
-        targetId = assetMethods[0].id;
-        setPaymentMethodId(targetId);
-      }
       // Source channel must be another asset channel
-      const otherAsset = assetMethods.find((pm) => pm.id !== targetId);
-      if (otherAsset) {
-        setSourcePaymentMethodId(otherAsset.id);
-      } else {
-        setSourcePaymentMethodId(undefined);
-      }
+      setSourcePaymentMethodId(targets.find((pm) => pm.id !== targetId)?.id);
     } else if (newType === 'repayment') {
-      if (liabilityMethods.length > 0 && !liabilityMethods.some((pm) => pm.id === paymentMethodId)) {
-        setPaymentMethodId(liabilityMethods[0].id);
-      }
-      if (assetMethods.length > 0) {
-        setSourcePaymentMethodId(assetMethods[0].id);
-      } else {
-        setSourcePaymentMethodId(undefined);
-      }
+      setSourcePaymentMethodId(assetMethods[0]?.id);
       const repCat = categories.find((c) => c.name === '债务偿还');
       if (repCat) {
         setCategoryId(repCat.id);
@@ -241,9 +236,6 @@ export const RecordModal: FC<RecordModalProps> = ({
         setTagId(repCat.tags?.[0]?.id || 0);
       }
     } else if (newType === 'income') {
-      if (assetMethods.length > 0 && !assetMethods.some((pm) => pm.id === paymentMethodId)) {
-        setPaymentMethodId(assetMethods[0].id);
-      }
       const incCat = categories.find((c) => c.type === 'income') || categories.find((c) => c.name === '职业收入');
       if (incCat) {
         setCategoryId(incCat.id);
@@ -260,9 +252,6 @@ export const RecordModal: FC<RecordModalProps> = ({
         setCategoryId(expCat.id);
         setHoverCategoryId(expCat.id);
         setTagId(expCat.tags?.[0]?.id || 0);
-      }
-      if (paymentMethods.length > 0 && !paymentMethods.some((pm) => pm.id === paymentMethodId)) {
-        setPaymentMethodId(paymentMethods[0].id);
       }
       setSourcePaymentMethodId(undefined);
     }
