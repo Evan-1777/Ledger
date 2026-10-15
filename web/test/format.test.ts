@@ -25,6 +25,12 @@ describe('format - formatMoney', () => {
   test('renders zero without a sign', () => {
     assert.strictEqual(formatMoney(0), '¥0.00');
   });
+
+  test('omits currency symbol when requested', () => {
+    assert.strictEqual(formatMoney(1234.5, { sign: 'none', currency: false }), '1,234.50');
+    assert.strictEqual(formatMoney(-42, { sign: 'none', currency: false }), '42.00');
+    assert.strictEqual(formatMoney(0, { sign: 'none', currency: false }), '0.00');
+  });
 });
 
 describe('format - formatPercent', () => {

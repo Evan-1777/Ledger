@@ -3,6 +3,9 @@ import type { FC } from 'react';
 import type { CategoryStat, MonthlyTrend } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
 
+/* DonutChart is only consumed by StatsPage, whose hero anchors the ¥ once */
+const money = (v: number) => formatMoney(v, { sign: 'none', currency: false });
+
 /* Fluent brand single-hue scale, token-driven */
 const DONUT_SCALE = [
   'var(--donut-1)',
@@ -84,7 +87,7 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
             fill="var(--fg)"
             letterSpacing="-0.5"
           >
-            {formatMoney(total, { sign: 'none' })}
+            {money(total)}
           </text>
         </svg>
 
@@ -108,7 +111,7 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
                   <i className="w-2 h-2 rounded-[var(--r-nano)] flex-shrink-0" style={{ background: donutColor(i) }} />
                   <b className="flex-1 text-[12.5px] font-medium text-[var(--fg)] truncate">{d.name}</b>
                   <em className="not-italic num text-[12.5px] font-semibold text-[var(--fg)]">
-                    {formatMoney(d.amount, { sign: 'none' })}
+                    {money(d.amount)}
                   </em>
                   <s className="no-underline num text-[11.5px] text-[var(--fg-3)] w-[42px] text-right">
                     {formatPercent(d.percentage)}
@@ -126,7 +129,7 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
           <div className="flex justify-between items-baseline">
             <b className="text-[12.5px] text-[var(--fg)]">{selected.name} · 细分标签</b>
             <span className="num text-[11.5px] text-[var(--fg-3)]">
-              {formatMoney(selected.amount, { sign: 'none' })}
+              {money(selected.amount)}
             </span>
           </div>
           {selected.tags.length === 0 ? (
@@ -140,7 +143,7 @@ export const DonutChart: FC<DonutChartProps> = ({ data, ariaLabel = '支出构�
                 >
                   <b className="font-semibold text-[var(--fg)]">{tg.name}</b>
                   <s className="no-underline num text-[11px] text-[var(--fg-3)]">
-                    {formatMoney(tg.amount, { sign: 'none' })}
+                    {money(tg.amount)}
                   </s>
                   <s className="no-underline num text-[11px] text-[var(--fg-3)]">{formatPercent(tg.percentage)}</s>
                 </span>

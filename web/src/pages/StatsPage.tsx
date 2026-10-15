@@ -59,7 +59,7 @@ const ChannelRow: FC<{
     <div className="flex items-center gap-2 text-[13px]">
       <i className="w-[7px] h-[7px] rounded-full flex-shrink-0" style={{ background: dotColor }} />
       <b className="flex-1 font-semibold text-[var(--fg)] truncate">{name}</b>
-      <i className={`not-italic num font-[650] ${tone}`}>{formatMoney(balance, { sign: 'none' })}</i>
+      <i className={`not-italic num font-[650] ${tone}`}>{money(balance)}</i>
     </div>
     {railValue !== null && <Rail value={railValue} color={railColor} />}
     <div className="flex justify-between gap-2 text-[11.5px] text-[var(--fg-muted)]">
@@ -68,6 +68,9 @@ const ChannelRow: FC<{
     </div>
   </div>
 );
+
+/* Currency is anchored once at the page hero; secondary numbers omit ¥ */
+const money = (v: number) => formatMoney(v, { sign: 'none', currency: false });
 
 export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
   if (loading || !stats) {
@@ -100,7 +103,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
             className={`num text-[34px] min-[720px]:text-[40px] font-[680] tracking-[-.028em] leading-[1.1] ${balanceTone}`}
           >
             {balanceSign}
-            {formatMoney(Math.abs(stats.month_balance), { sign: 'none' })}
+            {money(Math.abs(stats.month_balance))}
           </span>
         </div>
 
@@ -108,13 +111,13 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <div>
             <div className="text-[11.5px] text-[var(--fg-muted)]">收入</div>
             <b className="num text-[19px] font-semibold text-[var(--income-text)]">
-              {formatMoney(stats.month_income, { sign: 'none' })}
+              {money(stats.month_income)}
             </b>
           </div>
           <div>
             <div className="text-[11.5px] text-[var(--fg-muted)]">支出</div>
             <b className="num text-[19px] font-semibold text-[var(--expense-text)]">
-              {formatMoney(stats.month_expense, { sign: 'none' })}
+              {money(stats.month_expense)}
             </b>
           </div>
         </div>
@@ -150,12 +153,12 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
         <Metric
           className={METRIC_BORDERS[0]}
           label="本周花费"
-          value={formatMoney(stats.week_expense, { sign: 'none' })}
+          value={money(stats.week_expense)}
         />
         <Metric
           className={METRIC_BORDERS[1]}
           label="当月花费"
-          value={<span className="text-[var(--expense-text)]">{formatMoney(stats.month_expense, { sign: 'none' })}</span>}
+          value={<span className="text-[var(--expense-text)]">{money(stats.month_expense)}</span>}
           footnote={
             momChange !== null ? (
               <span>
@@ -168,12 +171,12 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
         <Metric
           className={METRIC_BORDERS[2]}
           label="上月花费"
-          value={formatMoney(stats.last_month_expense, { sign: 'none' })}
+          value={money(stats.last_month_expense)}
         />
         <Metric
           className={METRIC_BORDERS[3]}
           label="日均花费"
-          value={formatMoney(dailyAverage, { sign: 'none' })}
+          value={money(dailyAverage)}
         />
       </Panel>
 
@@ -183,7 +186,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           <div className="flex items-baseline justify-between gap-2.5 mb-3.5">
             <b className="text-sm font-[650] text-[var(--fg)]">当月支出构成</b>
             <span className="num text-[12.5px] text-[var(--fg-3)]">
-              {formatMoney(stats.month_expense, { sign: 'none' })}
+              {money(stats.month_expense)}
             </span>
           </div>
           {stats.category_distribution.length === 0 ? (
@@ -222,7 +225,7 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
         <div className="flex items-baseline justify-between gap-2.5 mb-3">
           <b className="text-sm font-[650] text-[var(--fg)]">当月支付途径分布</b>
           <span className="num text-[12.5px] text-[var(--fg-3)]">
-            {formatMoney(stats.month_expense, { sign: 'none' })}
+            {money(stats.month_expense)}
           </span>
         </div>
         {stats.payment_distribution.length === 0 ? (

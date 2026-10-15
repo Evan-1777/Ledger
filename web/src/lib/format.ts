@@ -27,14 +27,17 @@ export function formatAmount(
   };
 }
 
-export function formatMoney(value: number, opts?: { sign?: 'auto' | 'none' }): string {
+export function formatMoney(
+  value: number,
+  opts?: { sign?: 'auto' | 'none'; currency?: boolean }
+): string {
   const sign = opts?.sign === 'none' ? '' : value < 0 ? '−' : value > 0 ? '+' : '';
   const abs = Math.abs(value);
   const amountStr = abs.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${sign}¥${amountStr}`;
+  return `${sign}${opts?.currency === false ? '' : '¥'}${amountStr}`;
 }
 
 export function formatPercent(value: number, digits: number = 1): string {

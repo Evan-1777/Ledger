@@ -43,9 +43,10 @@ export const AssetsPage: FC<AssetsPageProps> = ({ stats, loading, onManageChanne
     });
   };
 
+  /* Currency is anchored once at the page hero; secondary numbers omit ¥ */
   const renderMoney = (amount: number, opts?: { sign?: 'auto' | 'none' }) => {
     if (hideAmounts) return '••••••';
-    return formatMoney(amount, opts);
+    return formatMoney(amount, { currency: false, ...opts });
   };
 
   const { assets, liabilities, debtRatio, credit, totalAssets, totalLiabilities, netAssets } =
