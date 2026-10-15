@@ -52,10 +52,7 @@ export const AssetsPage: FC<AssetsPageProps> = ({ stats, loading, onManageChanne
     deriveAssets(stats.asset_summary);
 
   const netTone = netAssets >= 0 ? 'text-[var(--fg)]' : 'text-[var(--expense-text)]';
-  const positiveTotal = assets.reduce(
-    (sum, ch) => sum + Math.max(0, ch.remaining_balance),
-    0
-  );
+  const hasDistribution = assets.some((ch) => ch.remaining_balance > 0);
 
   return (
     <div className="flex flex-col gap-4 pb-4">
@@ -102,7 +99,7 @@ export const AssetsPage: FC<AssetsPageProps> = ({ stats, loading, onManageChanne
         </div>
 
         {/* 10px Stacked distribution bar */}
-        {positiveTotal > 0 && (
+        {hasDistribution && (
           <div
             role="img"
             aria-label="资产分布"
@@ -164,7 +161,9 @@ export const AssetsPage: FC<AssetsPageProps> = ({ stats, loading, onManageChanne
               {assets.map((item, idx) => (
                 <div
                   key={item.id}
-                  onMouseEnter={() => setActiveIndex(idx)}
+                  // Only positive balances own a distribution-bar segment; linking a non-positive row
+                  // would mute every segment while highlighting none
+                  onMouseEnter={() => item.remaining_balance > 0 && setActiveIndex(idx)}
                   onMouseLeave={() => setActiveIndex(null)}
                   className="flex items-center gap-3 py-2.5 px-1.5 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border-t border-[var(--line)] first:border-t-0"
                 >

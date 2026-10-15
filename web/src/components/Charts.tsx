@@ -4,7 +4,7 @@ import type { CategoryStat, MonthlyTrend } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
 
 /* Fluent brand single-hue scale, token-driven */
-export const DONUT_SCALE = [
+const DONUT_SCALE = [
   'var(--donut-1)',
   'var(--donut-2)',
   'var(--donut-3)',

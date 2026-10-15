@@ -22,8 +22,8 @@ export interface DerivedAssets {
 }
 
 export function deriveAssets(summary: AssetSummary): DerivedAssets {
-  const assetChannels = summary.asset_channels || [];
-  const liabilityChannels = summary.liability_channels || [];
+  const assetChannels = summary.asset_channels;
+  const liabilityChannels = summary.liability_channels;
 
   const sortedAssets = [...assetChannels].sort(
     (a, b) => b.remaining_balance - a.remaining_balance

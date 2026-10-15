@@ -50,7 +50,7 @@ export const Navbar: FC<NavbarProps> = ({
       >
         <BrandIcon size={16} />
       </div>
-      <span className="text-base font-[650] tracking-[-.015em] text-[var(--fg)] whitespace-nowrap">
+      <span className="hidden min-[400px]:inline text-base font-[650] tracking-[-.015em] text-[var(--fg)] whitespace-nowrap">
         Ledger
       </span>
     </div>

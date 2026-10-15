@@ -55,8 +55,8 @@ Ledger/
 │  ├─ src/
 │  │  ├─ components/
 │  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton(可选 pressed 透传 aria-pressed)/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog/OverflowMenu（受控溢出菜单、首项自聚焦、方向键与 Home/End 项间导航、外边界 pointerdown 监听、无视口翻转）
-│  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻，导出 DONUT_SCALE/donutColor 供资产分布条共享）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
-│  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、四段 SegmentedControl 主导航（滑动指示器，流水/统计/资产/设置）、主题切换、768px admin 胶囊与登出
+│  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻，导出 donutColor 供资产分布条共享色阶）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
+│  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、四段 SegmentedControl 主导航（滑动指示器，流水/统计/资产/设置）、主题切换、768px admin 胶囊与登出；品牌文字 400px 以下隐藏以防窄屏挤压
 │  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
 │  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块、初始化与自动聚焦收敛至打开转换（防输入法中文打断）、配置晚到自动补全（含类型化目标渠道默认）、移动端 16px 视口防缩放、转账手续费内联展开、双渠道互斥
 │  │  │  ├─ AuthModal.tsx    # 管理员安全解锁浮层（pop 弹性入场、内联错误提示条、品牌淡底锁形牌）
@@ -66,7 +66,7 @@ Ledger/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：当月概览头条（自然月聚合、不受筛选影响、除零保护、收支比例导轨）+ 日表层组（sunken 表头 + 发丝行分隔）+ TypeTile 语义瓦片 + 金额对齐契约 + 骨架/空态
 │  │  │  ├─ streamUtils.ts  # 流水纯函数工具（星期派生、元信息组装含转账手续费），金额格式化再导出自 lib/format.ts
 │  │  │  ├─ StatsPage.tsx    # 收支看板：当月结余 Hero（带符号主数值、收入/支出两列、收支比例导轨、储蓄率 Chip）+ 发丝分节四格指标行（本周花费/当月花费含较上月注脚/上月花费/日均花费）+ 当月支出构成（DonutChart）+ 近 6 个月收支（TrendChart）+ 当月支付途径分布
-│  │  │  ├─ AssetsPage.tsx   # 资产概览：净资产 Hero（40px 带符号数值、金额隐藏偏好持久化、右列资产/负债总计与资产负债率、底部 10px 堆叠分布条）+ 资产/负债双列账户看板（统一 WalletIcon/CreditCardIcon 瓦片、资产分布点与悬浮联动、负债额度导轨与使用率、直达设置页渠道管理入口）+ 骨架与空态
+│  │  │  ├─ AssetsPage.tsx   # 资产概览：净资产 Hero（40px 带符号数值、金额隐藏偏好持久化、右列资产/负债总计与资产负债率、底部 10px 堆叠分布条）+ 资产/负债双列账户看板（统一 WalletIcon/CreditCardIcon 瓦片、资产分布点与悬浮联动（仅正余额账户驱动分布条高亮）、负债额度导轨与使用率、直达设置页渠道管理入口）+ 骨架与空态
 │  │  │  ├─ assetsUtils.ts  # 资产派生纯函数：deriveAssets 负责降序排序、基于正余额和的 share 计算（杜绝负余额渠道导致占比失真）、资产负债率与总授信额度汇总
 │  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户，支持 initialSection 预选）；分类行整行点击打开抽屉 + 行尾受控 OverflowMenu（调序/重命名/删除）；系统分类独立面板；资产与负债双列面板 + 渠道对话框（ChannelDialog，Portal 视口挂载、decimal 输入）；细分标签抽屉去噪（移除横幅与完成按钮）；配置加载骨架屏；Esc 分层仲裁链（删除确认 → 渠道对话框 → 溢出菜单 → 抽屉编辑 → 抽屉 → 分类编辑 → 新增输入）
 │  │  ├─ lib/
@@ -165,12 +165,13 @@ Ledger/
 - 2026-10-15 RecordModal 初始化与输入法防打断收敛——将表单初始化与自动聚焦重构为单一「打开」转换（依赖收敛为 [isOpen, initialTransaction]），彻底解决因父组件配置回刷导致 effect 反复触发、清空描述并抢回 decimal 焦点的输入法打断根因；配置晚到场景以增量 fallback effect 补齐默认选中；输入框字号适配移动端 16px 防止 iOS 聚焦缩放打断键盘
 - 2026-10-15 初审意见吸收——类型→目标渠道规则归位为 RecordModal 内单一 `targetChannels`，由类型切换与配置晚到回填共用（原先该规则只存在于切换分支，配置晚到时回填猜 `paymentMethods[0]`，还款/转账会落到资产渠道且提交校验不拦）；OverflowMenu 补齐 `role="menu"` 所需的方向键与 Home/End 项间导航，Escape 仍由宿主仲裁链持有；清除 SettingsPage 冗余类名（`group`/`relative`/`overflow-visible`，均为无消费者或默认值）。驳回：`temp/redesign-demo.html` 为工作区未暂存的用户删除动作，不代为提交
 - 2026-10-15 收支统计页重构与资产概览页独立——将原有统计页同时平铺资产与收支的双重认知负担解耦为独立的一级「资产概览」与纯粹的「收支统计」看板；顶栏导航扩为四段（流水/统计/资产/设置），admin 胶囊断点上移至 768px 防挤压；资产数据源共享 App 层 stats 单一来源（零后端改动）；资产分布占比由前端 deriveAssets 计算（分母仅计正余额渠道之和，避免透支渠道导致正余额占比 >100% 失真）；资产页提供净资产金额眼睛隐藏（localStorage 持久化，仅作用于资产页），资产行 hover 通过 activeIndex state 驱动 Hero 分布条高亮联动；面板头「管理」与资产空态直达设置页渠道分区，App 层 settingsSection 状态显式重置彻底杜绝切回设置页残留渠道分区；收支统计页 Hero 升格为「N 月结余」，指标行空出的结余位替换为「日均花费」，原 DonutChart 与 TrendChart 原样复用
+- 2026-10-15 复审修复轮（吸收资产概览 Review 报告）——剔除过度设计：`deriveAssets` 移除不可达的 `|| []` 兜底（后端 `make([]T, 0)` 恒产出 `[]`，接口类型亦非可选），`DONUT_SCALE` 撤销零消费导出（仅 `donutColor` 有外部消费方）；消除重复派生：AssetsPage 的 `positiveTotal` 复算改为 `assets.some(...)`，占比分母口径收敛至 `deriveAssets` 单一来源；修复交互死状态：透支（负余额）资产行不再驱动 `activeIndex`，否则分布条该下标无对应分段，会导致全段熄灭且无任何高亮；320px 顶栏按既有 400px 断点隐藏品牌文字，为「顶栏单行不溢出」验收留出余量；术语表「宏观资产组合矩阵」定位随资产内容迁出统计页同步校正。驳回：金额隐藏扩大为全站（Plan 决策表已留痕「仅作用于资产页」，属既定取舍而非缺陷）；补页内错误态（与 StatsPage 同构的既定决策，需新增 App 级状态与两页 UI，属跨页设计变更）
 
 ## 术语
 
 - **单二进制 (Single Binary)** = 包含 Go 后端编译产物与内嵌前端静态资源的独立单一可执行程序
 - **SPA 回退 (SPA Fallback)** = 当浏览器请求非 API 且非静态资源的路径时，服务端返回 `index.html`，交由客户端 React 处理路由
-- **宏观资产组合矩阵 (Macro Portfolio Matrix)** = 统计页顶部净资产、资产总计、负债总计 3 联核心 KPI 卡片
+- **宏观资产组合矩阵 (Macro Portfolio Matrix)** = 资产概览页净资产 Hero 右侧的资产总计、负债总计、资产负债率 3 联核心 KPI
 - **探针热迁移 (Probe-based Hot Migration)** = 启动时通过 `PRAGMA table_info` 查询现有表列定义，动态按需执行 `ALTER TABLE ADD COLUMN`，实现零停机与跨版本平滑升级
 - **双向账户核算 (Bilateral Account Accounting)** = 还款时目标负债渠道冲销欠款、转出资产渠道扣减结余，资产与负债同步变动并维持净资产物理守恒
 - **双向资产转账 (Bilateral Asset Transfer)** = 资金在两个资产渠道之间的内部划转，转出方扣减余额（含可选转账手续费），转入方增加本金余额，无手续费时总资产与净资产保持绝对守恒，产生手续费时总资产与净资产精确变动 -fee，不计入收支损益
