@@ -35,6 +35,7 @@ interface IconButtonProps {
   size?: number;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
+  pressed?: boolean;
   ref?: React.Ref<HTMLButtonElement>;
   children: ReactNode;
 }
@@ -45,6 +46,7 @@ export const IconButton: FC<IconButtonProps> = ({
   size = 34,
   onClick,
   disabled,
+  pressed,
   ref,
   children,
 }) => (
@@ -52,6 +54,7 @@ export const IconButton: FC<IconButtonProps> = ({
     ref={ref}
     type="button"
     aria-label={label}
+    aria-pressed={pressed}
     title={label}
     disabled={disabled}
     onClick={onClick}

@@ -1,9 +1,8 @@
 import type { FC, ReactNode } from 'react';
-import { StatsSummary, AssetChannelStat, LiabilityChannelStat, PaymentMethodStat } from '../lib/api';
+import type { StatsSummary, PaymentMethodStat } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
 import { Panel, Chip, Rail, Skeleton, EmptyState } from '../components/primitives';
 import { DonutChart, TrendChart } from '../components/Charts';
-import { WalletIcon } from '../components/Icons';
 
 interface StatsPageProps {
   stats: StatsSummary | null;
@@ -12,12 +11,12 @@ interface StatsPageProps {
 
 function StatsSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-hidden>
-      <Skeleton className="h-[150px] rounded-[var(--r-xl)]" />
-      <Skeleton className="h-[110px] rounded-[var(--r-lg)]" />
+    <div className="flex flex-col gap-4 pb-4" aria-hidden="true">
+      <Skeleton className="h-[170px] rounded-[var(--r-xl)]" />
+      <Skeleton className="h-[96px] rounded-[var(--r-lg)]" />
       <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
-        <Skeleton className="h-[190px] rounded-[var(--r-lg)]" />
-        <Skeleton className="h-[190px] rounded-[var(--r-lg)]" />
+        <Skeleton className="h-[230px] rounded-[var(--r-lg)]" />
+        <Skeleton className="h-[230px] rounded-[var(--r-lg)]" />
       </div>
     </div>
   );
@@ -45,12 +44,11 @@ const METRIC_BORDERS = [
   'border-t border-l border-[var(--line)] min-[720px]:border-t-0',
 ];
 
-/* Channel row shared by asset & liability panels */
+/* Channel row used by payment distribution */
 const ChannelRow: FC<{
   dotColor: string;
   name: string;
   balance: number;
-  /** null → no meaningful ratio, rail is not rendered */
   railValue: number | null;
   railColor: string;
   tone: string;
@@ -76,67 +74,84 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
     return <StatsSkeleton />;
   }
 
-  const assetSummary = stats.asset_summary;
-  const { total_assets: totalAssets, total_liabilities: totalLiabilities, net_assets: netAssets } = assetSummary;
+  const currentMonth = new Date().getMonth() + 1;
+  const daysPassed = Math.max(1, new Date().getDate());
+  const dailyAverage = stats.month_expense / daysPassed;
 
-  // Derivations — all zero-denominator safe, no invented data
-  const debtRatio = totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : null;
-  const channelCount = assetSummary.asset_channels.length + assetSummary.liability_channels.length;
   const momChange =
     stats.last_month_expense > 0
       ? ((stats.month_expense - stats.last_month_expense) / stats.last_month_expense) * 100
       : null;
 
-  const netTone = netAssets >= 0 ? 'text-[var(--fg)]' : 'text-[var(--expense-text)]';
+  const balanceTone = stats.month_balance >= 0 ? 'text-[var(--income-text)]' : 'text-[var(--expense-text)]';
+  const balanceSign = stats.month_balance >= 0 ? '+' : '−';
+  const totalCashflow = stats.month_income + stats.month_expense;
 
   return (
     <div className="flex flex-col gap-4 pb-4">
-      {/* ===== Hero: Net Assets ===== */}
-      <Panel variant="hero" className="p-[22px] pt-[22px] pb-5 min-[720px]:grid min-[720px]:grid-cols-[1fr_auto] min-[720px]:gap-[18px] min-[720px]:px-[26px]">
-        <div>
-          <div className="text-[12.5px] font-semibold tracking-[.01em] text-[var(--fg-3)]">净资产</div>
-          <div className="flex items-baseline gap-1 mt-1.5">
-            <span className="num text-2xl font-medium text-[var(--fg-2)]">¥</span>
-            <span className={`num text-[34px] min-[720px]:text-[40px] font-[680] tracking-[-.028em] leading-[1.1] ${netTone}`}>
-              {netAssets < 0 ? '−' : ''}
-              {formatMoney(Math.abs(netAssets), { sign: 'none' })}
-            </span>
+      {/* Hero: Month Balance */}
+      <Panel variant="hero" className="p-[22px] min-[720px]:px-[26px] pb-5">
+        <div className="text-[12.5px] font-semibold tracking-[.01em] text-[var(--fg-3)]">
+          {currentMonth} 月结余
+        </div>
+        <div className="mt-1 flex items-baseline">
+          <span className="num text-2xl font-medium text-[var(--fg-2)] mr-1">¥</span>
+          <span
+            className={`num text-[34px] min-[720px]:text-[40px] font-[680] tracking-[-.028em] leading-[1.1] ${balanceTone}`}
+          >
+            {balanceSign}
+            {formatMoney(Math.abs(stats.month_balance), { sign: 'none' })}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-4">
+          <div>
+            <div className="text-[11.5px] text-[var(--fg-muted)]">收入</div>
+            <b className="num text-[19px] font-semibold text-[var(--income-text)]">
+              {formatMoney(stats.month_income, { sign: 'none' })}
+            </b>
           </div>
-          <div className="flex items-center gap-2.5 mt-3 flex-wrap">
-            {debtRatio !== null && <Chip>资产负债率 {formatPercent(debtRatio)}</Chip>}
-            {channelCount > 0 && <Chip>{channelCount} 个在用渠道</Chip>}
+          <div>
+            <div className="text-[11.5px] text-[var(--fg-muted)]">支出</div>
+            <b className="num text-[19px] font-semibold text-[var(--expense-text)]">
+              {formatMoney(stats.month_expense, { sign: 'none' })}
+            </b>
           </div>
         </div>
 
-        {/* ≥720px: asset / liability side column with liability ratio rail */}
-        <div className="flex flex-col gap-2.5 min-w-[210px] mt-4 min-[720px]:mt-0">
-          <div className="flex items-baseline justify-between gap-2.5">
-            <span className="text-xs text-[var(--fg-3)]">资产总计</span>
-            <b className="num text-sm font-[650] text-[var(--fg)]">
-              {formatMoney(totalAssets, { sign: 'none' })}
-            </b>
+        {totalCashflow > 0 && (
+          <div
+            role="img"
+            aria-label="收支比例"
+            className="flex h-[6px] rounded-[var(--r-pill)] overflow-hidden gap-[2px] bg-[var(--surface-sunken)] mt-3"
+          >
+            {stats.month_income > 0 && (
+              <i
+                style={{ flex: stats.month_income, background: 'var(--income)' }}
+                className="block h-full"
+              />
+            )}
+            {stats.month_expense > 0 && (
+              <i
+                style={{ flex: stats.month_expense, background: 'var(--expense)' }}
+                className="block h-full"
+              />
+            )}
           </div>
-          <div className="flex items-baseline justify-between gap-2.5">
-            <span className="text-xs text-[var(--fg-3)]">负债总计</span>
-            <b className="num text-sm font-[650] text-[var(--expense-text)]">
-              {formatMoney(totalLiabilities, { sign: 'none' })}
-            </b>
-          </div>
-          {debtRatio !== null && (
-            <>
-              <Rail value={debtRatio} color="var(--expense)" />
-              <div className="flex justify-between text-[11.5px] text-[var(--fg-muted)]">
-                <span>负债 / 资产</span>
-                <span className="num">{formatPercent(debtRatio)}</span>
-              </div>
-            </>
-          )}
+        )}
+
+        <div className="flex items-center gap-2 mt-3">
+          <Chip>储蓄率 {formatPercent(stats.savings_rate)}</Chip>
         </div>
       </Panel>
 
-      {/* ===== Metrics Row (hairline divided) ===== */}
+      {/* Metrics Row (hairline divided) */}
       <Panel className="grid grid-cols-2 min-[720px]:grid-cols-4 overflow-hidden">
-        <Metric className={METRIC_BORDERS[0]} label="本周花费" value={formatMoney(stats.week_expense, { sign: 'none' })} />
+        <Metric
+          className={METRIC_BORDERS[0]}
+          label="本周花费"
+          value={formatMoney(stats.week_expense, { sign: 'none' })}
+        />
         <Metric
           className={METRIC_BORDERS[1]}
           label="当月花费"
@@ -150,116 +165,19 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
             ) : undefined
           }
         />
-        <Metric className={METRIC_BORDERS[2]} label="上月花费" value={formatMoney(stats.last_month_expense, { sign: 'none' })} />
+        <Metric
+          className={METRIC_BORDERS[2]}
+          label="上月花费"
+          value={formatMoney(stats.last_month_expense, { sign: 'none' })}
+        />
         <Metric
           className={METRIC_BORDERS[3]}
-          label="当月结余"
-          value={
-            <span className={stats.month_balance >= 0 ? 'text-[var(--income-text)]' : 'text-[var(--expense-text)]'}>
-              {formatMoney(stats.month_balance)}
-            </span>
-          }
-          footnote={`储蓄率 ${formatPercent(stats.savings_rate)}`}
+          label="日均花费"
+          value={formatMoney(dailyAverage, { sign: 'none' })}
         />
       </Panel>
 
-      {/* ===== Channel Panels ===== */}
-      <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
-        <Panel className="p-[18px]">
-          <div className="flex items-baseline justify-between gap-2.5 mb-3">
-            <b className="text-sm font-[650] text-[var(--fg)]">资产渠道</b>
-            <span className="num text-[12.5px] text-[var(--fg-3)]">{formatMoney(totalAssets, { sign: 'none' })}</span>
-          </div>
-          {assetSummary.asset_channels.length === 0 ? (
-            <EmptyState icon={<WalletIcon size={20} />} title="暂无资产渠道" subtitle="在「基础设置」中添加资产渠道后开始统计" />
-          ) : (
-            assetSummary.asset_channels.map((ac: AssetChannelStat) => (
-              <ChannelRow
-                key={ac.id}
-                dotColor="var(--brand)"
-                name={ac.name}
-                balance={ac.remaining_balance}
-                railValue={Math.min(ac.percentage, 100)}                railColor="var(--brand)"
-                tone="text-[var(--fg)]"
-                subLeft={null}
-                subRight={`占资产 ${formatPercent(ac.percentage)}`}
-              />
-            ))
-          )}
-        </Panel>
-
-        <Panel className="p-[18px]">
-          <div className="flex items-baseline justify-between gap-2.5 mb-3">
-            <b className="text-sm font-[650] text-[var(--fg)]">负债渠道</b>
-            <span className="num text-[12.5px] text-[var(--expense-text)]">
-              {formatMoney(totalLiabilities, { sign: 'none' })}
-            </span>
-          </div>
-          {assetSummary.liability_channels.length === 0 ? (
-            <EmptyState icon={<WalletIcon size={20} />} title="暂无负债渠道" subtitle="在「基础设置」中添加负债渠道后开始统计" />
-          ) : (
-            assetSummary.liability_channels.map((lc: LiabilityChannelStat) => {
-              // ≥80% credit usage flips the whole row into warning semantics
-              const hot = lc.credit_limit > 0 && lc.usage_rate >= 80;
-              const tone = hot ? 'text-[var(--expense-text)]' : 'text-[var(--fg)]';
-              return (
-                <ChannelRow
-                  key={lc.id}
-                  dotColor="var(--expense)"
-                  name={lc.name}
-                  balance={lc.current_debt}
-                  railValue={lc.credit_limit > 0 ? Math.min(lc.usage_rate, 100) : null}
-                  railColor="var(--expense)"
-                  tone={tone}
-                  subLeft={
-                    <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
-                      {lc.credit_limit > 0
-                        ? `剩余可用 ${formatMoney(lc.remaining_credit, { sign: 'none' })}`
-                        : '不设额度上限'}
-                    </span>
-                  }
-                  subRight={
-                    lc.credit_limit > 0 ? (
-                      <span className={hot ? 'text-[var(--expense-text)]' : undefined}>
-                        {`额度 ${formatMoney(lc.credit_limit, { sign: 'none' })} · ${formatPercent(lc.usage_rate)}`}
-                      </span>
-                    ) : null
-                  }
-                />
-              );
-            })
-          )}
-        </Panel>
-      </div>
-
-      {/* ===== Payment Method Distribution ===== */}
-      <Panel className="p-[18px]">
-        <div className="flex items-baseline justify-between gap-2.5 mb-3">
-          <b className="text-sm font-[650] text-[var(--fg)]">当月支付途径分布</b>
-          <span className="num text-[12.5px] text-[var(--fg-3)]">
-            {formatMoney(stats.month_expense, { sign: 'none' })}
-          </span>
-        </div>
-        {stats.payment_distribution.length === 0 ? (
-          <EmptyState title="当月暂无渠道支出" subtitle="记录支出后这里会展示分布" />
-        ) : (
-          stats.payment_distribution.map((pm: PaymentMethodStat) => (
-            <ChannelRow
-              key={pm.id}
-              dotColor="var(--brand)"
-              name={pm.name}
-              balance={pm.amount}
-              railValue={Math.min(pm.percentage, 100)}
-              railColor="var(--brand)"
-              tone="text-[var(--fg)]"
-              subLeft="占当月支出"
-              subRight={formatPercent(pm.percentage)}
-            />
-          ))
-        )}
-      </Panel>
-
-      {/* ===== Category Donut + Trend ===== */}
+      {/* Category Donut + Trend */}
       <div className="grid grid-cols-1 min-[768px]:grid-cols-2 gap-4">
         <Panel className="p-[18px]">
           <div className="flex items-baseline justify-between gap-2.5 mb-3.5">
@@ -298,6 +216,33 @@ export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
           )}
         </Panel>
       </div>
+
+      {/* Payment Method Distribution */}
+      <Panel className="p-[18px]">
+        <div className="flex items-baseline justify-between gap-2.5 mb-3">
+          <b className="text-sm font-[650] text-[var(--fg)]">当月支付途径分布</b>
+          <span className="num text-[12.5px] text-[var(--fg-3)]">
+            {formatMoney(stats.month_expense, { sign: 'none' })}
+          </span>
+        </div>
+        {stats.payment_distribution.length === 0 ? (
+          <EmptyState title="当月暂无渠道支出" subtitle="记录支出后这里会展示分布" />
+        ) : (
+          stats.payment_distribution.map((pm: PaymentMethodStat) => (
+            <ChannelRow
+              key={pm.id}
+              dotColor="var(--brand)"
+              name={pm.name}
+              balance={pm.amount}
+              railValue={Math.min(pm.percentage, 100)}
+              railColor="var(--brand)"
+              tone="text-[var(--fg)]"
+              subLeft="占当月支出"
+              subRight={formatPercent(pm.percentage)}
+            />
+          ))
+        )}
+      </Panel>
     </div>
   );
 };

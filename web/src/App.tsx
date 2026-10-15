@@ -7,6 +7,7 @@ import { Toast, ToastMessage } from './components/Toast';
 import { ConfirmDialog } from './components/primitives';
 import { StreamPage } from './pages/StreamPage';
 import { StatsPage } from './pages/StatsPage';
+import { AssetsPage } from './pages/AssetsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import {
   api,
@@ -35,6 +36,7 @@ export default function App() {
   // Tab & Filter state
   const [currentTab, setCurrentTab] = useState<TabType>('stream');
   const [streamFilter, setStreamFilter] = useState<FilterType>('all');
+  const [settingsSection, setSettingsSection] = useState<'categories' | 'paymentMethods'>('categories');
 
   // Business Data
   const [categories, setCategories] = useState<Category[]>([]);
@@ -162,7 +164,7 @@ export default function App() {
   }, [isAuthenticated, currentTab, fetchTransactions]);
 
   useEffect(() => {
-    if (isAuthenticated && currentTab === 'stats') {
+    if (isAuthenticated && (currentTab === 'stats' || currentTab === 'assets')) {
       fetchStats();
     }
   }, [isAuthenticated, currentTab, fetchStats]);
@@ -207,7 +209,7 @@ export default function App() {
       addToast('success', '记账成功');
     }
     fetchTransactions();
-    if (currentTab === 'stats') fetchStats();
+    if (currentTab === 'stats' || currentTab === 'assets') fetchStats();
   };
 
   const handleConfirmDelete = async () => {
@@ -218,7 +220,7 @@ export default function App() {
       addToast('success', '账单已删除');
       setPendingDelete(null);
       fetchTransactions();
-      if (currentTab === 'stats') fetchStats();
+      if (currentTab === 'stats' || currentTab === 'assets') fetchStats();
     } catch (err: unknown) {
       addToast('error', err instanceof Error ? err.message : '删除失败');
       setPendingDelete(null);
@@ -369,7 +371,12 @@ export default function App() {
       {/* Top Navbar */}
       <Navbar
         currentTab={currentTab}
-        onTabChange={(tab) => setCurrentTab(tab)}
+        onTabChange={(tab) => {
+          if (tab === 'settings') {
+            setSettingsSection('categories');
+          }
+          setCurrentTab(tab);
+        }}
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onLogout={() => {
@@ -408,8 +415,20 @@ export default function App() {
 
           {currentTab === 'stats' && <StatsPage stats={stats} loading={loadingStats} />}
 
+          {currentTab === 'assets' && (
+            <AssetsPage
+              stats={stats}
+              loading={loadingStats}
+              onManageChannels={() => {
+                setSettingsSection('paymentMethods');
+                setCurrentTab('settings');
+              }}
+            />
+          )}
+
           {currentTab === 'settings' && (
             <SettingsPage
+              initialSection={settingsSection}
               loading={!configLoaded}
               categories={categories}
               paymentMethods={paymentMethods}
@@ -450,6 +469,7 @@ export default function App() {
         onNavigateToSettings={() => {
           setIsRecordModalOpen(false);
           setEditingTransaction(null);
+          setSettingsSection('paymentMethods');
           setCurrentTab('settings');
         }}
         categories={categories}
@@ -479,7 +499,7 @@ export default function App() {
           setIsAuthenticated(true);
           fetchConfigData();
           if (currentTab === 'stream') fetchTransactions();
-          if (currentTab === 'stats') fetchStats();
+          if (currentTab === 'stats' || currentTab === 'assets') fetchStats();
         }}
       />
     </div>

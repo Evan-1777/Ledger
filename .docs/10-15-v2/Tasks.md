@@ -1,15 +1,17 @@
 # Tasks：收支统计页重构与资产概览页独立
 
+**状态**：DONE
+**完成日期**：2026-10-15
+**回归测试**：全量单元与集成测试（`make test`）37 项前端自检与全部后端测试通过，前端构建（`npm run build`）成功
 **关联 Plan**：`Plan.md` —— v1.1
-**总计 Task**：8 个
-**设计基准**：`temp/assets-stats-redesign.html`（Fluent 2；趋势区以既有 TrendChart 为准，Demo 柱状图仅为占位）
+**总计 Task**：8 个（全部完成）
 
 ---
 
 ## Phase 1：资产派生纯函数与自检
 
 ### TASK-001：新增资产派生模块
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：新增 `web/src/pages/assetsUtils.ts`，导出 `deriveAssets(summary: AssetSummary)`。
 - **Details**：
@@ -20,7 +22,7 @@
 - **Acceptance Criteria**：`npm run lint` 通过；模块无 React 依赖
 
 ### TASK-002：资产派生自检
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：新增 `web/test/assets.test.ts`（node:test，沿用 stream.test.ts 写法：`.ts` 后缀导入 + `--experimental-strip-types`）。
 - **Details**：覆盖降序排序、负余额 share 为 0 且其余 share 合计 100、total_assets=0 时 debtRatio 为 null、无额度负债不计入 credit、全部无额度时 credit 为 null
@@ -31,7 +33,7 @@
 ## Phase 2：资产概览页与导航接入
 
 ### TASK-003：新增资产概览页
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：新增 `web/src/pages/AssetsPage.tsx`，props：`stats`、`loading`、`onManageChannels`。
 - **Details**：
@@ -44,13 +46,13 @@
 - **Acceptance Criteria**：lint 通过；界面无解释性文案；所有金额经 formatMoney
 
 ### TASK-004：新增眼睛与信用卡图标
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：在 `web/src/components/Icons.tsx` 新增 `EyeIcon`、`EyeOffIcon`、`CreditCardIcon`（圆角卡面 + 磁条线 + 短签名线），沿用 aria-hidden、24 viewBox、2 描边圆头线帽约定；并在 `web/src/components/primitives.tsx` 为 `IconButton` 增加可选 `pressed?: boolean`，透传为 `aria-pressed`（未传时不渲染该属性，既有调用点零影响）。
 - **Acceptance Criteria**：lint 通过；无零引用导出
 
 ### TASK-005：导航与 App 接入
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：修改 `web/src/components/Navbar.tsx`、`web/src/App.tsx`、`web/src/pages/SettingsPage.tsx`。
 - **Details**：
@@ -65,7 +67,7 @@
 ## Phase 3：收支统计页重构
 
 ### TASK-006：重构收支统计页
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：重写 `web/src/pages/StatsPage.tsx` 的资产相关部分。
 - **Details**：
@@ -82,13 +84,13 @@
 ## Phase 4：测试与文档
 
 ### TASK-007：构建与全量测试
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：执行 `make test` 与 `cd web && npm run build`；对照 Demo 在浅/深主题、320/768/1280px 检查资产页与统计页。
 - **Acceptance Criteria**：命令退出码均为 0；不保留 dist 以外的临时产物
 
 ### TASK-008：同步 Project.md 并清理 Demo
-- **Status**：PENDING
+- **Status**：DONE
 - **Executor**：主线
 - **Description**：更新 `.docs/Project.md` 结构树（AssetsPage.tsx、assetsUtils.ts、assets.test.ts，StatsPage 描述改为收支看板，Navbar 四段导航）与决策条目；交付后删除 `temp/assets-stats-redesign.html`。
 - **Acceptance Criteria**：Project.md 描述与代码一致；temp/ 无本轮残留

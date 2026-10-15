@@ -4,7 +4,7 @@ import type { CategoryStat, MonthlyTrend } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
 
 /* Fluent brand single-hue scale, token-driven */
-const DONUT_SCALE = [
+export const DONUT_SCALE = [
   'var(--donut-1)',
   'var(--donut-2)',
   'var(--donut-3)',
@@ -12,7 +12,7 @@ const DONUT_SCALE = [
   'var(--donut-5)',
 ];
 
-const donutColor = (index: number) => DONUT_SCALE[index % DONUT_SCALE.length];
+export const donutColor = (index: number) => DONUT_SCALE[index % DONUT_SCALE.length];
 
 /* ============================== DonutChart ============================== */
 

@@ -1,13 +1,23 @@
 import type { FC } from 'react';
-import { BrandIcon, StreamIcon, StatsIcon, SettingsIcon, MoonIcon, SunIcon, LogoutIcon } from './Icons';
+import {
+  BrandIcon,
+  StreamIcon,
+  StatsIcon,
+  WalletIcon,
+  SettingsIcon,
+  MoonIcon,
+  SunIcon,
+  LogoutIcon,
+} from './Icons';
 import { SegmentedControl, IconButton } from './primitives';
 import type { SegmentedItem } from './primitives';
 
-export type TabType = 'stream' | 'stats' | 'settings';
+export type TabType = 'stream' | 'stats' | 'assets' | 'settings';
 
 const TAB_ITEMS: SegmentedItem[] = [
   { key: 'stream', label: '账目流水', icon: <StreamIcon size={15} /> },
   { key: 'stats', label: '收支统计', icon: <StatsIcon size={15} /> },
+  { key: 'assets', label: '资产概览', icon: <WalletIcon size={15} /> },
   { key: 'settings', label: '基础设置', icon: <SettingsIcon size={15} /> },
 ];
 
@@ -66,7 +76,7 @@ export const Navbar: FC<NavbarProps> = ({
       </IconButton>
 
       <div
-        className="hidden min-[640px]:flex items-center gap-2 py-1 pl-1 pr-2.5
+        className="hidden min-[768px]:flex items-center gap-2 py-1 pl-1 pr-2.5
           bg-[var(--surface-sunken)] border border-[var(--line)] rounded-[var(--r-pill)]
           text-[12.5px] text-[var(--fg-2)] select-none"
       >

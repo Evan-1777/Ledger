@@ -22,6 +22,7 @@ import {
 } from '../components/Icons';
 
 interface SettingsPageProps {
+  initialSection?: 'categories' | 'paymentMethods';
   categories: Category[];
   paymentMethods: PaymentMethod[];
   loading?: boolean;
@@ -65,6 +66,7 @@ const SkeletonList: FC = () => (
 );
 
 export const SettingsPage: FC<SettingsPageProps> = ({
+  initialSection,
   categories,
   paymentMethods,
   loading = false,
@@ -81,7 +83,9 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   onToast,
 }) => {
   // Navigation tab state: 2 core business sections
-  const [activeTab, setActiveTab] = useState<'categories' | 'paymentMethods'>('categories');
+  const [activeTab, setActiveTab] = useState<'categories' | 'paymentMethods'>(
+    initialSection ?? 'categories'
+  );
 
   // Single controlled overflow menu state
   const [openMenu, setOpenMenu] = useState<string | null>(null);
