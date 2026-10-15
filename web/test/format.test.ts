@@ -27,9 +27,9 @@ describe('format - formatMoney', () => {
   });
 
   test('omits currency symbol when requested', () => {
-    assert.strictEqual(formatMoney(1234.5, { sign: 'none', currency: false }), '1,234.50');
-    assert.strictEqual(formatMoney(-42, { sign: 'none', currency: false }), '42.00');
-    assert.strictEqual(formatMoney(0, { sign: 'none', currency: false }), '0.00');
+    assert.strictEqual(formatMoney(1234.5, { sign: 'none', withCurrency: false }), '1,234.50');
+    assert.strictEqual(formatMoney(-42, { sign: 'none', withCurrency: false }), '42.00');
+    assert.strictEqual(formatMoney(0, { sign: 'none', withCurrency: false }), '0.00');
   });
 });
 

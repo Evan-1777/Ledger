@@ -4,7 +4,7 @@ import type { CategoryStat, MonthlyTrend } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
 
 /* DonutChart is only consumed by StatsPage, whose hero anchors the ¥ once */
-const money = (v: number) => formatMoney(v, { sign: 'none', currency: false });
+const money = (v: number) => formatMoney(v, { sign: 'none', withCurrency: false });
 
 /* Fluent brand single-hue scale, token-driven */
 const DONUT_SCALE = [

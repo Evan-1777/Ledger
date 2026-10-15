@@ -44,6 +44,9 @@ const METRIC_BORDERS = [
   'border-t border-l border-[var(--line)] min-[720px]:border-t-0',
 ];
 
+/* Currency is anchored once at the page hero; secondary numbers omit ¥ */
+const money = (v: number) => formatMoney(v, { sign: 'none', withCurrency: false });
+
 /* Channel row used by payment distribution */
 const ChannelRow: FC<{
   dotColor: string;
@@ -68,9 +71,6 @@ const ChannelRow: FC<{
     </div>
   </div>
 );
-
-/* Currency is anchored once at the page hero; secondary numbers omit ¥ */
-const money = (v: number) => formatMoney(v, { sign: 'none', currency: false });
 
 export const StatsPage: FC<StatsPageProps> = ({ stats, loading }) => {
   if (loading || !stats) {

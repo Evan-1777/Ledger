@@ -29,7 +29,7 @@ export function formatAmount(
 
 export function formatMoney(
   value: number,
-  opts?: { sign?: 'auto' | 'none'; currency?: boolean }
+  opts?: { sign?: 'auto' | 'none'; withCurrency?: boolean }
 ): string {
   const sign = opts?.sign === 'none' ? '' : value < 0 ? '−' : value > 0 ? '+' : '';
   const abs = Math.abs(value);
@@ -37,7 +37,7 @@ export function formatMoney(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${sign}${opts?.currency === false ? '' : '¥'}${amountStr}`;
+  return `${sign}${opts?.withCurrency === false ? '' : '¥'}${amountStr}`;
 }
 
 export function formatPercent(value: number, digits: number = 1): string {
