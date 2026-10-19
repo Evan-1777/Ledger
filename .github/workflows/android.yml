@@ -2,11 +2,13 @@ name: Android
 
 on:
   push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
     paths:
       - 'app/**'
       - '.github/workflows/android.yml'
-    tags:
-      - 'v*'
   pull_request:
     paths:
       - 'app/**'
@@ -116,6 +118,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Verify tag matches app version
         working-directory: app
         run: |
