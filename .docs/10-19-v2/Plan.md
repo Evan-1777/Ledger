@@ -88,4 +88,4 @@ Review 认定核心业务链路完整、架构分层与安全边界清楚，未�
 | Go 测试 | `go test ./...` | 通过（未改后端） |
 | 工作流 YAML | `python3 -c "yaml.safe_load(...)"` | 解析通过；仅 `workflow_dispatch` |
 
-本地 Flutter SDK 位于只读挂载，测试使用工作区内临时副本 `.flutter-sdk`；验证后已删除，未进入提交。0.1.0 发布工作流已加入仓库，未在本机触发；需推送后在 Actions 手动运行一次，并按 job summary 将签名材料写入 Secrets。
+本地 Flutter SDK 位于只读挂载，测试使用工作区内临时副本 `.flutter-sdk`；验证后已删除，未进入提交。0.1.0 工作流于 2026-10-19 推送后执行 run 39268947628 成功：Release [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0) 已发布，资产 `ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；四个 Secrets 已落库，`android-signing-0.1.0` artifact 已删除。
