@@ -33,9 +33,14 @@ func main() {
 
 	appServer := server.New(database, distFS, cfg.AdminPassword, cfg.TokenSecret)
 
+	var handler http.Handler = appServer
+	if cfg.CORSOrigin != "" {
+		handler = server.CORS(cfg.CORSOrigin, appServer)
+	}
+
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           appServer,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,

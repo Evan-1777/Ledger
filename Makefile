@@ -1,4 +1,8 @@
-.PHONY: all build build-web build-server test dev-server dev-web clean
+.PHONY: all build build-web build-server test dev-server dev-web clean app-analyze app-test app-web app-dev
+
+FLUTTER ?= flutter
+PUB_CACHE ?= $(CURDIR)/.pub-cache
+export PUB_CACHE
 
 all: build
 
@@ -29,6 +33,19 @@ dev-server:
 # Run Vite frontend dev server with HMR
 dev-web:
 	@cd web && npm run dev
+
+# Flutter client checks and web build
+app-analyze:
+	@cd app && $(FLUTTER) pub get && $(FLUTTER) analyze
+
+app-test:
+	@cd app && $(FLUTTER) test
+
+app-web:
+	@cd app && $(FLUTTER) build web
+
+app-dev:
+	@cd app && $(FLUTTER) run -d web-server --web-port 5174
 
 # Clean generated build artifacts and restore fallback index
 clean:

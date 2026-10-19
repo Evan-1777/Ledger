@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strings"
 )
 
 // Config holds application configuration.
@@ -13,6 +14,7 @@ type Config struct {
 	DBPath        string
 	AdminPassword string
 	TokenSecret   string
+	CORSOrigin    string
 }
 
 // Load loads configuration from environment variables or falls back to defaults.
@@ -45,5 +47,6 @@ func Load() *Config {
 		DBPath:        dbPath,
 		AdminPassword: adminPassword,
 		TokenSecret:   tokenSecret,
+		CORSOrigin:    strings.TrimSpace(os.Getenv("LEDGER_CORS_ORIGIN")),
 	}
 }

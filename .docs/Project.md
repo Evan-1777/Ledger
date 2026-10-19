@@ -4,8 +4,8 @@
 
 ## 概述
 
-- **定位**：轻量高颜值个性化记账 Web 应用，基于 Go + React + Vite + Tailwind + SQLite，单二进制交付。
-- **阶段**：核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
+- **定位**：轻量高颜值个性化记账应用，Go + React + Vite + Tailwind + SQLite 单二进制 Web 端，另配 Flutter + Material 3 Android 客户端，复用同一 HTTP API。
+- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -15,11 +15,13 @@
   - 后端：Go 1.27
   - 前端：Node.js 24 + npm 11
   - 存储：SQLite（纯 Go 驱动 `modernc.org/sqlite`，无 CGO 依赖）
+  - 客户端：Flutter 3.44.6 + Dart 3.12.2（Material 3，Android 为主交付面，Web 为自检面）
 - **环境变量**：
   - `LEDGER_PORT`：HTTP 服务监听端口（默认 `8080`）
   - `LEDGER_DB_PATH`：SQLite 数据库路径（默认 `data/ledger.db`）
   - `LEDGER_ADMIN_PASSWORD`：管理员密码（默认 `admin123`，未设置时控制台打印安全告警）
   - `LEDGER_TOKEN_SECRET`：HMAC 会话签名密钥（默认自动生成 32 字节随机密钥）
+  - `LEDGER_CORS_ORIGIN`：可选的单一开发来源（如 `http://localhost:5174`），为空时不启用 CORS；生产环境不设置
 - **版本管理**：Git；Conventional Commits（英文类型前缀 + 中文详细描述）
 - **运行**：
   - 全流程构建：`make build`（生成 `bin/ledger`）
@@ -28,8 +30,12 @@
   - 启动二进制：`bin/ledger`（默认监听 `http://localhost:8080`）
 - **测试**：
   - 全量测试：`make test`（涵盖后端 `go test -v ./...` 与前端 `tsc -b --noEmit`）
+  - Flutter 静态检查：`make app-analyze`（`flutter pub get && flutter analyze`）
+  - Flutter 测试：`make app-test`（`flutter test`）
+  - Flutter Web 构建：`make app-web`；本地调试服务：`make app-dev`（`http://localhost:5174`）
 - ★ 数据库默认位于 `data/ledger.db`，测试通过临时目录进行，不污染真实数据
 - ★ 前端开发服务器通过 Vite 代理将 `/api` 请求转发至后端口 `8080`
+- ★ Flutter 使用仓库内 `.pub-cache`（Makefile 已导出 `PUB_CACHE`），避免写入系统缓存；本机不安装 JDK、Android SDK、Gradle 或 adb，APK 只由 GitHub Actions 构建
 
 ## 结构
 
@@ -47,6 +53,7 @@ Ledger/
 │  └─ server/
 │     ├─ server.go           # HTTP 路由注册分发、健康检查与 SPA 静态文件回退服务
 │     ├─ auth.go             # 管理员密码登录、防爆破时延、HMAC Token 签发与 RequireAuth 访问守卫
+│     ├─ cors.go             # 可选单一来源 CORS（开发 Web 自检用，精确 Origin 匹配 + 预检 204）
 │     ├─ settings.go         # 资产/负债渠道（payment_methods）、类型（categories 支持 type 字段）与标签 CRUD API、409 账单引用删除拦截与系统分类/标签 ID 级不可变保护
 │     ├─ transactions.go     # 单笔账单录入/更新/删除/列表查询，金额带符号分位转换、还款与转账双渠道校验、转账手续费原子存取与负数拦截、收支隔离筛选
 │     ├─ stats.go            # 多维收支与宏观资产负债统计汇总：还款与转账双边核算、转账手续费纯资产扣减与净资产守恒、渠道明细与信用使用率、收支趋势隔离转账
@@ -84,11 +91,33 @@ Ledger/
 │  ├─ vite.config.ts         # Vite 配置（Tailwind 插件、/api 反向代理）
 │  ├─ package.json           # 前端依赖配置
 │  └─ tsconfig.json          # TypeScript 配置
+├─ app/                      # Flutter Android + Web 客户端
+│  ├─ lib/
+│  │  ├─ core/
+│  │  │  ├─ api/             # 模型、集中式 HTTP 客户端、错误映射
+│  │  │  ├─ state/           # 账本与偏好控制器
+│  │  │  ├─ storage/         # 安全 Token、会话地址与偏好存储
+│  │  │  ├─ theme/           # MD3 主题与金融语义色 ThemeExtension
+│  │  │  └─ widgets/         # 共享卡片、金额、类型图标、空/错/骨架/确认框
+│  │  ├─ features/
+│  │  │  ├─ auth/            # 登录门与会话控制器
+│  │  │  ├─ shell/           # 四段导航 Shell 与返回键仲裁
+│  │  │  ├─ stream/          # 流水页与日分组纯函数
+│  │  │  ├─ record/          # 记账底部弹层与类型/渠道规则
+│  │  │  ├─ stats/           # 统计页、自绘环图/趋势图与派生
+│  │  │  ├─ assets/          # 资产页与资产派生
+│  │  │  └─ settings/        # 设置、分类/标签、渠道管理
+│  │  ├─ app.dart            # 会话门、主题与 Provider 装配
+│  │  └─ main.dart           # 入口、本地化与存储初始化
+│  ├─ test/                  # API/控制器/纯函数/Widget 测试
+│  ├─ android/               # 包名 com.evan1777.ledger、minSdk 24、签名与自适应图标
+│  ├─ web/                   # Web 自检构建入口
+│  └─ README.md              # 本地运行、Web 自检、CI 与签名说明
 ├─ .github/
 │  └─ workflows/
-│     └─ docker-publish.yml  # GitHub Actions 自动化构建并推送 Docker 镜像至 GHCR
+│     ├─ docker-publish.yml  # GitHub Actions 自动化构建并推送 Docker 镜像至 GHCR
+│     └─ android.yml         # Flutter 格式/分析/测试与 APK（签名缺失时 debug 验收包）
 ├─ Dockerfile                # 多阶段构建：node 静态构建 → golang 静态编译 → alpine 轻量运行时
-├─ temp/                     # 规划期设计 Demo 暂存区
 ├─ docker-compose.yml        # VPS 生产部署编排配置（拉取 ghcr.io/evan-1777/ledger 镜像）
 ├─ .dockerignore             # Docker 构建上下文排除规则
 ├─ Makefile                  # 统一构建编排（build, test, dev, clean）
@@ -100,11 +129,39 @@ Ledger/
   - `/api/auth/login` → 密码校验并签发 HMAC Token
   - `/api/*` → `RequireAuth` 中间件守卫 → 业务/统计 Handler → SQLite 读写 → JSON 响应
   - 非 API 请求 → `web.DistFS`（匹配前端静态产物；未匹配则回退至 `index.html`）
-- **依赖方向**：`cmd/server` 组合 `internal/config`、`internal/db`、`internal/server` 与 `web`；各 `internal/*` 模块间解耦，不反向依赖 `cmd`。
+- **依赖方向**：`cmd/server` 组合 `internal/config`、`internal/db`、`internal/server` 与 `web`；各 `internal/*` 模块间解耦，不反向依赖 `cmd`。Flutter 客户端只依赖 HTTP API，不引入后端包或 Web 构建链。
+
+## Android 客户端
+
+`app/` 是独立的 Flutter 工程，Android 为主交付面，Web 用于本地自检。客户端不复制 Web 的 Fluent 玻璃材质，保留信息架构与业务语义，视觉按 Material 3 重建。
+
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;font-size:13px;line-height:1.6;margin:12px 0">
+  <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
+    <strong>界面</strong><br>四段导航 + 底部弹层<br><span style="color:#5b6472">Stream / Stats / Assets / Settings</span>
+  </div>
+  <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
+    <strong>状态</strong><br>Session / Ledger / Preferences<br><span style="color:#5b6472">provider + ChangeNotifier，单一数据源</span>
+  </div>
+  <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
+    <strong>网络与存储</strong><br>薄 HTTP 客户端 + 安全 Token<br><span style="color:#5b6472">flutter_secure_storage / shared_preferences</span>
+  </div>
+  <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
+    <strong>后端</strong><br>既有 Go HTTP API + SQLite<br><span style="color:#5b6472">Bearer HMAC，30 天无刷新会话</span>
+  </div>
+</div>
+
+- **结构**：`core/` 提供 API 模型与客户端、状态控制器、存储、主题和共享构件；`features/` 按业务域拆分页面与弹层。页面只消费控制器状态，HTTP 请求集中在 `ApiClient`，401 统一映射为会话过期。
+- **会话**：启动时读取服务器地址与 Token；有效 Token 直接进入 Shell，401 清 Token 回登录页，网络/超时保留 Token 并提供重试。登录成功后才加载配置、流水与统计，且只加载一次。
+- **数据**：流水金额以带符号分显示，提交时支出为负、收入为正；分类/标签/渠道变更后按域刷新（流水+统计、配置+统计、配置）；切换筛选使用请求代际，旧响应不覆盖新结果。
+- **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
+- **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
+- **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。
+- **发布**：`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。密钥与 `key.properties` 只在 CI 临时目录存在。
+- **已知限制**：流水沿用 100 条窗口、无离线库/同步/推送、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定
 
-- **命名**：Go 包与文件 snake_case，导出的类型与函数 PascalCase；TypeScript 组件 PascalCase，工具函数 camelCase
+- **命名**：Go 包与文件 snake_case，导出的类型与函数 PascalCase；TypeScript 组件 PascalCase，工具函数 camelCase；Dart 文件 snake_case，类 PascalCase，私有成员以 `_` 前缀
 - **语言**：用户可见文本用中文；代码注释、提交前缀遵循英文约定
 - **错误处理**：后端内部错误统一包装，对外返回对应 HTTP 状态码与结构化 JSON（引用删除严格返回 409 Conflict，非法参数返回 400 Bad Request）；前端统一捕获并展示 Toast
 - **日志**：Go 标准库 `log`，输出清晰的时间戳与结构化上下文信息
@@ -167,6 +224,7 @@ Ledger/
 - 2026-10-15 收支统计页重构与资产概览页独立——将原有统计页同时平铺资产与收支的双重认知负担解耦为独立的一级「资产概览」与纯粹的「收支统计」看板；顶栏导航扩为四段（流水/统计/资产/设置），admin 胶囊断点上移至 768px 防挤压；资产数据源共享 App 层 stats 单一来源（零后端改动）；资产分布占比由前端 deriveAssets 计算（分母仅计正余额渠道之和，避免透支渠道导致正余额占比 >100% 失真）；资产页提供净资产金额眼睛隐藏（localStorage 持久化，仅作用于资产页），资产行 hover 通过 activeIndex state 驱动 Hero 分布条高亮联动；面板头「管理」与资产空态直达设置页渠道分区，App 层 settingsSection 状态显式重置彻底杜绝切回设置页残留渠道分区；收支统计页 Hero 升格为「N 月结余」，指标行空出的结余位替换为「日均花费」，原 DonutChart 与 TrendChart 原样复用
 - 2026-10-15 复审修复轮（吸收资产概览 Review 报告）——剔除过度设计：`deriveAssets` 移除不可达的 `|| []` 兜底（后端 `make([]T, 0)` 恒产出 `[]`，接口类型亦非可选），`DONUT_SCALE` 撤销零消费导出（仅 `donutColor` 有外部消费方）；消除重复派生：AssetsPage 的 `positiveTotal` 复算改为 `assets.some(...)`，占比分母口径收敛至 `deriveAssets` 单一来源；修复交互死状态：透支（负余额）资产行不再驱动 `activeIndex`，否则分布条该下标无对应分段，会导致全段熄灭且无任何高亮；320px 顶栏按既有 400px 断点隐藏品牌文字，为「顶栏单行不溢出」验收留出余量；术语表「宏观资产组合矩阵」定位随资产内容迁出统计页同步校正。驳回：金额隐藏扩大为全站（Plan 决策表已留痕「仅作用于资产页」，属既定取舍而非缺陷）；补页内错误态（与 StatsPage 同构的既定决策，需新增 App 级状态与两页 UI，属跨页设计变更）
 - 2026-10-15 收支统计与资产概览人民币符号单锚点去重——`formatMoney` 增加可选 `withCurrency` 开关（默认 `true`，StreamPage/SettingsPage/RecordModal 既有行为零回归）；StatsPage 局部 `money()` 辅助、AssetsPage `renderMoney` 默认合并、DonutChart（仅 StatsPage 消费）同步收敛为 `withCurrency: false`，两页 `¥` 仅在 Hero 手写前缀 span 锚定一次，消除 Hero「¥¥」双符号缺陷与全页数字逐个携带 `¥` 的重复噪声
+- 2026-10-19 Flutter Android 客户端与 Material 3 交付——新增独立 `app/` 工程（Android 为主、Web 自检），复用既有 HTTP API/HMAC 会话/SQLite 业务契约，不在后端新增业务端点；客户端按 `core/`（API、状态、存储、主题、共享构件）与 `features/`（auth/shell/stream/record/stats/assets/settings）分层，provider + ChangeNotifier 保持单一数据源；请求代际保护筛选切换的旧响应，401 统一走会话过期；Material 3 以 `#0078D4` 为 seed，禁用动态取色，金融语义色收敛为 ThemeExtension；Token 仅存 flutter_secure_storage，release 拒绝非 HTTPS，debug manifest 单独放开明文；新增可选 `LEDGER_CORS_ORIGIN`（精确 Origin 匹配与预检）供本地 Web 自检；APK 由 GitHub Actions 构建，签名密钥仅从 CI Secrets 注入
 - 2026-10-15 复审吸收（人民币符号去重轮）——`currency` 选项更名为 `withCurrency`（API 诞生即轮内、消费方全在库内，零兼容成本，消除布尔值读作货币代码的歧义）；StatsPage `money` 辅助定义上移至 ChannelRow 之前（先声明后引用）。驳回：DonutChart 去除页面级耦合改为 prop 注入（当前唯一消费方，YAGNI，留待出现第二个消费方再改）；`money` 重复定义抽公共工具（三行重复，跨文件抽象成本高于收益）
 
 ## 术语
@@ -178,4 +236,7 @@ Ledger/
 - **双向账户核算 (Bilateral Account Accounting)** = 还款时目标负债渠道冲销欠款、转出资产渠道扣减结余，资产与负债同步变动并维持净资产物理守恒
 - **双向资产转账 (Bilateral Asset Transfer)** = 资金在两个资产渠道之间的内部划转，转出方扣减余额（含可选转账手续费），转入方增加本金余额，无手续费时总资产与净资产保持绝对守恒，产生手续费时总资产与净资产精确变动 -fee，不计入收支损益
 - **系统级不可变分类 (Immutable System Category)** = 预置于系统内由 `system_meta` 持久化 ID 的特殊分类，具有专用业务逻辑且禁止任何修改或删除操作
+- **会话门 (Session Gate)** = 客户端启动与登录状态的唯一分流点：启动校验中显示品牌启动态，无有效 Token 进入登录页，有效会话进入四段 Shell
+- **请求代际 (Request Generation)** = 每次流水/统计请求递增的序号，响应返回时仅最新代际可写入状态，避免快速切换筛选时旧响应覆盖新结果
+- **金融语义色 (Finance Colors)** = 支出、收入、转账、还款四组语义色及其容器色，以 ThemeExtension 同时提供浅色与深色值，组件不硬编码色值
 
