@@ -49,6 +49,7 @@ class _RecordSheetState extends State<RecordSheet> {
   bool _showFee = false;
   bool _busy = false;
   bool _bootstrapped = false;
+  bool _configSyncScheduled = false;
   String? _error;
 
   bool get _editing => widget.initial != null;
@@ -156,6 +157,88 @@ class _RecordSheetState extends State<RecordSheet> {
         : 0;
   }
 
+  bool _needsDefaults(LedgerController ledger) {
+    if (_editing) return false;
+    if (_type == TransactionType.expense || _type == TransactionType.income) {
+      final categories = _categoriesForType();
+      if (categories.isNotEmpty) {
+        final current = categories.where((item) => item.id == _categoryId);
+        if (current.isEmpty) return true;
+        final category = current.first;
+        if (category.tags.isNotEmpty &&
+            !category.tags.any((tag) => tag.id == _tagId)) {
+          return true;
+        }
+      }
+    } else {
+      final category = ledger.categoryByName(
+        _type == TransactionType.transfer ? '账户转账' : '债务偿还',
+      );
+      if (category != null && _categoryId != category.id) return true;
+    }
+    final targets = RecordRules.targetChannels(_type, ledger.channels);
+    if (targets.isNotEmpty &&
+        !targets.any((item) => item.id == _targetChannelId)) {
+      return true;
+    }
+    if (_type == TransactionType.transfer) {
+      final sources = RecordRules.sourceChannels(_type, ledger.channels);
+      if (sources.length >= 2 &&
+          (_sourceChannelId == null || _sourceChannelId == _targetChannelId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _scheduleConfigAdoption() {
+    if (_configSyncScheduled) return;
+    _configSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _configSyncScheduled = false;
+      if (!mounted) return;
+      setState(_adoptMissingDefaults);
+    });
+  }
+
+  void _adoptMissingDefaults() {
+    final ledger = context.read<LedgerController>();
+    if (_type == TransactionType.expense || _type == TransactionType.income) {
+      final categories = _categoriesForType();
+      if (categories.isNotEmpty) {
+        final current = categories.where((item) => item.id == _categoryId);
+        final category = current.isNotEmpty ? current.first : categories.first;
+        _categoryId = category.id;
+        if (category.tags.isEmpty) {
+          _tagId = null;
+        } else if (!category.tags.any((tag) => tag.id == _tagId)) {
+          _tagId = category.tags.first.id;
+        }
+      }
+    } else {
+      final category = ledger.categoryByName(
+        _type == TransactionType.transfer ? '账户转账' : '债务偿还',
+      );
+      if (category != null) {
+        _categoryId = category.id;
+        _tagId = category.tags.isEmpty ? 0 : category.tags.first.id;
+      }
+    }
+    final targets = RecordRules.targetChannels(_type, ledger.channels);
+    if (targets.isNotEmpty &&
+        !targets.any((item) => item.id == _targetChannelId)) {
+      _targetChannelId = targets.first.id;
+    }
+    if (_type == TransactionType.transfer) {
+      final sources = RecordRules.sourceChannels(_type, ledger.channels);
+      if (sources.length >= 2 &&
+          (_sourceChannelId == null || _sourceChannelId == _targetChannelId)) {
+        final other = sources.where((item) => item.id != _targetChannelId);
+        _sourceChannelId = other.isEmpty ? null : other.first.id;
+      }
+    }
+  }
+
   void _switchType(TransactionType type) {
     if (_editing || type == _type) return;
     setState(() {
@@ -218,11 +301,13 @@ class _RecordSheetState extends State<RecordSheet> {
         TransactionType.transfer,
         context.read<LedgerController>().channels,
       );
-      if (assets.length < 2) return '转账需要至少两个资产账户';
-      if (_sourceChannelId == null || _targetChannelId == null) {
-        return '请选择转出与转入账户';
+      if (!RecordRules.transferReady(
+        assets: assets,
+        sourceId: _sourceChannelId,
+        targetId: _targetChannelId,
+      )) {
+        return assets.length < 2 ? '转账需要至少两个资产账户' : '请选择不同的转出与转入账户';
       }
-      if (_sourceChannelId == _targetChannelId) return '转出与转入账户不能相同';
       if (RecordRules.parseFee(_feeController.text) == null) {
         return '手续费不能为负数';
       }
@@ -308,6 +393,10 @@ class _RecordSheetState extends State<RecordSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ledger = context.watch<LedgerController>();
+    if (!_editing && _needsDefaults(ledger)) {
+      _scheduleConfigAdoption();
+    }
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final insets = MediaQuery.viewInsetsOf(context);

@@ -121,6 +121,24 @@ void main() {
     );
   });
 
+  test('known backend duplicate-name errors are localized', () {
+    expect(
+      ApiException.fromStatus(400, 'payment method already exists').message,
+      '该渠道名称已存在',
+    );
+    expect(
+      ApiException.fromStatus(400, 'category already exists').message,
+      '分类名称已存在',
+    );
+    expect(
+      ApiException.fromStatus(
+        400,
+        'tag already exists in this category',
+      ).message,
+      '该分类下已存在同名标签',
+    );
+  });
+
   test('timeout is mapped without losing the token', () async {
     final api = ApiClient(
       client: MockClient((_) async {

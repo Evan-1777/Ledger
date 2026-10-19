@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账应用，Go + React + Vite + Tailwind + SQLite 单二进制 Web 端，另配 Flutter + Material 3 Android 客户端，复用同一 HTTP API。
-- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
+- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收与 0.1.0 发布工作流准备，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -30,6 +30,7 @@
   - 启动二进制：`bin/ledger`（默认监听 `http://localhost:8080`）
 - **测试**：
   - 全量测试：`make test`（涵盖后端 `go test -v ./...` 与前端 `tsc -b --noEmit`）
+  - Flutter 格式检查：`make app-format`（`dart format --output=none --set-exit-if-changed lib test`）
   - Flutter 静态检查：`make app-analyze`（`flutter pub get && flutter analyze`）
   - Flutter 测试：`make app-test`（`flutter test`）
   - Flutter Web 构建：`make app-web`；本地调试服务：`make app-dev`（`http://localhost:5174`）
@@ -116,7 +117,8 @@ Ledger/
 ├─ .github/
 │  └─ workflows/
 │     ├─ docker-publish.yml  # GitHub Actions 自动化构建并推送 Docker 镜像至 GHCR
-│     └─ android.yml         # Flutter 格式/分析/测试与 APK（签名缺失时 debug 验收包）
+│     ├─ android.yml         # Flutter 格式/分析/测试与 APK（签名缺失时 debug 验收包）
+│     └─ android-release-0.1.0.yml # 一次性生成签名材料、构建并发布 Android 0.1.0
 ├─ Dockerfile                # 多阶段构建：node 静态构建 → golang 静态编译 → alpine 轻量运行时
 ├─ docker-compose.yml        # VPS 生产部署编排配置（拉取 ghcr.io/evan-1777/ledger 镜像）
 ├─ .dockerignore             # Docker 构建上下文排除规则
@@ -156,7 +158,7 @@ Ledger/
 - **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
 - **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。
-- **发布**：`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）；签名 release 待 Secrets 补齐。
+- **发布**：当前 Android 版本 `0.1.0+1`。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）；常规签名 release 待 Secrets 落库，0.1.0 一次性 Release 由该工作流独立完成。
 - **已知限制**：流水沿用 100 条窗口、无离线库/同步/推送、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定
@@ -224,6 +226,7 @@ Ledger/
 - 2026-10-15 收支统计页重构与资产概览页独立——将原有统计页同时平铺资产与收支的双重认知负担解耦为独立的一级「资产概览」与纯粹的「收支统计」看板；顶栏导航扩为四段（流水/统计/资产/设置），admin 胶囊断点上移至 768px 防挤压；资产数据源共享 App 层 stats 单一来源（零后端改动）；资产分布占比由前端 deriveAssets 计算（分母仅计正余额渠道之和，避免透支渠道导致正余额占比 >100% 失真）；资产页提供净资产金额眼睛隐藏（localStorage 持久化，仅作用于资产页），资产行 hover 通过 activeIndex state 驱动 Hero 分布条高亮联动；面板头「管理」与资产空态直达设置页渠道分区，App 层 settingsSection 状态显式重置彻底杜绝切回设置页残留渠道分区；收支统计页 Hero 升格为「N 月结余」，指标行空出的结余位替换为「日均花费」，原 DonutChart 与 TrendChart 原样复用
 - 2026-10-15 复审修复轮（吸收资产概览 Review 报告）——剔除过度设计：`deriveAssets` 移除不可达的 `|| []` 兜底（后端 `make([]T, 0)` 恒产出 `[]`，接口类型亦非可选），`DONUT_SCALE` 撤销零消费导出（仅 `donutColor` 有外部消费方）；消除重复派生：AssetsPage 的 `positiveTotal` 复算改为 `assets.some(...)`，占比分母口径收敛至 `deriveAssets` 单一来源；修复交互死状态：透支（负余额）资产行不再驱动 `activeIndex`，否则分布条该下标无对应分段，会导致全段熄灭且无任何高亮；320px 顶栏按既有 400px 断点隐藏品牌文字，为「顶栏单行不溢出」验收留出余量；术语表「宏观资产组合矩阵」定位随资产内容迁出统计页同步校正。驳回：金额隐藏扩大为全站（Plan 决策表已留痕「仅作用于资产页」，属既定取舍而非缺陷）；补页内错误态（与 StatsPage 同构的既定决策，需新增 App 级状态与两页 UI，属跨页设计变更）
 - 2026-10-15 收支统计与资产概览人民币符号单锚点去重——`formatMoney` 增加可选 `withCurrency` 开关（默认 `true`，StreamPage/SettingsPage/RecordModal 既有行为零回归）；StatsPage 局部 `money()` 辅助、AssetsPage `renderMoney` 默认合并、DonutChart（仅 StatsPage 消费）同步收敛为 `withCurrency: false`，两页 `¥` 仅在 Hero 手写前缀 span 锚定一次，消除 Hero「¥¥」双符号缺陷与全页数字逐个携带 `¥` 的重复噪声
+- 2026-10-19 Android 客户端复审吸收与 0.1.0 发布准备——配置加载增加请求代际守卫并在 `clear()` 失效旧请求，修复旧服务器配置回写与旧 401 误注销；分类调序第二次 PUT 失败回写第一个分类的原 `sort_order`；Shell 统一用 SnackBar 暴露有缓存时的刷新失败；记账弹层订阅配置并在配置晚到时补缺失默认值；图例命中区提升至 48dp、资产分布条 `flex` 设下限、后端重名错误映射为中文；删除无消费的 `formatCents`、`DerivedAssets.totalCredit`、`ConfirmDialog.busy`、`AmountText` 冗余参数、`hidden` 字段、`LoginResult.expiresAt`、`cardTheme`、重复系统栏样式与 `refreshAll`，`transferReady` 收敛为 UI 实际校验入口；版本升至 `0.1.0+1`；新增一次性 `android-release-0.1.0.yml`，生成签名材料、构建并发布 `v0.1.0` Release，签名材料以 1 天 artifact 交付后由所有者写入 Secrets
 - 2026-10-19 Flutter Android 客户端与 Material 3 交付——新增独立 `app/` 工程（Android 为主、Web 自检），复用既有 HTTP API/HMAC 会话/SQLite 业务契约，不在后端新增业务端点；客户端按 `core/`（API、状态、存储、主题、共享构件）与 `features/`（auth/shell/stream/record/stats/assets/settings）分层，provider + ChangeNotifier 保持单一数据源；请求代际保护筛选切换的旧响应，401 统一走会话过期；Material 3 以 `#0078D4` 为 seed，禁用动态取色，金融语义色收敛为 ThemeExtension；Token 仅存 flutter_secure_storage，release 拒绝非 HTTPS，debug manifest 单独放开明文；新增可选 `LEDGER_CORS_ORIGIN`（精确 Origin 匹配与预检）供本地 Web 自检；APK 由 GitHub Actions 构建，签名密钥仅从 CI Secrets 注入
 - 2026-10-15 复审吸收（人民币符号去重轮）——`currency` 选项更名为 `withCurrency`（API 诞生即轮内、消费方全在库内，零兼容成本，消除布尔值读作货币代码的歧义）；StatsPage `money` 辅助定义上移至 ChannelRow 之前（先声明后引用）。驳回：DonutChart 去除页面级耦合改为 prop 注入（当前唯一消费方，YAGNI，留待出现第二个消费方再改）；`money` 重复定义抽公共工具（三行重复，跨文件抽象成本高于收益）
 

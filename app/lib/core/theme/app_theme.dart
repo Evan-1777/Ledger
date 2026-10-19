@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'finance_colors.dart';
 
@@ -19,19 +18,6 @@ class AppTheme {
         : FinanceColors.dark;
     final base = ThemeData(useMaterial3: true, colorScheme: scheme);
 
-    final overlay = SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: brightness == Brightness.light
-          ? Brightness.dark
-          : Brightness.light,
-      statusBarBrightness: brightness,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: brightness == Brightness.light
-          ? Brightness.dark
-          : Brightness.light,
-      systemNavigationBarContrastEnforced: false,
-    );
-
     return base.copyWith(
       scaffoldBackgroundColor: scheme.surface,
       extensions: [finance],
@@ -44,13 +30,6 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        systemOverlayStyle: overlay,
-      ),
-      cardTheme: CardThemeData(
-        color: scheme.surfaceContainerLow,
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surfaceContainerHigh,

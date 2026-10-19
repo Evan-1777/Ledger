@@ -374,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 const _appVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.0',
+  defaultValue: '0.1.0',
 );
 
 class _CategoryRow extends StatelessWidget {

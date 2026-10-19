@@ -20,9 +20,7 @@ class ApiException implements Exception {
   bool get isUnauthorized => kind == ApiErrorKind.unauthorized;
 
   factory ApiException.fromStatus(int status, String? serverMessage) {
-    final message = (serverMessage == null || serverMessage.trim().isEmpty)
-        ? null
-        : serverMessage.trim();
+    final message = _localize(serverMessage);
     return switch (status) {
       401 => ApiException(
         ApiErrorKind.unauthorized,
@@ -62,6 +60,18 @@ class ApiException implements Exception {
     ApiErrorKind.invalidServer,
     '请输入以 http:// 或 https:// 开头的服务器地址，仅填协议、域名与端口',
   );
+
+  static String? _localize(String? raw) {
+    final message = raw?.trim();
+    if (message == null || message.isEmpty) return null;
+    return switch (message) {
+      'payment method already exists' => '该渠道名称已存在',
+      'category already exists' => '分类名称已存在',
+      'tag already exists in this category' => '该分类下已存在同名标签',
+      'duplicate tag name or invalid update' => '标签名称已存在或更新无效',
+      _ => message,
+    };
+  }
 
   @override
   String toString() => message;

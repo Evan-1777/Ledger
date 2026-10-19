@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:ledger_app/core/api/api_exception.dart';
 import 'package:ledger_app/core/api/models.dart';
 import 'package:ledger_app/core/state/ledger_controller.dart';
 
@@ -80,6 +83,97 @@ void main() {
       expect(controllers.ledger.transactions.single.description, '支出结果');
     },
   );
+
+  test('a stale config success cannot repopulate cleared data', () async {
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/categories' ||
+          request.url.path == '/api/payment-methods') {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      return standardHandler(request);
+    });
+    final ledger = LedgerController(
+      api: controllers.api,
+      onSessionExpired: () async {},
+    );
+
+    final pending = ledger.loadConfig();
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    ledger.clear();
+    await pending;
+
+    expect(ledger.categories, isEmpty);
+    expect(ledger.channels, isEmpty);
+    expect(ledger.configError, isNull);
+    expect(ledger.configLoading, isFalse);
+  });
+
+  test('a stale config 401 cannot expire a cleared session', () async {
+    var expired = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/categories' ||
+          request.url.path == '/api/payment-methods') {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return jsonResponse({'error': 'unauthorized'}, status: 401);
+      }
+      return standardHandler(request);
+    });
+    final ledger = LedgerController(
+      api: controllers.api,
+      onSessionExpired: () async => expired++,
+    );
+
+    final pending = ledger.loadConfig();
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    ledger.clear();
+    await pending;
+
+    expect(expired, 0);
+    expect(ledger.categories, isEmpty);
+    expect(ledger.channels, isEmpty);
+    expect(ledger.configError, isNull);
+    expect(ledger.configLoading, isFalse);
+  });
+
+  test('a failed category swap restores the first sort order', () async {
+    final puts = <http.Request>[];
+    var failed = false;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'PUT' &&
+          request.url.path.startsWith('/api/categories/')) {
+        puts.add(request);
+        if (request.url.path == '/api/categories/2' && !failed) {
+          failed = true;
+          return jsonResponse({'error': 'server error'}, status: 500);
+        }
+        final id = int.parse(request.url.pathSegments.last);
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return jsonResponse({
+          'id': id,
+          'name': id == 1 ? '餐饮美食' : '交通出行',
+          'sort_order': body['sort_order'],
+          'type': 'expense',
+          'created_at': '',
+          'tags': <Object?>[],
+        });
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    final first = controllers.ledger.categories.firstWhere(
+      (category) => category.id == 1,
+    );
+
+    await expectLater(
+      controllers.ledger.moveCategory(first, 1),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(
+      puts.map((request) => jsonDecode(request.body)['sort_order']).toList(),
+      [2, 1, 1],
+    );
+  });
 
   test('a 401 expires the session and clears business data', () async {
     var expired = 0;

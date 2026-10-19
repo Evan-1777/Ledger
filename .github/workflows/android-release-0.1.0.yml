@@ -1,0 +1,180 @@
+name: Android Release 0.1.0 (one-time)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-0.1.0
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard one-time release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event.repository.private }}" != "true" ]; then
+            echo "This workflow writes signing material to an artifact; run it only in a private repository." >&2
+            exit 1
+          fi
+          if gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v0.1.0 already exists; this workflow is one-time." >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v0.1.0" >/dev/null 2>&1; then
+            echo "Tag v0.1.0 already exists; this workflow is one-time." >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.6'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Generate signing key and secret bundle
+        env:
+          KEY_ALIAS: ledger
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/ledger.jks"
+          KEYSTORE_PASSWORD="$(openssl rand -hex 24)"
+          KEY_PASSWORD="$KEYSTORE_PASSWORD"
+          keytool -genkeypair -v \
+            -keystore "$KEYSTORE" \
+            -storetype JKS \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias "$KEY_ALIAS" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=Ledger, OU=Android, O=Evan-1777, L=Singapore, ST=Singapore, C=SG"
+          cat > android/key.properties <<EOF
+          storeFile=$KEYSTORE
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          mkdir -p "$RUNNER_TEMP/android-signing"
+          base64 -w0 "$KEYSTORE" > "$RUNNER_TEMP/android-signing/ANDROID_KEYSTORE_BASE64.txt"
+          printf '%s' "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/android-signing/ANDROID_KEYSTORE_PASSWORD.txt"
+          printf '%s' "$KEY_ALIAS" > "$RUNNER_TEMP/android-signing/ANDROID_KEY_ALIAS.txt"
+          printf '%s' "$KEY_PASSWORD" > "$RUNNER_TEMP/android-signing/ANDROID_KEY_PASSWORD.txt"
+          cat > "$RUNNER_TEMP/android-signing/README.txt" <<'EOF'
+          Ledger Android 0.1.0 signing material.
+          Keep this bundle private. Add the four values to repository secrets, then delete this artifact.
+
+          In a checkout of this repository:
+            gh run download <run-id> -R Evan-1777/Ledger -n android-signing-0.1.0
+            gh secret set ANDROID_KEYSTORE_BASE64 -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEYSTORE_BASE64.txt
+            gh secret set ANDROID_KEYSTORE_PASSWORD -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEYSTORE_PASSWORD.txt
+            gh secret set ANDROID_KEY_ALIAS -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEY_ALIAS.txt
+            gh secret set ANDROID_KEY_PASSWORD -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEY_PASSWORD.txt
+
+          The same keystore must sign every future release so that Android can upgrade in place.
+          EOF
+          chmod 600 "$RUNNER_TEMP/android-signing/"*
+
+      - name: Build signed release APK
+        run: |
+          flutter build apk --release \
+            --build-name=0.1.0 \
+            --build-number=1 \
+            --dart-define=APP_VERSION=0.1.0
+          cp build/app/outputs/flutter-apk/app-release.apk "$RUNNER_TEMP/ledger-0.1.0.apk"
+
+      - name: Verify APK signature
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$RUNNER_TEMP/ledger-0.1.0.apk"
+
+      - name: Upload signing material
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-0.1.0
+          path: ${{ runner.temp }}/android-signing
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          Android 0.1.0 首个签名 Release。
+
+          - 版本：0.1.0 (versionCode 1)
+          - 最低系统：Android 7.0 (API 24)
+          - 安装包：ledger-0.1.0.apk
+
+          后续版本必须使用同一签名密钥，Android 才能原地升级。
+          EOF
+          gh release create v0.1.0 \
+            "$RUNNER_TEMP/ledger-0.1.0.apk#ledger-0.1.0.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Ledger Android 0.1.0" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest
+
+      - name: Publish signing instructions
+        if: success()
+        run: |
+          {
+            echo "## Android 0.1.0 已发布"
+            echo
+            echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/v0.1.0"
+            echo
+            echo "签名材料 artifact 仅保留 1 天。请在本机执行："
+            echo
+            echo "    gh run download $GITHUB_RUN_ID -R $GITHUB_REPOSITORY -n android-signing-0.1.0"
+            echo "    gh secret set ANDROID_KEYSTORE_BASE64 -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEYSTORE_BASE64.txt"
+            echo "    gh secret set ANDROID_KEYSTORE_PASSWORD -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEYSTORE_PASSWORD.txt"
+            echo "    gh secret set ANDROID_KEY_ALIAS -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEY_ALIAS.txt"
+            echo "    gh secret set ANDROID_KEY_PASSWORD -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEY_PASSWORD.txt"
+            echo
+            echo "完成落库后删除 artifact，并删除本工作流文件。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing files
+        if: always()
+        working-directory: .
+        run: |
+          rm -f app/android/key.properties
+          rm -rf "$RUNNER_TEMP/android-signing" "$RUNNER_TEMP/ledger.jks" "$RUNNER_TEMP/ledger-0.1.0.apk"

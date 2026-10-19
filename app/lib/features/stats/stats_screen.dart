@@ -29,7 +29,7 @@ class _StatsScreenState extends State<StatsScreen> {
     final now = DateTime.now();
 
     return RefreshIndicator(
-      onRefresh: ledger.refreshAll,
+      onRefresh: ledger.loadAll,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -524,7 +524,7 @@ class _LegendRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 44),
+        constraints: const BoxConstraints(minHeight: 48),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           color: selected

@@ -1,6 +1,7 @@
-.PHONY: all build build-web build-server test dev-server dev-web clean app-analyze app-test app-web app-dev
+.PHONY: all build build-web build-server test dev-server dev-web clean app-format app-analyze app-test app-web app-dev
 
 FLUTTER ?= flutter
+DART ?= dart
 PUB_CACHE ?= $(CURDIR)/.pub-cache
 export PUB_CACHE
 
@@ -35,6 +36,9 @@ dev-web:
 	@cd web && npm run dev
 
 # Flutter client checks and web build
+app-format:
+	@cd app && $(DART) --suppress-analytics format --output=none --set-exit-if-changed lib test
+
 app-analyze:
 	@cd app && $(FLUTTER) pub get && $(FLUTTER) analyze
 

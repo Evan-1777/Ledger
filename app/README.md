@@ -41,7 +41,7 @@ flutter test
 flutter build web
 ```
 
-仓库根目录的 `make app-analyze`、`make app-test`、`make app-web` 分别封装前三项检查与 Web 构建。
+仓库根目录的 `make app-format`、`make app-analyze`、`make app-test`、`make app-web` 分别封装格式检查、`pub get + analyze`、测试与 Web 构建。若 `dart` 不在 PATH，使用 `make app-format DART=/path/to/dart`。
 
 ## 发布
 
@@ -57,6 +57,17 @@ flutter build web
 | `ANDROID_KEY_PASSWORD` | 密钥密码 |
 
 未配置 `ANDROID_KEYSTORE_BASE64` 时产出 debug 验收包（artifact：`ledger-debug`）。`key.properties` 与 keystore 只在 CI 临时目录生成，构建结束即删除。
+
+### 0.1.0 一次性签名与 Release
+
+`.github/workflows/android-release-0.1.0.yml` 仅手动触发，用于生成 0.1.0 的首套签名密钥并创建 `v0.1.0` Release：
+
+1. 在 Actions 页面运行 `Android Release 0.1.0 (one-time)`，或在仓库根目录执行 `gh workflow run "Android Release 0.1.0 (one-time)"`。
+2. 工作流运行格式/分析/测试，构建 `ledger-0.1.0.apk`，创建 `v0.1.0` Release，并把签名材料放入仅保留 1 天的 artifact `android-signing-0.1.0`。
+3. 在本机下载 artifact，执行 job summary 中的四条 `gh secret set`，然后删除 artifact。`v0.1.0` Release 或 tag 已存在时工作流拒绝重跑。
+4. 后续版本必须复用同一密钥，Android 才能原地升级。签名密钥只放在仓库 Secrets 中，不提交到仓库。
+
+GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，因此签名材料以短期 artifact 输出，由仓库所有者落库。
 
 ## 约束
 

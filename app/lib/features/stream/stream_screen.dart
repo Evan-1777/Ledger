@@ -23,7 +23,7 @@ class StreamScreen extends StatelessWidget {
     final groups = groupTransactions(ledger.transactions);
 
     return RefreshIndicator(
-      onRefresh: ledger.refreshAll,
+      onRefresh: ledger.loadAll,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [

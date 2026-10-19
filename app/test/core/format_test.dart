@@ -13,7 +13,6 @@ void main() {
     expect(formatMoney(28, signed: true), '+¥28.00');
     expect(formatMoney(-28, signed: true), '-¥28.00');
     expect(formatMoney(1234.5, withCurrency: false), '1,234.50');
-    expect(formatCents(-2800), '-¥28.00');
   });
 
   test('percent formatting uses one decimal', () {

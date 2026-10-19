@@ -44,6 +44,49 @@ void main() {
     expect(managed, 1);
   });
 
+  testWidgets('distribution bar keeps a positive flex for tiny balances', (
+    tester,
+  ) async {
+    final stats = statsJson();
+    stats['asset_summary'] = {
+      'total_assets': 1.0,
+      'total_liabilities': 0.0,
+      'net_assets': 1.0,
+      'asset_channels': [
+        {
+          'id': 1,
+          'name': '主要账户',
+          'remaining_balance': 0.9996,
+          'initial_balance': 0.9996,
+          'percentage': 99.96,
+        },
+        {
+          'id': 2,
+          'name': '微量账户',
+          'remaining_balance': 0.0004,
+          'initial_balance': 0.0004,
+          'percentage': 0.04,
+        },
+      ],
+      'liability_channels': <Object?>[],
+    };
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/stats/summary') {
+        return jsonResponse(stats);
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: AssetsScreen(onManage: () {}),
+      controllers: controllers,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('assets fit 320dp with 2x text', (tester) async {
     final controllers = await testControllersWithHandler(defaultApi);
     await controllers.ledger.loadAll();

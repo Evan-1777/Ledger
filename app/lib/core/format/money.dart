@@ -12,11 +12,5 @@ String formatMoney(
   return '$sign${withCurrency ? '¥' : ''}$body';
 }
 
-String formatCents(
-  int cents, {
-  bool withCurrency = true,
-  bool signed = false,
-}) => formatMoney(cents / 100, withCurrency: withCurrency, signed: signed);
-
 String formatPercent(double value, {int digits = 1}) =>
     '${value.toStringAsFixed(digits)}%';

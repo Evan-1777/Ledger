@@ -68,7 +68,6 @@ void main() {
     expect(derived.assets[0].share, closeTo(900 / 1100, 0.0001));
     expect(derived.assets[2].share, 0);
     expect(derived.debtRatio, 50);
-    expect(derived.totalCredit, 2000);
     expect(liabilityUsage(derived.liabilities.single), 25);
     expect(
       liabilityUsage(

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../core/state/ledger_controller.dart';
+import '../../core/widgets/ledger_widgets.dart';
 import '../assets/assets_screen.dart';
 import '../record/record_sheet.dart';
 import '../settings/settings_screen.dart';
@@ -16,6 +19,44 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   SettingsSection _settingsSection = SettingsSection.categories;
+  LedgerController? _ledger;
+  String? _lastError;
+
+  @override
+  void initState() {
+    super.initState();
+    _ledger = context.read<LedgerController>();
+    _ledger!.addListener(_onLedgerChanged);
+  }
+
+  @override
+  void dispose() {
+    _ledger?.removeListener(_onLedgerChanged);
+    super.dispose();
+  }
+
+  void _onLedgerChanged() {
+    final ledger = _ledger;
+    if (ledger == null || !mounted) return;
+    final error =
+        ledger.configError ?? ledger.transactionsError ?? ledger.statsError;
+    if (error == null) {
+      _lastError = null;
+      return;
+    }
+    if (error == _lastError) return;
+    _lastError = error;
+    final hasCachedData =
+        ledger.transactions.isNotEmpty ||
+        ledger.stats != null ||
+        ledger.categories.isNotEmpty ||
+        ledger.channels.isNotEmpty;
+    if (!hasCachedData) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showLedgerSnackBar(context, error, isError: true);
+    });
+  }
 
   void _selectTab(int index) {
     if (index == _index) {

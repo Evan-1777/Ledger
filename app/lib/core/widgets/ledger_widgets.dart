@@ -36,18 +36,9 @@ class LedgerCard extends StatelessWidget {
 }
 
 class AmountText extends StatelessWidget {
-  const AmountText(
-    this.amount, {
-    super.key,
-    this.signed = false,
-    this.withCurrency = true,
-    this.style,
-    this.color,
-  });
+  const AmountText(this.amount, {super.key, this.style, this.color});
 
   final double amount;
-  final bool signed;
-  final bool withCurrency;
   final TextStyle? style;
   final Color? color;
 
@@ -55,7 +46,7 @@ class AmountText extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = style ?? Theme.of(context).textTheme.bodyMedium!;
     return Text(
-      formatMoney(amount, withCurrency: withCurrency, signed: signed),
+      formatMoney(amount),
       style: base.copyWith(
         color: color,
         fontFeatures: const [FontFeature.tabularFigures()],
@@ -269,13 +260,11 @@ class ConfirmDialog extends StatelessWidget {
     required this.title,
     required this.message,
     this.confirmLabel = '删除',
-    this.busy = false,
   });
 
   final String title;
   final String message;
   final String confirmLabel;
-  final bool busy;
 
   static Future<bool> show(
     BuildContext context, {
@@ -302,11 +291,11 @@ class ConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           autofocus: true,
-          onPressed: busy ? null : () => Navigator.of(context).pop(false),
+          onPressed: () => Navigator.of(context).pop(false),
           child: const Text('取消'),
         ),
         FilledButton(
-          onPressed: busy ? null : () => Navigator.of(context).pop(true),
+          onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),
       ],

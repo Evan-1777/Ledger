@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,7 +23,7 @@ class AssetsScreen extends StatelessWidget {
     final stats = ledger.stats;
 
     return RefreshIndicator(
-      onRefresh: ledger.refreshAll,
+      onRefresh: ledger.loadAll,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -100,7 +102,6 @@ class AssetsScreen extends StatelessWidget {
                 _AssetRow(
                   view: derived.assets[i],
                   color: finance.chart[i % finance.chart.length],
-                  hidden: hide,
                   money: money,
                 ),
                 if (i != derived.assets.length - 1) const Divider(height: 1),
@@ -124,11 +125,7 @@ class AssetsScreen extends StatelessWidget {
           child: Column(
             children: [
               for (var i = 0; i < derived.liabilities.length; i++) ...[
-                _LiabilityRow(
-                  channel: derived.liabilities[i],
-                  hidden: hide,
-                  money: money,
-                ),
+                _LiabilityRow(channel: derived.liabilities[i], money: money),
                 if (i != derived.liabilities.length - 1)
                   const Divider(height: 1),
               ],
@@ -254,7 +251,10 @@ class _NetWorthHero extends StatelessWidget {
                   children: [
                     for (var i = 0; i < positiveAssets.length; i++)
                       Expanded(
-                        flex: (positiveAssets[i].share * 1000).round(),
+                        flex: math.max(
+                          1,
+                          (positiveAssets[i].share * 1000).round(),
+                        ),
                         child: ColoredBox(
                           color: finance.chart[i % finance.chart.length],
                         ),
@@ -337,13 +337,11 @@ class _AssetRow extends StatelessWidget {
   const _AssetRow({
     required this.view,
     required this.color,
-    required this.hidden,
     required this.money,
   });
 
   final AssetView view;
   final Color color;
-  final bool hidden;
   final String Function(double) money;
 
   @override
@@ -442,14 +440,9 @@ class _AssetRow extends StatelessWidget {
 }
 
 class _LiabilityRow extends StatelessWidget {
-  const _LiabilityRow({
-    required this.channel,
-    required this.hidden,
-    required this.money,
-  });
+  const _LiabilityRow({required this.channel, required this.money});
 
   final LiabilityChannelStat channel;
-  final bool hidden;
   final String Function(double) money;
 
   @override

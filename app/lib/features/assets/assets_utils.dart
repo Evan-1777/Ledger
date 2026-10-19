@@ -12,13 +12,11 @@ class DerivedAssets {
     required this.assets,
     required this.liabilities,
     required this.debtRatio,
-    required this.totalCredit,
   });
 
   final List<AssetView> assets;
   final List<LiabilityChannelStat> liabilities;
   final double? debtRatio;
-  final double totalCredit;
 }
 
 DerivedAssets deriveAssets(AssetSummary summary) {
@@ -49,16 +47,10 @@ DerivedAssets deriveAssets(AssetSummary summary) {
       ? summary.totalLiabilities / summary.totalAssets * 100
       : null;
 
-  final totalCredit = summary.liabilityChannels.fold(
-    0.0,
-    (sum, item) => sum + item.creditLimit,
-  );
-
   return DerivedAssets(
     assets: assets,
     liabilities: liabilities,
     debtRatio: debtRatio,
-    totalCredit: totalCredit,
   );
 }
 

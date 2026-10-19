@@ -165,6 +165,32 @@ void main() {
     expect(find.text('午餐 · 牛肉面'), findsOneWidget);
   });
 
+  testWidgets('record sheet adopts config that arrives after opening', (
+    tester,
+  ) async {
+    var configured = false;
+    final controllers = await testControllersWithHandler((request) async {
+      if (!configured &&
+          (request.url.path == '/api/categories' ||
+              request.url.path == '/api/payment-methods')) {
+        return jsonResponse([]);
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await openSheet(tester, controllers);
+
+    expect(find.text('暂无可用渠道，请先在设置中添加'), findsOneWidget);
+
+    configured = true;
+    await controllers.ledger.loadConfig();
+    await tester.pumpAndSettle();
+
+    expect(find.text('暂无可用渠道，请先在设置中添加'), findsNothing);
+    expect(find.text('招商银行卡'), findsWidgets);
+    expect(find.text('餐饮美食 · 午餐'), findsOneWidget);
+  });
+
   testWidgets('record sheet fits 320dp with 2x text', (tester) async {
     final controllers = await testControllersWithHandler(defaultApi);
     await controllers.ledger.loadAll();

@@ -35,10 +35,9 @@ String normalizeServerUrl(String raw) {
 }
 
 class LoginResult {
-  const LoginResult({required this.token, required this.expiresAt});
+  const LoginResult({required this.token});
 
   final String token;
-  final int expiresAt;
 }
 
 class ApiClient {
@@ -128,10 +127,7 @@ class ApiClient {
     if (decoded is! Map<String, dynamic> || decoded['token'] is! String) {
       throw ApiException.invalidResponse;
     }
-    return LoginResult(
-      token: decoded['token'] as String,
-      expiresAt: (decoded['expires_at'] as num?)?.toInt() ?? 0,
-    );
+    return LoginResult(token: decoded['token'] as String);
   }
 
   Future<void> checkAuth() async {

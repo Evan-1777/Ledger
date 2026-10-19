@@ -132,6 +132,28 @@ void main() {
     expect(called, isFalse);
   });
 
+  test('the next request after switching server uses the new host', () async {
+    late http.Request captured;
+    final controllers = await testControllers(
+      token: 'old-token',
+      serverUrl: 'https://old.example.com',
+      client: MockClient((request) async {
+        captured = request;
+        return jsonResponse([]);
+      }),
+    );
+
+    final ok = await controllers.session.updateServer(
+      'https://new.example.com',
+    );
+    await controllers.api.getCategories();
+
+    expect(ok, isTrue);
+    expect(captured.url.host, 'new.example.com');
+    expect(captured.url.path, '/api/categories');
+    expect(await controllers.store.readToken(), isNull);
+  });
+
   test('changing the server clears the token and locks', () async {
     final controllers = await testControllers(
       token: 'old-token',

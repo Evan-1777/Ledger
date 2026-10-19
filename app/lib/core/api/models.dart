@@ -218,9 +218,8 @@ class TransactionInput {
     'category_id': categoryId,
     'tag_id': tagId,
     'transacted_at': transactedAt.toUtc().toIso8601String(),
-    if (type == TransactionType.transfer && sourcePaymentMethodId != null)
-      'source_payment_method_id': sourcePaymentMethodId,
-    if (type == TransactionType.repayment && sourcePaymentMethodId != null)
+    if (sourcePaymentMethodId != null &&
+        (type == TransactionType.transfer || type == TransactionType.repayment))
       'source_payment_method_id': sourcePaymentMethodId,
     if (type == TransactionType.transfer) 'fee': fee,
   };

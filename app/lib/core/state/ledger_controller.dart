@@ -52,6 +52,7 @@ class LedgerController extends ChangeNotifier {
   String? transactionsError;
   String? statsError;
 
+  int _configGeneration = 0;
   int _transactionsGeneration = 0;
   int _statsGeneration = 0;
   bool _expiring = false;
@@ -77,12 +78,8 @@ class LedgerController extends ChangeNotifier {
     await Future.wait([loadConfig(), loadTransactions(), loadStats()]);
   }
 
-  Future<void> refreshAll() async {
-    await Future.wait([loadConfig(), loadTransactions(), loadStats()]);
-  }
-
   Future<void> loadConfig() async {
-    if (configLoading) return;
+    final generation = ++_configGeneration;
     configLoading = true;
     configError = null;
     notifyListeners();
@@ -91,19 +88,24 @@ class LedgerController extends ChangeNotifier {
         _api.getCategories(),
         _api.getPaymentMethods(),
       ]);
+      if (generation != _configGeneration) return;
       categories = results[0] as List<Category>;
       channels = results[1] as List<PaymentMethod>;
     } on ApiException catch (error) {
+      if (generation != _configGeneration) return;
       if (error.isUnauthorized) {
         await _expire();
         return;
       }
       configError = error.message;
     } catch (_) {
+      if (generation != _configGeneration) return;
       configError = '加载分类与渠道失败';
     } finally {
-      configLoading = false;
-      notifyListeners();
+      if (generation == _configGeneration) {
+        configLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -230,20 +232,38 @@ class LedgerController extends ChangeNotifier {
     if (index < 0 || targetIndex < 0 || targetIndex >= siblings.length) return;
     final other = siblings[targetIndex];
     try {
-      await _guard(() async {
-        await _api.updateCategory(
+      await _guard(
+        () => _api.updateCategory(
           category.id,
           name: category.name,
           sortOrder: other.sortOrder,
           type: category.type,
+        ),
+      );
+      try {
+        await _guard(
+          () => _api.updateCategory(
+            other.id,
+            name: other.name,
+            sortOrder: category.sortOrder,
+            type: other.type,
+          ),
         );
-        await _api.updateCategory(
-          other.id,
-          name: other.name,
-          sortOrder: category.sortOrder,
-          type: other.type,
-        );
-      });
+      } on ApiException catch (error) {
+        if (!error.isUnauthorized) {
+          try {
+            await _api.updateCategory(
+              category.id,
+              name: category.name,
+              sortOrder: category.sortOrder,
+              type: category.type,
+            );
+          } on ApiException {
+            // 回滚失败时由 finally 的 loadConfig 暴露服务端实际状态。
+          }
+        }
+        rethrow;
+      }
     } finally {
       await loadConfig();
     }
@@ -333,6 +353,7 @@ class LedgerController extends ChangeNotifier {
   }
 
   void clear() {
+    _configGeneration++;
     _transactionsGeneration++;
     _statsGeneration++;
     categories = [];
