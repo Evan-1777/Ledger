@@ -1,10 +1,10 @@
 # Tasks：Ledger Android（Flutter + Material 3）
 
-**关联 Plan**：Plan.md —— Ledger Android v1.2
-**总计 Task**：26 个
-**状态**：DONE（2026-10-19 完成，26/26）
-**完成日期**：2026-10-19
-**回归测试结论**：Dart 格式 0 变更；`flutter analyze` 零 issue；`flutter test` 77 项通过；`flutter build web` 成功；`go test ./...` 与 Go 构建通过；Web 真实后端自检通过；CI 未推送运行，Android 待 CI/真机验收。
+- **关联 Plan**：Plan.md —— Ledger Android v1.2
+- **总计 Task**：26 个
+- **状态**：DONE（2026-10-19 完成，26/26）
+- **完成日期**：2026-10-19
+- **回归测试结论**：Dart 格式 0 变更；`flutter analyze` 零 issue；`flutter test` 77 项通过；`flutter build web` 成功；`go test ./...` 与 Go 构建通过；Web 真实后端自检通过；CI 已运行成功（Android run 39260066449，artifact `ledger-debug`），安装与真机交互待用户验收。
 
 > 所有 Task 的 Executor 均为主线；本轮不派发 Subagent。任务依赖未满足时不得开始。
 
@@ -558,4 +558,4 @@
 - **Flutter 测试**：`flutter test` 77 项通过
 - **构建**：`flutter build web` 成功；Go `go test ./...` 与 `go build` 成功
 - **Web 自检**：临时 DB + `LEDGER_CORS_ORIGIN=http://localhost:5174`，Chrome 390×844 完成登录、记账、流水、统计、资产、设置；生产构建加载无控制台错误
-- **未完成**：Android APK 构建/安装与真机交互未在本机执行；CI 工作流已配置但本轮未推送，故未产出 artifact
+- **未完成**：Android APK 安装与真机交互未在本机执行；CI 已产出 debug APK（run 39260066449，artifact `ledger-debug`，159,049,275 bytes，含 arm64-v8a/armeabi-v7a/x86_64）

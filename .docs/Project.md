@@ -156,7 +156,7 @@ Ledger/
 - **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
 - **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。
-- **发布**：`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。密钥与 `key.properties` 只在 CI 临时目录存在。
+- **发布**：`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）；签名 release 待 Secrets 补齐。
 - **已知限制**：流水沿用 100 条窗口、无离线库/同步/推送、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定

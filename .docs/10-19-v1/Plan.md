@@ -1,10 +1,10 @@
 # Plan：Ledger Android（Flutter + Material 3）
 
-**状态**：DONE（2026-10-19 完成）
-**日期**：2026-10-19
-**版本**：v1.2（用户决策记录）
-**交接状态**：已执行完成并归档。
-**回归测试结论**：Flutter 格式检查、静态分析、77 项测试与 Web 构建全部通过；Go 全量测试与构建通过；Web 端已完成真实后端自检；Android 安装包由 CI 产出，本机未构建。
+- **状态**：DONE（2026-10-19 完成）
+- **日期**：2026-10-19
+- **版本**：v1.2（用户决策记录）
+- **交接状态**：已执行完成并归档。
+- **回归测试结论**：Flutter 格式检查、静态分析、77 项测试与 Web 构建全部通过；Go 全量测试与构建通过；Web 端已完成真实后端自检；Android 安装包由 CI 产出（run 39260066449，`ledger-debug`，159,049,275 bytes），本机未构建。
 
 ---
 
@@ -324,9 +324,9 @@ Phase 2 与 Phase 3 都依赖 Phase 1 的模型与控制器；Phase 3 的资产�
 | Go 构建 | `go build -o /tmp/ledger-build ./cmd/server` | 通过 |
 | Web 自检 | 临时 DB + `LEDGER_CORS_ORIGIN=http://localhost:5174` + Chrome 390×844 | 登录、记账、流水、统计、资产、设置可用；刷新后会话恢复；控制台无错误 |
 | 生产构建加载 | 静态服务 `build/web`，Chrome 加载 | 页面加载成功，控制台无错误 |
-| CI | YAML 语法解析 + 工作流路径检查 | 通过；未推送，未实际运行 |
+| CI | 推送 master 触发 Android 与 Docker 工作流 | Android run [39260066449](https://github.com/Evan-1777/Ledger/actions/runs/39260066449) 成功，`ledger-debug` artifact 可下载；Docker run 39260066609 成功 |
 
-**未在本机完成**：Android APK 构建、安装、启动画面、edge-to-edge、输入法与系统返回键、TalkBack 与真机字体缩放。本机无 JDK、Android SDK、Gradle 与 adb，按用户确认的边界交由 CI 与 Windows x86_64 模拟器/真机验收。CI 未运行，因本轮未推送远端；工作流已配置为签名 Secrets 存在时产出 release，否则产出 debug 验收包。
+**未在本机完成**：Android APK 构建、安装、启动画面、edge-to-edge、输入法与系统返回键、TalkBack 与真机字体缩放。本机无 JDK、Android SDK、Gradle 与 adb，按用户确认的边界交由 CI 与 Windows x86_64 模拟器/真机验收。CI 已运行：Android 工作流 run 39260066449 成功，产出 `ledger-debug`（`app-debug.apk`，159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）；Docker 工作流 run 39260066609 成功。签名 Secrets 未配置，故本轮仅产出 debug 验收包；配置后同一工作流产出 release。APK 安装与真机交互仍待用户验收。
 
 **实现补充**：流水筛选使用自绘 MD3 胶囊替代 `FilterChip`，修复 Flutter Web 中文标签被裁切为单字的问题；统一 `VisualDensity.standard` 与 48dp 触控目标；日小计按“支出/收入”分组换行，避免 390dp 下金额被裁切。
 
