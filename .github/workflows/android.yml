@@ -5,6 +5,8 @@ on:
     paths:
       - 'app/**'
       - '.github/workflows/android.yml'
+    tags:
+      - 'v*'
   pull_request:
     paths:
       - 'app/**'
@@ -105,3 +107,38 @@ jobs:
         run: |
           rm -f android/key.properties
           rm -f "$RUNNER_TEMP/ledger.jks"
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Verify tag matches app version
+        working-directory: app
+        run: |
+          version=$(sed -n 's/^version: \([0-9.]*\)+.*/\1/p' pubspec.yaml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match app version $version." >&2
+            exit 1
+          fi
+
+      - name: Download release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ledger-release
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "ledger-release.apk#ledger-${version}.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Ledger Android ${version}" \
+            --generate-notes \
+            --latest

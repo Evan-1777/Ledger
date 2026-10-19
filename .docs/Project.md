@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账应用，Go + React + Vite + Tailwind + SQLite 单二进制 Web 端，另配 Flutter + Material 3 Android 客户端，复用同一 HTTP API。
-- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收与 0.1.0 发布工作流准备，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
+- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收、0.1.0 发布与 0.1.1 启动修复发布，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留已交付，支持单二进制独立运行与 Docker 部署。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -117,7 +117,7 @@ Ledger/
 ├─ .github/
 │  └─ workflows/
 │     ├─ docker-publish.yml  # GitHub Actions 自动化构建并推送 Docker 镜像至 GHCR
-│     ├─ android.yml         # Flutter 格式/分析/测试与 APK（签名缺失时 debug 验收包）
+│     ├─ android.yml         # Flutter 格式/分析/测试与 APK（签名缺失时 debug 验收包；推送 v* tag 时创建 Release）
 │     └─ android-release-0.1.0.yml # 一次性生成签名材料、构建并发布 Android 0.1.0
 ├─ Dockerfile                # 多阶段构建：node 静态构建 → golang 静态编译 → alpine 轻量运行时
 ├─ docker-compose.yml        # VPS 生产部署编排配置（拉取 ghcr.io/evan-1777/ledger 镜像）
@@ -158,7 +158,7 @@ Ledger/
 - **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
 - **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。
-- **发布**：当前 Android 版本 `0.1.0+1`。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）。同日一次性工作流 run 39268947628 生成签名密钥并把四个 Secrets 落库，发布 [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0)：`ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；签名材料 artifact 已删除；同日常规 `android.yml` run 39270836546 检测到 Secrets，成功构建签名 release artifact `ledger-release`。同日修复 release 启动画面停留：`app/android/app/proguard-rules.pro` 保留 Pigeon JNI 依赖的 Kotlin 运行时类，CI run 39280755463 产出的 `ledger-release` 在 Android 12（API 32，x86_64）模拟器两次冷启动均进入登录页，logcat 无 `NoSuchMethodError`；Android 16 由用户安装同一 APK 复核。
+- **发布**：当前 Android 版本 `0.1.1+2`。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）。同日一次性工作流 run 39268947628 生成签名密钥并把四个 Secrets 落库，发布 [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0)：`ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；签名材料 artifact 已删除；同日常规 `android.yml` run 39270836546 检测到 Secrets，成功构建签名 release artifact `ledger-release`。同日修复 release 启动画面停留：`app/android/app/proguard-rules.pro` 保留 Pigeon JNI 依赖的 Kotlin 运行时类，CI run 39280755463 产出的 `ledger-release` 在 Android 12（API 32，x86_64）模拟器两次冷启动均进入登录页，logcat 无 `NoSuchMethodError`；Android 16 由用户安装同一 APK 复核。2026-10-20 发布 `v0.1.1`（`ledger-0.1.1.apk`），包含本轮启动修复；`android.yml` 的 `v*` tag 任务校验 tag 与 `pubspec.yaml` 版本一致后，用同次构建的 `ledger-release` artifact 创建 Release。
 - **已知限制**：流水沿用 100 条窗口、无离线库/同步/推送、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定
@@ -230,6 +230,7 @@ Ledger/
 - 2026-10-19 Flutter Android 客户端与 Material 3 交付——新增独立 `app/` 工程（Android 为主、Web 自检），复用既有 HTTP API/HMAC 会话/SQLite 业务契约，不在后端新增业务端点；客户端按 `core/`（API、状态、存储、主题、共享构件）与 `features/`（auth/shell/stream/record/stats/assets/settings）分层，provider + ChangeNotifier 保持单一数据源；请求代际保护筛选切换的旧响应，401 统一走会话过期；Material 3 以 `#0078D4` 为 seed，禁用动态取色，金融语义色收敛为 ThemeExtension；Token 仅存 flutter_secure_storage，release 拒绝非 HTTPS，debug manifest 单独放开明文；新增可选 `LEDGER_CORS_ORIGIN`（精确 Origin 匹配与预检）供本地 Web 自检；APK 由 GitHub Actions 构建，签名密钥仅从 CI Secrets 注入
 - 2026-10-15 复审吸收（人民币符号去重轮）——`currency` 选项更名为 `withCurrency`（API 诞生即轮内、消费方全在库内，零兼容成本，消除布尔值读作货币代码的歧义）；StatsPage `money` 辅助定义上移至 ChannelRow 之前（先声明后引用）。驳回：DonutChart 去除页面级耦合改为 prop 注入（当前唯一消费方，YAGNI，留待出现第二个消费方再改）；`money` 重复定义抽公共工具（三行重复，跨文件抽象成本高于收益）
 - 2026-10-19 Android release 启动画面停留修复——release 构建 R8 重命名 `kotlin.coroutines.Continuation` 等 Kotlin 运行时类，使 `shared_preferences_android 2.5.0` 的 Pigeon JNI 方法描述符失配，`main()` 在 `SharedPreferences.getInstance()` 抛出 `NoSuchMethodError`、`runApp` 未执行，进程存活但无首帧；新增 app 级 `app/android/app/proguard-rules.pro` 保留 `Unit`/`Result`/`Result$Failure`/`Continuation`/`CoroutineSingletons`/`IntrinsicsKt` 六个类，Flutter Gradle 插件在 release build type 自动纳入，不改构建脚本、依赖版本与启动流程；CI run 39280755463 签名 release 产物在 Android 12（API 32，x86_64）两次冷启动均进入登录页，logcat 无 `NoSuchMethodError` / `Unhandled Exception`；移除条件：`shared_preferences_android` 发布 consumer rules（跟踪 flutter/packages#13311）后删除该文件。
+- 2026-10-20 Android 0.1.1 发布与 tag 驱动 Release——版本升至 `0.1.1+2`，设置页 `APP_VERSION` 回退值同步；`android.yml` 增加 `v*` tag 触发与 `release` job，校验 tag 与 `pubspec.yaml` 一致后复用同次构建的 `ledger-release` artifact，由 `gh release create` 创建带 APK 的 Release；后续发版只需推送 tag，0.1.0 的一次性签名工作流保留为历史记录。
 
 ## 术语
 

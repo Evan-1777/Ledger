@@ -71,6 +71,16 @@ GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，因此签名�
 
 2026-10-19 执行记录：run 39268947628 成功，`v0.1.0` Release 已发布（`ledger-0.1.0.apk`，56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；四个 Secrets 已落库，`android-signing-0.1.0` artifact 已删除。后续 `android.yml` 运行会检测到 keystore 并构建签名 release。
 
+### 0.1.1 及后续 Release
+
+`android.yml` 在推送 `v*` tag 时，复用同一次构建的 `ledger-release` artifact，校验 tag 与 `app/pubspec.yaml` 的 `version` 一致后创建 GitHub Release，附带 `ledger-<version>.apk`。发版步骤：
+
+1. 更新 `app/pubspec.yaml` 的 `version` 与 `settings_screen.dart` 的 `APP_VERSION` 默认值。
+2. 提交并推送 `master`。
+3. 创建并推送对应 tag：`git tag v0.1.1 && git push origin v0.1.1`。
+
+0.1.0 的一次性工作流保留为历史记录，后续版本不再使用。
+
 ## 约束
 
 - 流水沿用服务端 100 条窗口，不做分页、离线库、后台同步或推送
