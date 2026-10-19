@@ -98,7 +98,7 @@ jobs:
           Keep this bundle private. Add the four values to repository secrets, then delete this artifact.
 
           In a checkout of this repository:
-            gh run download <run-id> -R Evan-1777/Ledger -n android-signing-0.1.0
+            gh run download <run-id> -R Evan-1777/Ledger -n android-signing-0.1.0 -D android-signing-0.1.0
             gh secret set ANDROID_KEYSTORE_BASE64 -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEYSTORE_BASE64.txt
             gh secret set ANDROID_KEYSTORE_PASSWORD -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEYSTORE_PASSWORD.txt
             gh secret set ANDROID_KEY_ALIAS -R Evan-1777/Ledger < android-signing-0.1.0/ANDROID_KEY_ALIAS.txt
@@ -163,7 +163,7 @@ jobs:
             echo
             echo "签名材料 artifact 仅保留 1 天。请在本机执行："
             echo
-            echo "    gh run download $GITHUB_RUN_ID -R $GITHUB_REPOSITORY -n android-signing-0.1.0"
+            echo "    gh run download $GITHUB_RUN_ID -R $GITHUB_REPOSITORY -n android-signing-0.1.0 -D android-signing-0.1.0"
             echo "    gh secret set ANDROID_KEYSTORE_BASE64 -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEYSTORE_BASE64.txt"
             echo "    gh secret set ANDROID_KEYSTORE_PASSWORD -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEYSTORE_PASSWORD.txt"
             echo "    gh secret set ANDROID_KEY_ALIAS -R $GITHUB_REPOSITORY < android-signing-0.1.0/ANDROID_KEY_ALIAS.txt"
