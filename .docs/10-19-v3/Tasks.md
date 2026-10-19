@@ -104,7 +104,7 @@
   - 构建日志包含签名 release 构建，未退化到 debug 分支。
   - 构建期辅助证据：`unzip -p ci-release/ledger-release.apk 'classes*.dex' | strings | grep -c 'kotlin/coroutines/Continuation'` 与 `... | grep -c 'SharedPreferencesApiRegistrar'` 均至少为 1；该证据只证明类名未被重命名，最终以 TASK-004 运行结果为准。
   - 若 Secrets 缺失、产物为 debug 或上述证据缺失：停止并报告，不进入运行验证；不进入 Phase 3，回规划段修订 Plan/Tasks。
-- **完成记录**：2026-10-19 分支 `fix/android-release-splash` 提交 c4f1a80；CI run [39280755463](https://github.com/Evan-1777/Ledger/actions/runs/39280755463) 完成签名 release 构建并上传 `ledger-release`（zip SHA-256 `0fba804e…ab06`，APK 56,418,150 bytes）。GitHub Actions 状态接口在该时段降级，run/job 的 `status` 停留在 `queued`；job 日志显示 `HAS_KEYSTORE=true`、87 项测试通过、`Built app-release.apk` 与 artifact 上传完成，APK 内 `CoroutineSingletons` 类描述符计数由 0 增至 2。
+- **完成记录**：2026-10-19 分支 `fix/android-release-splash` 提交 c4f1a80；CI run [39280755463](https://github.com/Evan-1777/Ledger/actions/runs/39280755463) 完成签名 release 构建并上传 `ledger-release`（zip SHA-256 `0fba804e…ab06`，APK 56,418,150 bytes）。GitHub Actions 状态接口在该时段降级，run/job 的 `status` 一度停留在 `queued`，随后恢复为 `success`；job 日志显示 `HAS_KEYSTORE=true`、87 项测试通过、`Built app-release.apk` 与 artifact 上传完成，APK 内 `CoroutineSingletons` 类描述符计数由 0 增至 2。
 
 ### TASK-004：在 Android 12 模拟器验证 release APK
 
