@@ -99,18 +99,18 @@ Ledger/
 │  │  │  ├─ state/           # 账本与偏好控制器
 │  │  │  ├─ storage/         # 安全 Token、会话地址与偏好存储
 │  │  │  ├─ theme/           # MD3 主题与金融语义色 ThemeExtension
-│  │  │  └─ widgets/         # 共享卡片、金额、类型图标、空/错/骨架/确认框
+│  │  │  └─ widgets/         # 共享卡片、金额、类型图标、空/错/骨架/确认框、四页共用紧凑顶栏 LedgerSliverAppBar
 │  │  ├─ features/
 │  │  │  ├─ auth/            # 登录门与会话控制器
 │  │  │  ├─ shell/           # 四段导航 Shell 与返回键仲裁
-│  │  │  ├─ stream/          # 流水页与日分组纯函数
+│  │  │  ├─ stream/          # 流水页、月份与筛选合并的列表头（紧凑筛选菜单）、日分组纯函数
 │  │  │  ├─ record/          # 记账底部弹层与类型/渠道规则
-│  │  │  ├─ stats/           # 统计页、自绘环图/趋势图与派生
-│  │  │  ├─ assets/          # 资产页与资产派生
-│  │  │  └─ settings/        # 设置、分类/标签、渠道管理
+│  │  │  ├─ stats/           # 统计页、四卡等高指标网格、内容自适应图表卡、自绘环图/趋势图与派生
+│  │  │  ├─ assets/          # 资产页、右对齐金额列与资产派生
+│  │  │  └─ settings/        # 设置页（紧凑顶栏，内容不变）、分类/标签、渠道管理
 │  │  ├─ app.dart            # 会话门、主题与 Provider 装配
 │  │  └─ main.dart           # 入口、本地化与存储初始化
-│  ├─ test/                  # API/控制器/纯函数/Widget 测试
+│  ├─ test/                  # API/控制器/纯函数/Widget 测试（含布局矩形与滚动行为断言）
 │  ├─ android/               # 包名 com.evan1777.ledger、minSdk 24、签名与自适应图标
 │  ├─ web/                   # Web 自检构建入口
 │  └─ README.md              # 本地运行、Web 自检、CI 与签名说明
@@ -157,7 +157,7 @@ Ledger/
 - **数据**：流水金额以带符号分显示，提交时支出为负、收入为正；分类/标签/渠道变更后按域刷新（流水+统计、配置+统计、配置）；切换筛选使用请求代际，旧响应不覆盖新结果。
 - **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
-- **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。
+- **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。2026-10-20 新增资产/负债金额右缘、四张指标卡等高、图表卡无内部滚动、流水筛选菜单与月份位置、四个一级页顶栏 64 高/非 pinned/滚动滚出断言，全量 92 项通过。
 - **发布**：当前 Android 版本 `0.1.1+2`。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）。同日一次性工作流 run 39268947628 生成签名密钥并把四个 Secrets 落库，发布 [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0)：`ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；签名材料 artifact 已删除；同日常规 `android.yml` run 39270836546 检测到 Secrets，成功构建签名 release artifact `ledger-release`。同日修复 release 启动画面停留：`app/android/app/proguard-rules.pro` 保留 Pigeon JNI 依赖的 Kotlin 运行时类，CI run 39280755463 产出的 `ledger-release` 在 Android 12（API 32，x86_64）模拟器两次冷启动均进入登录页，logcat 无 `NoSuchMethodError`；Android 16 由用户安装同一 APK 复核。2026-10-20 推送 `v0.1.1` tag，计划由 `android.yml` 的 `v*` tag 任务校验版本后用同次构建的 `ledger-release` artifact 创建 Release；GitHub Actions 队列延迟，Release 发布待完成。
 - **已知限制**：流水沿用 100 条窗口、无离线库/同步/推送、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
@@ -231,6 +231,7 @@ Ledger/
 - 2026-10-15 复审吸收（人民币符号去重轮）——`currency` 选项更名为 `withCurrency`（API 诞生即轮内、消费方全在库内，零兼容成本，消除布尔值读作货币代码的歧义）；StatsPage `money` 辅助定义上移至 ChannelRow 之前（先声明后引用）。驳回：DonutChart 去除页面级耦合改为 prop 注入（当前唯一消费方，YAGNI，留待出现第二个消费方再改）；`money` 重复定义抽公共工具（三行重复，跨文件抽象成本高于收益）
 - 2026-10-19 Android release 启动画面停留修复——release 构建 R8 重命名 `kotlin.coroutines.Continuation` 等 Kotlin 运行时类，使 `shared_preferences_android 2.5.0` 的 Pigeon JNI 方法描述符失配，`main()` 在 `SharedPreferences.getInstance()` 抛出 `NoSuchMethodError`、`runApp` 未执行，进程存活但无首帧；新增 app 级 `app/android/app/proguard-rules.pro` 保留 `Unit`/`Result`/`Result$Failure`/`Continuation`/`CoroutineSingletons`/`IntrinsicsKt` 六个类，Flutter Gradle 插件在 release build type 自动纳入，不改构建脚本、依赖版本与启动流程；CI run 39280755463 签名 release 产物在 Android 12（API 32，x86_64）两次冷启动均进入登录页，logcat 无 `NoSuchMethodError` / `Unhandled Exception`；移除条件：`shared_preferences_android` 发布 consumer rules（跟踪 flutter/packages#13311）后删除该文件。
 - 2026-10-20 Android 0.1.1 发版准备与 tag 驱动 Release——版本升至 `0.1.1+2`，设置页 `APP_VERSION` 回退值同步；`android.yml` 增加 `v*` tag 触发与 `release` job，校验 tag 与 `pubspec.yaml` 一致后复用同次构建的 `ledger-release` artifact，由 `gh release create` 创建带 APK 的 Release；后续发版只需推送 tag，0.1.0 的一次性签名工作流保留为历史记录。
+- 2026-10-20 Android 客户端布局缺陷修复与一级页紧凑顶栏——资产与负债金额块在既有弹性槽位内用 `Align` 填满并右对齐，两类行共享同一右缘；统计指标网格由 `Wrap` 改为两行 `IntrinsicHeight`，无备注卡保留同字号备注行使四卡等高，图例行金额与百分比用 `FittedBox(scaleDown)` 兜住 2x 字体；图表卡移除固定 400 高度与两个面板的内部滚动，高度随构成/趋势内容变化；流水页月份说明与筛选合并为列表头，五档筛选收进 `PopupMenuButton` 紧凑菜单（48dp 触达、当前筛选可见），列表行金额用 `Flexible` + `FittedBox` 保持右对齐；新增共享 `LedgerSliverAppBar`（64 高、非 pinned、标题 28/34、标题缩进 20），流水/统计/资产/设置四页统一替换 `SliverAppBar.large`，不再保留大标题区。`dart format` 无变更、`flutter analyze` 无问题、`flutter test` 92 项通过（含 320dp + 2x 与新增布局断言）；本机 Flutter SDK 所在分区只读，门禁以 `FLUTTER_ALREADY_LOCKED=true` 直接调用 `flutter_tools.snapshot` 执行。
 
 ## 术语
 
