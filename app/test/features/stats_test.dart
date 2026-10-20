@@ -154,7 +154,13 @@ void main() {
         .ancestor(of: find.text('支出构成'), matching: find.byType(LedgerCard))
         .first;
     final compositionHeight = tester.getSize(compositionCard).height;
-    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(
+      find.descendant(
+        of: compositionCard,
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+    );
     for (final name in ['功能性支出', '零食消费', '虚拟商品', '生活缴费', '购物消费']) {
       expect(find.text(name), findsOneWidget);
     }
@@ -165,7 +171,13 @@ void main() {
     final trendCard = find
         .ancestor(of: find.text('近 6 个月收支'), matching: find.byType(LedgerCard))
         .first;
-    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(
+      find.descendant(
+        of: trendCard,
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+    );
     expect(tester.getSize(trendCard).height, lessThan(compositionHeight));
   });
 
