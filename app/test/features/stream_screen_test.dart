@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:ledger_app/core/format/dates.dart';
+import 'package:ledger_app/core/widgets/ledger_widgets.dart';
 import 'package:ledger_app/features/stream/stream_screen.dart';
 
 import '../support/harness.dart';
@@ -17,11 +19,23 @@ void main() {
       controllers: controllers,
     );
 
+    expect(find.byType(LedgerSliverAppBar), findsOneWidget);
     expect(find.text('本月结余'), findsOneWidget);
     expect(find.text('¥9,551.50'), findsOneWidget);
     expect(find.text('午餐 · 牛肉面'), findsOneWidget);
     expect(find.text('全部'), findsOneWidget);
-    expect(find.text('转账'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('filter-menu')));
+    await tester.pumpAndSettle();
+    for (final filter in [
+      'all',
+      'expense',
+      'income',
+      'transfer',
+      'repayment',
+    ]) {
+      expect(find.byKey(ValueKey('filter-$filter')), findsOneWidget);
+    }
   });
 
   testWidgets('filter tap requests the matching type', (tester) async {
@@ -37,6 +51,8 @@ void main() {
       controllers: controllers,
     );
 
+    await tester.tap(find.byKey(const ValueKey('filter-menu')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('filter-expense')));
     await tester.pumpAndSettle();
 
@@ -49,6 +65,61 @@ void main() {
       isTrue,
     );
   });
+
+  testWidgets(
+    'filter menu exposes options and keeps the current label visible',
+    (tester) async {
+      final controllers = await testControllersWithHandler(defaultApi);
+      await controllers.ledger.loadAll();
+      await pumpWithProviders(
+        tester,
+        home: const StreamScreen(),
+        controllers: controllers,
+      );
+
+      final trigger = find.byKey(const ValueKey('filter-menu'));
+      expect(
+        find.descendant(of: trigger, matching: find.text('全部')),
+        findsOneWidget,
+      );
+      expect(tester.getSize(trigger).height, greaterThanOrEqualTo(48));
+
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+      for (final filter in [
+        'all',
+        'expense',
+        'income',
+        'transfer',
+        'repayment',
+      ]) {
+        expect(find.byKey(ValueKey('filter-$filter')), findsOneWidget);
+      }
+      await tester.tap(find.byKey(const ValueKey('filter-expense')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: trigger, matching: find.text('支出')),
+        findsOneWidget,
+      );
+
+      final hero = tester.getRect(
+        find
+            .ancestor(of: find.text('本月结余'), matching: find.byType(Container))
+            .first,
+      );
+      final firstGroup = tester.getRect(
+        find
+            .ancestor(
+              of: find.text('午餐 · 牛肉面'),
+              matching: find.byType(LedgerCard),
+            )
+            .first,
+      );
+      final month = tester.getRect(find.text(formatMonth(DateTime.now())));
+      expect(month.top, greaterThanOrEqualTo(hero.bottom));
+      expect(month.bottom, lessThanOrEqualTo(firstGroup.top));
+    },
+  );
 
   testWidgets('empty stream offers the record action', (tester) async {
     final controllers = await testControllersWithHandler(
@@ -113,6 +184,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const ValueKey('filter-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-menu')));
+    await tester.pumpAndSettle();
+
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('filter-expense')), findsOneWidget);
   });
 }

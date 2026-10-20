@@ -33,7 +33,7 @@ class _StatsScreenState extends State<StatsScreen> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          const SliverAppBar.large(title: Text('统计')),
+          const LedgerSliverAppBar(title: '统计'),
           if (stats == null && ledger.statsLoading)
             const SliverPadding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -118,20 +118,17 @@ class _StatsScreenState extends State<StatsScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            height: 400,
-            child: composition
-                ? _CompositionPanel(
-                    categories: categories,
-                    total: stats.monthExpense,
-                    colors: finance.chart,
-                  )
-                : _TrendPanel(
-                    trends: stats.monthlyTrends,
-                    expenseColor: finance.expense,
-                    incomeColor: finance.income,
-                  ),
-          ),
+          composition
+              ? _CompositionPanel(
+                  categories: categories,
+                  total: stats.monthExpense,
+                  colors: finance.chart,
+                )
+              : _TrendPanel(
+                  trends: stats.monthlyTrends,
+                  expenseColor: finance.expense,
+                  incomeColor: finance.income,
+                ),
         ],
       ),
     );
@@ -310,21 +307,30 @@ class _Metrics extends StatelessWidget {
       ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = (constraints.maxWidth - 12) / 2;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final item in items)
-              SizedBox(
-                width: width,
-                child: _MetricCard(data: item),
-              ),
-          ],
-        );
-      },
+    return Column(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _MetricCard(data: items[0])),
+              const SizedBox(width: 12),
+              Expanded(child: _MetricCard(data: items[1])),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _MetricCard(data: items[2])),
+              const SizedBox(width: 12),
+              Expanded(child: _MetricCard(data: items[3])),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -375,8 +381,8 @@ class _MetricCard extends StatelessWidget {
               ),
             ),
           ),
-          if (data.note != null) ...[
-            const SizedBox(height: 4),
+          const SizedBox(height: 4),
+          if (data.note != null)
             Text(
               data.note!,
               maxLines: 1,
@@ -384,8 +390,17 @@ class _MetricCard extends StatelessWidget {
               style: theme.textTheme.labelSmall?.copyWith(
                 color: data.noteColor ?? scheme.onSurfaceVariant,
               ),
+            )
+          else
+            ExcludeSemantics(
+              child: Text(
+                ' ',
+                maxLines: 1,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -420,85 +435,83 @@ class _CompositionPanelState extends State<_CompositionPanel> {
     final selected = widget.categories.where((item) => item.id == _selectedId);
     final selectedCategory = selected.isEmpty ? null : selected.first;
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: DonutChart(
-              categories: widget.categories,
-              total: widget.total,
-              colors: widget.colors,
-              size: 160,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: DonutChart(
+            categories: widget.categories,
+            total: widget.total,
+            colors: widget.colors,
+            size: 160,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (var i = 0; i < widget.categories.length; i++)
+          _LegendRow(
+            category: widget.categories[i],
+            color: widget.colors[i % widget.colors.length],
+            selected: widget.categories[i].id == _selectedId,
+            onTap: () => setState(() {
+              _selectedId = _selectedId == widget.categories[i].id
+                  ? null
+                  : widget.categories[i].id;
+            }),
+          ),
+        if (selectedCategory != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${selectedCategory.name} · 细分标签',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                if (selectedCategory.tags.isEmpty)
+                  Text(
+                    '该分类暂无细分标签',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  for (final tag in selectedCategory.tags)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              tag.name,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          Text(
+                            '${formatMoney(tag.amount, withCurrency: false)} · ${formatPercent(tag.percentage)}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          for (var i = 0; i < widget.categories.length; i++)
-            _LegendRow(
-              category: widget.categories[i],
-              color: widget.colors[i % widget.colors.length],
-              selected: widget.categories[i].id == _selectedId,
-              onTap: () => setState(() {
-                _selectedId = _selectedId == widget.categories[i].id
-                    ? null
-                    : widget.categories[i].id;
-              }),
-            ),
-          if (selectedCategory != null) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${selectedCategory.name} · 细分标签',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  if (selectedCategory.tags.isEmpty)
-                    Text(
-                      '该分类暂无细分标签',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    )
-                  else
-                    for (final tag in selectedCategory.tags)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                tag.name,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                            Text(
-                              '${formatMoney(tag.amount, withCurrency: false)} · ${formatPercent(tag.percentage)}',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures(),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                ],
-              ),
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
@@ -549,20 +562,29 @@ class _LegendRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              formatMoney(category.amount, withCurrency: false),
-              style: theme.textTheme.labelMedium?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()],
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  formatMoney(category.amount, withCurrency: false),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 10),
             SizedBox(
               width: 52,
-              child: Text(
-                formatPercent(category.percentage),
-                textAlign: TextAlign.right,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  formatPercent(category.percentage),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -588,33 +610,31 @@ class _TrendPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     if (trends.isEmpty) return const EmptyState(title: '暂无趋势数据');
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 8),
-          TrendChart(
-            trends: trends,
-            expenseColor: expenseColor,
-            incomeColor: incomeColor,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 8),
+        TrendChart(
+          trends: trends,
+          expenseColor: expenseColor,
+          incomeColor: incomeColor,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _DotLabel(color: expenseColor, label: '支出'),
+            const SizedBox(width: 20),
+            _DotLabel(color: incomeColor, label: '收入'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '单位为元，按服务端自然月统计',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _DotLabel(color: expenseColor, label: '支出'),
-              const SizedBox(width: 20),
-              _DotLabel(color: incomeColor, label: '收入'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '单位为元，按服务端自然月统计',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

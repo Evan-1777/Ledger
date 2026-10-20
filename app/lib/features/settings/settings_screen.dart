@@ -40,7 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        const SliverAppBar.large(title: Text('设置')),
+        const LedgerSliverAppBar(title: '设置'),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
           sliver: SliverList(

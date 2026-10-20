@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ledger_app/core/widgets/ledger_widgets.dart';
 import 'package:ledger_app/features/auth/session_controller.dart';
 import 'package:ledger_app/features/settings/settings_screen.dart';
 
@@ -22,6 +23,7 @@ void main() {
       controllers: controllers,
     );
 
+    expect(find.byType(LedgerSliverAppBar), findsOneWidget);
     expect(find.text('餐饮美食'), findsOneWidget);
     expect(find.text('交通出行'), findsOneWidget);
     expect(find.byTooltip('分类操作'), findsNWidgets(2));

@@ -27,25 +27,18 @@ class StreamScreen extends StatelessWidget {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          const SliverAppBar.large(title: Text('流水')),
+          const LedgerSliverAppBar(title: '流水'),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                Text(
-                  formatMonth(now),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
                 _HeadlineCard(stats: ledger.stats),
                 const SizedBox(height: 16),
-                _FilterBar(
+                _ListHeader(
                   selected: ledger.filter,
                   onSelected: (filter) => ledger.setFilter(filter),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 if (ledger.transactionsLoading && ledger.transactions.isEmpty)
                   const SkeletonList(rows: 5)
                 else if (ledger.transactionsError != null &&
@@ -215,87 +208,104 @@ class _HeadlineMetric extends StatelessWidget {
   }
 }
 
-class _FilterBar extends StatelessWidget {
-  const _FilterBar({required this.selected, required this.onSelected});
+class _ListHeader extends StatelessWidget {
+  const _ListHeader({required this.selected, required this.onSelected});
 
   final TransactionFilter selected;
   final ValueChanged<TransactionFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final filter in TransactionFilter.values)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: _FilterPill(
-                key: ValueKey('filter-${filter.name}'),
-                label: filter.label,
-                selected: selected == filter,
-                onTap: () => onSelected(filter),
-              ),
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            formatMonth(DateTime.now()),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-        ],
-      ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        _FilterMenu(selected: selected, onSelected: onSelected),
+      ],
     );
   }
 }
 
-class _FilterPill extends StatelessWidget {
-  const _FilterPill({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+class _FilterMenu extends StatelessWidget {
+  const _FilterMenu({required this.selected, required this.onSelected});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final TransactionFilter selected;
+  final ValueChanged<TransactionFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final foreground = selected
-        ? scheme.onSecondaryContainer
-        : scheme.onSurface;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      excludeSemantics: true,
-      child: Material(
-        color: selected
-            ? scheme.secondaryContainer
-            : scheme.surfaceContainerHigh,
-        shape: const StadiumBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 64, minHeight: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (selected) ...[
-                    Icon(Icons.check_rounded, size: 18, color: foreground),
-                    const SizedBox(width: 2),
-                  ],
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: foreground,
-                    ),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return PopupMenuButton<TransactionFilter>(
+      key: const ValueKey('filter-menu'),
+      tooltip: '筛选',
+      initialValue: selected,
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        for (final filter in TransactionFilter.values)
+          PopupMenuItem(
+            key: ValueKey('filter-${filter.name}'),
+            value: filter,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: filter == selected
+                      ? Icon(
+                          Icons.check_rounded,
+                          size: 18,
+                          color: scheme.primary,
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(filter.label),
+              ],
+            ),
+          ),
+      ],
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 36),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.filter_alt_outlined,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  selected.label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurface,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.expand_more_rounded,
+                  size: 18,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ],
             ),
           ),
         ),
@@ -384,6 +394,7 @@ class _TransactionRow extends StatelessWidget {
             TypeIcon(type: transaction.type),
             const SizedBox(width: 12),
             Expanded(
+              flex: 2,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -406,12 +417,21 @@ class _TransactionRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            AmountText(
-              transaction.amount,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
+            Flexible(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: AmountText(
+                    transaction.amount,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    color: amountColor,
+                  ),
+                ),
               ),
-              color: amountColor,
             ),
             PopupMenuButton<_RowAction>(
               tooltip: '更多操作',

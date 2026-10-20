@@ -35,6 +35,33 @@ class LedgerCard extends StatelessWidget {
   }
 }
 
+class LedgerSliverAppBar extends StatelessWidget {
+  const LedgerSliverAppBar({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SliverAppBar(
+      pinned: false,
+      toolbarHeight: 64,
+      titleSpacing: 20,
+      automaticallyImplyLeading: false,
+      title: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(title),
+      ),
+      titleTextStyle: theme.textTheme.headlineMedium?.copyWith(
+        color: theme.colorScheme.onSurface,
+        fontWeight: FontWeight.w500,
+        letterSpacing: -0.2,
+      ),
+    );
+  }
+}
+
 class AmountText extends StatelessWidget {
   const AmountText(this.amount, {super.key, this.style, this.color});
 
