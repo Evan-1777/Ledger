@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:ledger_app/core/api/api_client.dart';
 import 'package:ledger_app/core/api/models.dart';
+import 'package:ledger_app/core/storage/ledger_cache.dart';
 import 'package:ledger_app/core/storage/preferences_store.dart';
 import 'package:ledger_app/core/storage/session_store.dart';
 import 'package:flutter/material.dart';
@@ -140,6 +141,42 @@ Transaction transactionModel({
   tagName: tagName,
   transactedAt: (transactedAt ?? DateTime(2026, 10, 19, 8, 42)).toUtc(),
 );
+
+class MemoryLedgerCache implements LedgerCache {
+  CachedLedgerConfig? config;
+  List<Transaction>? transactions;
+  StatsSummary? stats;
+  int configWrites = 0;
+  int transactionWrites = 0;
+  int statsWrites = 0;
+
+  @override
+  CachedLedgerConfig? readConfig() => config;
+
+  @override
+  Future<void> writeConfig(CachedLedgerConfig value) async {
+    config = value;
+    configWrites++;
+  }
+
+  @override
+  List<Transaction>? readTransactions() => transactions;
+
+  @override
+  Future<void> writeTransactions(List<Transaction> value) async {
+    transactions = value;
+    transactionWrites++;
+  }
+
+  @override
+  StatsSummary? readStats() => stats;
+
+  @override
+  Future<void> writeStats(StatsSummary value) async {
+    stats = value;
+    statsWrites++;
+  }
+}
 
 StatsSummary emptyStats() => const StatsSummary(
   weekExpense: 0,

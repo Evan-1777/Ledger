@@ -33,12 +33,7 @@ void main() {
     final preferences = PreferencesController(MemoryPreferencesStore());
 
     await tester.pumpWidget(
-      LedgerApp(
-        session: session,
-        ledger: ledger,
-        preferences: preferences,
-        autoRestore: false,
-      ),
+      LedgerApp(session: session, ledger: ledger, preferences: preferences),
     );
     await tester.pumpAndSettle();
 
@@ -59,12 +54,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      LedgerApp(
-        session: session,
-        ledger: ledger,
-        preferences: preferences,
-        autoRestore: false,
-      ),
+      LedgerApp(session: session, ledger: ledger, preferences: preferences),
     );
     await tester.pumpAndSettle();
 

@@ -7,8 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:ledger_app/core/api/api_client.dart';
+import 'package:ledger_app/core/api/models.dart';
 import 'package:ledger_app/core/state/ledger_controller.dart';
 import 'package:ledger_app/core/state/preferences_controller.dart';
+import 'package:ledger_app/core/storage/ledger_cache.dart';
 import 'package:ledger_app/core/theme/app_theme.dart';
 import 'package:ledger_app/features/auth/session_controller.dart';
 import 'package:provider/provider.dart';
@@ -151,6 +153,7 @@ Future<TestControllers> testControllers({
   String? serverUrl = 'https://ledger.test',
   ThemeMode themeMode = ThemeMode.system,
   bool hideAmounts = false,
+  LedgerCache? cache,
 }) async {
   final store = MemorySessionStore(serverUrl: serverUrl, token: token);
   final requests = <http.Request>[];
@@ -165,7 +168,11 @@ Future<TestControllers> testControllers({
     tokenProvider: store.readToken,
   );
   final session = SessionController(store: store, api: api);
-  final ledger = LedgerController(api: api, onSessionExpired: session.expire);
+  final ledger = LedgerController(
+    api: api,
+    onSessionExpired: session.expire,
+    cache: cache,
+  );
   final preferences = PreferencesController(
     MemoryPreferencesStore(themeMode: themeMode, hideAmounts: hideAmounts),
   );
@@ -185,6 +192,7 @@ Future<TestControllers> testControllersWithHandler(
   String? serverUrl = 'https://ledger.test',
   ThemeMode themeMode = ThemeMode.system,
   bool hideAmounts = false,
+  LedgerCache? cache,
 }) {
   return testControllers(
     client: MockClient(handler),
@@ -192,8 +200,17 @@ Future<TestControllers> testControllersWithHandler(
     serverUrl: serverUrl,
     themeMode: themeMode,
     hideAmounts: hideAmounts,
+    cache: cache,
   );
 }
+
+MemoryLedgerCache seededLedgerCache() => MemoryLedgerCache()
+  ..config = CachedLedgerConfig(
+    categories: [category()],
+    channels: [paymentMethod()],
+  )
+  ..transactions = [transactionModel()]
+  ..stats = StatsSummary.fromJson(statsJson());
 
 Future<void> pumpWithProviders(
   WidgetTester tester, {

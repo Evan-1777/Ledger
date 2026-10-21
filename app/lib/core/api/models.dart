@@ -81,6 +81,15 @@ class PaymentMethod {
     initialBalance: _asDouble(json['initial_balance']),
     creditLimit: _asDouble(json['credit_limit']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'sort_order': sortOrder,
+    'type': type.name,
+    'initial_balance': initialBalance,
+    'credit_limit': creditLimit,
+  };
 }
 
 class Tag {
@@ -102,6 +111,13 @@ class Tag {
     name: _asString(json['name']),
     sortOrder: _asInt(json['sort_order']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'category_id': categoryId,
+    'name': name,
+    'sort_order': sortOrder,
+  };
 }
 
 class Category {
@@ -128,6 +144,14 @@ class Category {
       json['tags'],
     ).map((item) => Tag.fromJson(item as Map<String, dynamic>)).toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'sort_order': sortOrder,
+    'type': type.name,
+    'tags': [for (final tag in tags) tag.toJson()],
+  };
 }
 
 class Transaction {
@@ -185,6 +209,23 @@ class Transaction {
     tagName: _asString(json['tag_name']),
     transactedAt: DateTime.parse(_asString(json['transacted_at'])).toUtc(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'amount_cents': amountCents,
+    'fee_cents': feeCents,
+    'description': description,
+    'payment_method_id': paymentMethodId,
+    'payment_method_name': paymentMethodName,
+    'source_payment_method_id': sourcePaymentMethodId,
+    'source_payment_method_name': sourcePaymentMethodName,
+    'category_id': categoryId,
+    'category_name': categoryName,
+    'tag_id': tagId,
+    'tag_name': tagName,
+    'transacted_at': transactedAt.toUtc().toIso8601String(),
+  };
 }
 
 class TransactionInput {
@@ -244,6 +285,13 @@ class TagStat {
     amount: _asDouble(json['amount']),
     percentage: _asDouble(json['percentage']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'amount': amount,
+    'percentage': percentage,
+  };
 }
 
 class CategoryStat {
@@ -270,6 +318,14 @@ class CategoryStat {
       json['tags'],
     ).map((item) => TagStat.fromJson(item as Map<String, dynamic>)).toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'amount': amount,
+    'percentage': percentage,
+    'tags': [for (final tag in tags) tag.toJson()],
+  };
 }
 
 class PaymentMethodStat {
@@ -292,6 +348,13 @@ class PaymentMethodStat {
         amount: _asDouble(json['amount']),
         percentage: _asDouble(json['percentage']),
       );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'amount': amount,
+    'percentage': percentage,
+  };
 }
 
 class MonthlyTrend {
@@ -310,6 +373,12 @@ class MonthlyTrend {
     expense: _asDouble(json['expense']),
     income: _asDouble(json['income']),
   );
+
+  Map<String, dynamic> toJson() => {
+    'month': month,
+    'expense': expense,
+    'income': income,
+  };
 }
 
 class AssetChannelStat {
@@ -335,6 +404,14 @@ class AssetChannelStat {
         initialBalance: _asDouble(json['initial_balance']),
         percentage: _asDouble(json['percentage']),
       );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'remaining_balance': remainingBalance,
+    'initial_balance': initialBalance,
+    'percentage': percentage,
+  };
 }
 
 class LiabilityChannelStat {
@@ -366,6 +443,16 @@ class LiabilityChannelStat {
         remainingCredit: _asDouble(json['remaining_credit']),
         usageRate: _asDouble(json['usage_rate']),
       );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'current_debt': currentDebt,
+    'initial_debt': initialDebt,
+    'credit_limit': creditLimit,
+    'remaining_credit': remainingCredit,
+    'usage_rate': usageRate,
+  };
 }
 
 class AssetSummary {
@@ -396,6 +483,16 @@ class AssetSummary {
         )
         .toList(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'total_assets': totalAssets,
+    'total_liabilities': totalLiabilities,
+    'net_assets': netAssets,
+    'asset_channels': [for (final channel in assetChannels) channel.toJson()],
+    'liability_channels': [
+      for (final channel in liabilityChannels) channel.toJson(),
+    ],
+  };
 }
 
 class StatsSummary {
@@ -443,6 +540,23 @@ class StatsSummary {
       (json['asset_summary'] as Map<String, dynamic>?) ?? const {},
     ),
   );
+
+  Map<String, dynamic> toJson() => {
+    'week_expense': weekExpense,
+    'month_expense': monthExpense,
+    'last_month_expense': lastMonthExpense,
+    'month_income': monthIncome,
+    'month_balance': monthBalance,
+    'savings_rate': savingsRate,
+    'category_distribution': [
+      for (final category in categoryDistribution) category.toJson(),
+    ],
+    'payment_distribution': [
+      for (final channel in paymentDistribution) channel.toJson(),
+    ],
+    'monthly_trends': [for (final trend in monthlyTrends) trend.toJson()],
+    'asset_summary': assetSummary.toJson(),
+  };
 }
 
 int _asInt(Object? value) => switch (value) {

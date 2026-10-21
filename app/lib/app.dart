@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
@@ -18,13 +16,11 @@ class LedgerApp extends StatefulWidget {
     required this.session,
     required this.ledger,
     required this.preferences,
-    this.autoRestore = true,
   });
 
   final SessionController session;
   final LedgerController ledger;
   final PreferencesController preferences;
-  final bool autoRestore;
 
   @override
   State<LedgerApp> createState() => _LedgerAppState();
@@ -39,14 +35,9 @@ class _LedgerAppState extends State<LedgerApp> {
     widget.session.addListener(_onSessionChanged);
     _wasAuthenticated = widget.session.isAuthenticated;
     if (_wasAuthenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.ledger.loadAll();
-      });
-    }
-    if (widget.autoRestore && widget.session.phase == SessionPhase.booting) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.session.restore();
-      });
+      // 首帧构建前同步水合与置位 loading：有快照直接出内容，没有则保持骨架。
+      widget.ledger.hydrateFromCache();
+      widget.ledger.loadAll();
     }
   }
 
@@ -60,6 +51,7 @@ class _LedgerAppState extends State<LedgerApp> {
     final authenticated = widget.session.isAuthenticated;
     if (authenticated && !_wasAuthenticated) {
       _wasAuthenticated = true;
+      widget.ledger.hydrateFromCache();
       widget.ledger.loadAll();
     } else if (!authenticated && _wasAuthenticated) {
       _wasAuthenticated = false;
@@ -121,77 +113,11 @@ class _SessionGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
     return switch (session.phase) {
-      SessionPhase.booting => _SplashScreen(
-        error: session.startupError,
-        onRetry: session.restore,
+      SessionPhase.booting => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       ),
       SessionPhase.locked => const LoginScreen(),
       SessionPhase.authenticated => const AppShell(),
     };
-  }
-}
-
-class _SplashScreen extends StatelessWidget {
-  const _SplashScreen({this.error, this.onRetry});
-
-  final String? error;
-  final Future<void> Function()? onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: Icon(
-                    Icons.menu_book_rounded,
-                    size: 38,
-                    color: scheme.onPrimaryContainer,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Ledger',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                if (error == null)
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
-                  )
-                else ...[
-                  Text(
-                    error!,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(onPressed: onRetry, child: const Text('重试')),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

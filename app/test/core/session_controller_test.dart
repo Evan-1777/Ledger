@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -31,21 +33,42 @@ void main() {
     expect(controllers.session.phase, SessionPhase.authenticated);
   });
 
-  test('restore with an expired token clears it', () async {
+  test('restore opens the shell before the network answers', () async {
+    final pending = Completer<http.Response>();
     final controllers = await testControllers(
-      token: 'expired',
-      client: MockClient(
-        (_) async => jsonResponse({'error': 'unauthorized'}, status: 401),
-      ),
+      token: 'token',
+      client: MockClient((_) => pending.future),
     );
 
     await controllers.session.restore();
+
+    expect(controllers.session.phase, SessionPhase.authenticated);
+
+    pending.complete(jsonResponse({'status': 'authenticated'}));
+    await pumpEventQueue();
+    expect(controllers.session.phase, SessionPhase.authenticated);
+  });
+
+  test('restore with an expired token clears it in the background', () async {
+    final pending = Completer<http.Response>();
+    final controllers = await testControllers(
+      token: 'expired',
+      client: MockClient((_) => pending.future),
+    );
+
+    await controllers.session.restore();
+
+    expect(controllers.session.phase, SessionPhase.authenticated);
+    expect(await controllers.store.readToken(), 'expired');
+
+    pending.complete(jsonResponse({'error': 'unauthorized'}, status: 401));
+    await pumpEventQueue();
 
     expect(controllers.session.phase, SessionPhase.locked);
     expect(await controllers.store.readToken(), isNull);
   });
 
-  test('restore network failure keeps the token and exposes retry', () async {
+  test('a background network failure keeps the optimistic session', () async {
     final controllers = await testControllers(
       token: 'kept',
       client: MockClient((_) async {
@@ -55,8 +78,9 @@ void main() {
 
     await controllers.session.restore();
 
-    expect(controllers.session.phase, SessionPhase.booting);
-    expect(controllers.session.startupError, contains('无法连接服务器'));
+    expect(controllers.session.phase, SessionPhase.authenticated);
+    await pumpEventQueue();
+    expect(controllers.session.phase, SessionPhase.authenticated);
     expect(await controllers.store.readToken(), 'kept');
   });
 

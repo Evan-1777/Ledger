@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:ledger_app/core/api/api_exception.dart';
 import 'package:ledger_app/core/api/models.dart';
 import 'package:ledger_app/core/state/ledger_controller.dart';
+import 'package:ledger_app/core/storage/ledger_cache.dart';
 
 import '../support/fakes.dart';
 import '../support/harness.dart';
@@ -57,6 +58,113 @@ void main() {
     expect(controllers.ledger.stats?.monthBalance, 9551.5);
     expect(controllers.ledger.transactionsError, isNull);
   });
+
+  test('hydrates cached data without entering loading', () async {
+    final cache = MemoryLedgerCache()
+      ..config = CachedLedgerConfig(
+        categories: [category()],
+        channels: [paymentMethod()],
+      )
+      ..transactions = [transactionModel()]
+      ..stats = StatsSummary.fromJson(statsJson());
+    final controllers = await testControllersWithHandler(
+      standardHandler,
+      cache: cache,
+    );
+
+    controllers.ledger.hydrateFromCache();
+
+    expect(controllers.ledger.categories.single.name, '餐饮美食');
+    expect(controllers.ledger.channels.single.name, '招商银行卡');
+    expect(controllers.ledger.transactions.single.description, '午餐 · 牛肉面');
+    expect(controllers.ledger.stats?.monthBalance, 9551.5);
+    expect(controllers.ledger.configLoading, isFalse);
+    expect(controllers.ledger.transactionsLoading, isFalse);
+    expect(controllers.ledger.statsLoading, isFalse);
+  });
+
+  test('hydrate fills only the domains present in the cache', () async {
+    final cache = MemoryLedgerCache()..transactions = [transactionModel()];
+    final controllers = await testControllersWithHandler(
+      standardHandler,
+      cache: cache,
+    );
+
+    controllers.ledger.hydrateFromCache();
+
+    expect(controllers.ledger.transactions.single.description, '午餐 · 牛肉面');
+    expect(controllers.ledger.stats, isNull);
+    expect(controllers.ledger.categories, isEmpty);
+    expect(controllers.ledger.channels, isEmpty);
+    expect(controllers.ledger.transactionsLoading, isFalse);
+  });
+
+  test('loadAll writes each domain back to the cache', () async {
+    final cache = MemoryLedgerCache();
+    final controllers = await testControllersWithHandler(
+      standardHandler,
+      cache: cache,
+    );
+
+    await controllers.ledger.loadAll();
+
+    expect(cache.configWrites, 1);
+    expect(cache.transactionWrites, 1);
+    expect(cache.statsWrites, 1);
+    expect(cache.config!.categories.single.name, '餐饮美食');
+    expect(cache.transactions!.single.description, '午餐 · 牛肉面');
+    expect(cache.stats!.monthBalance, 9551.5);
+  });
+
+  test(
+    'a failed refresh keeps cached data and leaves the cache untouched',
+    () async {
+      final cache = MemoryLedgerCache()
+        ..config = CachedLedgerConfig(
+          categories: [category()],
+          channels: [paymentMethod()],
+        )
+        ..transactions = [transactionModel(description: '缓存流水')]
+        ..stats = StatsSummary.fromJson(statsJson());
+      final controllers = await testControllersWithHandler(
+        (request) async => jsonResponse({'error': 'server error'}, status: 500),
+        cache: cache,
+      );
+      controllers.ledger.hydrateFromCache();
+
+      await controllers.ledger.loadAll();
+
+      expect(controllers.ledger.transactions.single.description, '缓存流水');
+      expect(controllers.ledger.categories.single.name, '餐饮美食');
+      expect(controllers.ledger.configError, isNotNull);
+      expect(controllers.ledger.transactionsError, isNotNull);
+      expect(controllers.ledger.statsError, isNotNull);
+      expect(cache.configWrites, 0);
+      expect(cache.transactionWrites, 0);
+      expect(cache.statsWrites, 0);
+    },
+  );
+
+  test(
+    'filtered transaction refreshes do not replace the cached full list',
+    () async {
+      final cache = MemoryLedgerCache();
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.url.path == '/api/transactions' &&
+            request.url.queryParameters['type'] == 'expense') {
+          return jsonResponse([transactionJson(description: '支出结果')]);
+        }
+        return standardHandler(request);
+      }, cache: cache);
+
+      await controllers.ledger.loadAll();
+      await controllers.ledger.setFilter(TransactionFilter.expense);
+
+      expect(cache.transactionWrites, 1);
+      expect(cache.transactions!.single.description, '午餐 · 牛肉面');
+      expect(controllers.ledger.transactions.single.description, '支出结果');
+    },
+  );
 
   test(
     'a stale transaction response cannot overwrite the new filter',

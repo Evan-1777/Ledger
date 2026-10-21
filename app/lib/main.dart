@@ -10,6 +10,7 @@ import 'app.dart';
 import 'core/api/api_client.dart';
 import 'core/state/ledger_controller.dart';
 import 'core/state/preferences_controller.dart';
+import 'core/storage/ledger_cache.dart';
 import 'core/storage/preferences_store.dart';
 import 'core/storage/session_store.dart';
 import 'features/auth/session_controller.dart';
@@ -26,16 +27,26 @@ Future<void> main() async {
     secure: const FlutterSecureStorage(),
     preferences: preferences,
   );
+  final cache = SharedPreferencesLedgerCache(
+    preferences: preferences,
+    serverUrl: () => sessionStore.serverUrl,
+  );
   final api = ApiClient(
     client: http.Client(),
     baseUrl: () => sessionStore.serverUrl ?? '',
     tokenProvider: sessionStore.readToken,
   );
   final session = SessionController(store: sessionStore, api: api);
-  final ledger = LedgerController(api: api, onSessionExpired: session.expire);
+  final ledger = LedgerController(
+    api: api,
+    onSessionExpired: session.expire,
+    cache: cache,
+  );
   final preferencesController = PreferencesController(
     SharedPreferencesStore(preferences),
   );
+
+  await session.restore();
 
   runApp(
     LedgerApp(

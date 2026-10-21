@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' hide Category;
 import '../api/api_client.dart';
 import '../api/api_exception.dart';
 import '../api/models.dart';
+import '../storage/ledger_cache.dart';
 
 enum TransactionFilter {
   all,
@@ -32,12 +33,16 @@ class LedgerController extends ChangeNotifier {
   LedgerController({
     required ApiClient api,
     required Future<void> Function() onSessionExpired,
+    LedgerCache? cache,
   }) : _api = api, // ignore: prefer_initializing_formals
        // ignore: prefer_initializing_formals
-       _onSessionExpired = onSessionExpired;
+       _onSessionExpired = onSessionExpired,
+       // ignore: prefer_initializing_formals
+       _cache = cache;
 
   final ApiClient _api;
   final Future<void> Function() _onSessionExpired;
+  final LedgerCache? _cache;
 
   List<Category> categories = [];
   List<PaymentMethod> channels = [];
@@ -78,6 +83,21 @@ class LedgerController extends ChangeNotifier {
     await Future.wait([loadConfig(), loadTransactions(), loadStats()]);
   }
 
+  /// 首帧前用上次同步的快照填充内存，缺失或损坏的域保持原状。
+  void hydrateFromCache() {
+    final config = _cache?.readConfig();
+    final cachedTransactions = _cache?.readTransactions();
+    final stats = _cache?.readStats();
+    if (config == null && cachedTransactions == null && stats == null) return;
+    if (config != null) {
+      categories = config.categories;
+      channels = config.channels;
+    }
+    if (cachedTransactions != null) transactions = cachedTransactions;
+    if (stats != null) this.stats = stats;
+    notifyListeners();
+  }
+
   Future<void> loadConfig() async {
     final generation = ++_configGeneration;
     configLoading = true;
@@ -91,6 +111,9 @@ class LedgerController extends ChangeNotifier {
       if (generation != _configGeneration) return;
       categories = results[0] as List<Category>;
       channels = results[1] as List<PaymentMethod>;
+      await _cache?.writeConfig(
+        CachedLedgerConfig(categories: categories, channels: channels),
+      );
     } on ApiException catch (error) {
       if (generation != _configGeneration) return;
       if (error.isUnauthorized) {
@@ -118,6 +141,10 @@ class LedgerController extends ChangeNotifier {
       final list = await _api.getTransactions(type: filter.type);
       if (generation != _transactionsGeneration) return;
       transactions = list;
+      // 服务端按筛选返回子集，只有全量结果才适合作为冷启动快照。
+      if (filter == TransactionFilter.all) {
+        await _cache?.writeTransactions(transactions);
+      }
     } on ApiException catch (error) {
       if (generation != _transactionsGeneration) return;
       if (error.isUnauthorized) {
@@ -145,6 +172,7 @@ class LedgerController extends ChangeNotifier {
       final summary = await _api.getStatsSummary();
       if (generation != _statsGeneration) return;
       stats = summary;
+      await _cache?.writeStats(summary);
     } on ApiException catch (error) {
       if (generation != _statsGeneration) return;
       if (error.isUnauthorized) {

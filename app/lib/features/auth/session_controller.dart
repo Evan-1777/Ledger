@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../core/api/api_client.dart';
@@ -16,44 +18,46 @@ class SessionController extends ChangeNotifier {
 
   SessionPhase phase = SessionPhase.booting;
   bool busy = false;
-  String? startupError;
   String? loginError;
+
+  int _generation = 0;
 
   String? get serverUrl => _store.serverUrl;
   bool get isAuthenticated => phase == SessionPhase.authenticated;
 
   Future<void> restore() async {
+    final generation = ++_generation;
     phase = SessionPhase.booting;
-    startupError = null;
     loginError = null;
     notifyListeners();
 
     final url = _store.serverUrl;
     final token = await _store.readToken();
+    if (generation != _generation) return;
     if (url == null || url.isEmpty || token == null || token.isEmpty) {
       phase = SessionPhase.locked;
       notifyListeners();
       return;
     }
 
+    // 本地有凭证即可先行进入：网络只用于后台纠正，不再阻塞首帧。
+    phase = SessionPhase.authenticated;
+    notifyListeners();
+    unawaited(_verifySession(generation));
+  }
+
+  Future<void> _verifySession(int generation) async {
     try {
       await _api.checkAuth();
-      phase = SessionPhase.authenticated;
-      notifyListeners();
     } on ApiException catch (error) {
-      if (error.isUnauthorized) {
-        await _store.clearToken();
-        phase = SessionPhase.locked;
-      } else {
-        startupError = error.message;
-        phase = SessionPhase.booting;
-      }
-      notifyListeners();
+      if (generation != _generation || !error.isUnauthorized) return;
+      await expire();
     }
   }
 
   Future<bool> login(String rawUrl, String password) async {
     if (busy) return false;
+    _generation++;
     busy = true;
     loginError = null;
     notifyListeners();
@@ -82,6 +86,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _generation++;
     await _store.clearToken();
     phase = SessionPhase.locked;
     loginError = null;
@@ -89,6 +94,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> expire() async {
+    _generation++;
     await _store.clearToken();
     phase = SessionPhase.locked;
     loginError = null;
@@ -96,6 +102,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<bool> updateServer(String rawUrl) async {
+    _generation++;
     try {
       final url = normalizeServerUrl(rawUrl);
       if (kReleaseMode && !url.startsWith('https://')) {
