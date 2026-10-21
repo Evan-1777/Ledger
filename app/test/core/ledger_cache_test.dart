@@ -165,6 +165,38 @@ void main() {
       expect(cache.readStats(), isNull);
     });
 
+    test('ignores entries saved with another schema version', () async {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setString(
+        'ledger_cache_config',
+        jsonEncode({
+          'version': 2,
+          'server': 'https://ledger.test',
+          'data': {'categories': [], 'channels': []},
+        }),
+      );
+      await preferences.setString(
+        'ledger_cache_transactions',
+        jsonEncode({'version': 2, 'server': 'https://ledger.test', 'data': []}),
+      );
+      await preferences.setString(
+        'ledger_cache_stats',
+        jsonEncode({
+          'version': 2,
+          'server': 'https://ledger.test',
+          'data': <String, Object?>{},
+        }),
+      );
+      final cache = SharedPreferencesLedgerCache(
+        preferences: preferences,
+        serverUrl: () => 'https://ledger.test',
+      );
+
+      expect(cache.readConfig(), isNull);
+      expect(cache.readTransactions(), isNull);
+      expect(cache.readStats(), isNull);
+    });
+
     test('ignores malformed payload shapes', () async {
       final preferences = await SharedPreferences.getInstance();
       final cache = SharedPreferencesLedgerCache(

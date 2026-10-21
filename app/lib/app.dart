@@ -26,12 +26,13 @@ class LedgerApp extends StatefulWidget {
   State<LedgerApp> createState() => _LedgerAppState();
 }
 
-class _LedgerAppState extends State<LedgerApp> {
+class _LedgerAppState extends State<LedgerApp> with WidgetsBindingObserver {
   bool _wasAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.session.addListener(_onSessionChanged);
     _wasAuthenticated = widget.session.isAuthenticated;
     if (_wasAuthenticated) {
@@ -43,8 +44,16 @@ class _LedgerAppState extends State<LedgerApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.session.removeListener(_onSessionChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.session.revalidate();
+    }
   }
 
   void _onSessionChanged() {

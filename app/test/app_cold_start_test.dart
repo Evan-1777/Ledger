@@ -125,4 +125,37 @@ void main() {
     expect(controllers.session.phase, SessionPhase.locked);
     expect(await controllers.store.readToken(), isNull);
   });
+
+  testWidgets('resuming revalidates the session and falls back on 401', (
+    tester,
+  ) async {
+    var checks = 0;
+    var reject = false;
+    final controllers = await testControllers(
+      token: 'token',
+      cache: seededLedgerCache(),
+      client: MockClient((request) async {
+        if (request.url.path == '/api/auth/check') {
+          checks++;
+          return reject
+              ? jsonResponse({'error': 'unauthorized'}, status: 401)
+              : jsonResponse({'status': 'authenticated'});
+        }
+        return defaultApi(request);
+      }),
+    );
+    await controllers.session.restore();
+    await mount(tester, controllers);
+    await tester.pumpAndSettle();
+
+    final before = checks;
+    reject = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(checks, before + 1);
+    expect(find.text('管理员密码'), findsOneWidget);
+    expect(controllers.session.phase, SessionPhase.locked);
+  });
 }

@@ -55,6 +55,12 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  /// 应用回到前台时重新校验：网络失败保持会话，401 仍回登录。
+  Future<void> revalidate() async {
+    if (!isAuthenticated) return;
+    await _verifySession(_generation);
+  }
+
   Future<bool> login(String rawUrl, String password) async {
     if (busy) return false;
     _generation++;
