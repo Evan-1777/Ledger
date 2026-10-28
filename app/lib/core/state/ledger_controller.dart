@@ -253,6 +253,19 @@ class LedgerController extends ChangeNotifier {
     await loadConfig();
   }
 
+  Future<void> setCategoryExcluded(Category category, bool excluded) async {
+    await _guard(
+      () => _api.updateCategory(
+        category.id,
+        name: category.name,
+        sortOrder: category.sortOrder,
+        type: category.type,
+        excludeFromStats: excluded,
+      ),
+    );
+    await Future.wait([loadConfig(), loadStats()]);
+  }
+
   Future<void> moveCategory(Category category, int direction) async {
     final siblings = categoriesOfType(category.type);
     final index = siblings.indexWhere((item) => item.id == category.id);

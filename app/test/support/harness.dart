@@ -52,6 +52,7 @@ Future<http.Response> defaultApi(
           'name': '餐饮美食',
           'sort_order': 1,
           'type': 'expense',
+          'exclude_from_stats': false,
           'created_at': '',
           'tags': [
             {'id': 1, 'category_id': 1, 'name': '午餐', 'sort_order': 1},
@@ -63,6 +64,7 @@ Future<http.Response> defaultApi(
           'name': '交通出行',
           'sort_order': 2,
           'type': 'expense',
+          'exclude_from_stats': false,
           'created_at': '',
           'tags': [
             {'id': 3, 'category_id': 2, 'name': '地铁', 'sort_order': 1},
@@ -73,6 +75,7 @@ Future<http.Response> defaultApi(
           'name': '职业收入',
           'sort_order': 4,
           'type': 'income',
+          'exclude_from_stats': false,
           'created_at': '',
           'tags': [
             {'id': 4, 'category_id': 4, 'name': '主业工资', 'sort_order': 1},
@@ -83,6 +86,7 @@ Future<http.Response> defaultApi(
           'name': '债务偿还',
           'sort_order': 8,
           'type': 'system',
+          'exclude_from_stats': false,
           'created_at': '',
           'tags': [
             {'id': 8, 'category_id': 8, 'name': '负债还款', 'sort_order': 1},
@@ -93,6 +97,7 @@ Future<http.Response> defaultApi(
           'name': '账户转账',
           'sort_order': 9,
           'type': 'system',
+          'exclude_from_stats': false,
           'created_at': '',
           'tags': [
             {'id': 9, 'category_id': 9, 'name': '资金互转', 'sort_order': 1},
@@ -305,9 +310,11 @@ Map<String, Object?> statsJson({
   double monthBalance = 9551.5,
 }) => {
   'week_expense': 84.2,
+  'week_income': 2300,
   'month_expense': monthExpense,
-  'last_month_expense': 2890,
   'month_income': monthIncome,
+  'last_month_expense': 2890,
+  'last_month_income': 11000,
   'month_balance': monthBalance,
   'savings_rate': 74.6,
   'category_distribution': [
@@ -321,8 +328,22 @@ Map<String, Object?> statsJson({
       ],
     },
   ],
+  'income_category_distribution': [
+    {
+      'id': 4,
+      'name': '职业收入',
+      'amount': 12800,
+      'percentage': 100,
+      'tags': [
+        {'id': 4, 'name': '主业工资', 'amount': 12800, 'percentage': 100},
+      ],
+    },
+  ],
   'payment_distribution': [
     {'id': 1, 'name': '招商银行卡', 'amount': 2000, 'percentage': 61.6},
+  ],
+  'income_payment_distribution': [
+    {'id': 1, 'name': '招商银行卡', 'amount': 12800, 'percentage': 100},
   ],
   'monthly_trends': [
     for (var i = 5; i >= 0; i--)

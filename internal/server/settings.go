@@ -29,12 +29,13 @@ type Tag struct {
 }
 
 type Category struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
-	Type      string `json:"type"`
-	CreatedAt string `json:"created_at"`
-	Tags      []Tag  `json:"tags"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	SortOrder        int    `json:"sort_order"`
+	Type             string `json:"type"`
+	ExcludeFromStats bool   `json:"exclude_from_stats"`
+	CreatedAt        string `json:"created_at"`
+	Tags             []Tag  `json:"tags"`
 }
 
 // Payment Methods Handlers
@@ -281,7 +282,7 @@ func (s *Server) handleDeletePaymentMethod(w http.ResponseWriter, r *http.Reques
 // Categories Handlers
 
 func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	catRows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories ORDER BY sort_order ASC, id ASC")
+	catRows, err := s.db.QueryContext(r.Context(), "SELECT id, name, sort_order, type, exclude_from_stats, created_at FROM categories ORDER BY sort_order ASC, id ASC")
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -293,11 +294,13 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 
 	for catRows.Next() {
 		var cat Category
+		var excludeFromStats int
 		cat.Tags = make([]Tag, 0)
-		if err := catRows.Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
+		if err := catRows.Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &excludeFromStats, &cat.CreatedAt); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		cat.ExcludeFromStats = excludeFromStats != 0
 		catIndex[cat.ID] = len(categories)
 		categories = append(categories, cat)
 	}
@@ -325,9 +328,10 @@ func (s *Server) handleListCategories(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name      string  `json:"name"`
-		SortOrder int     `json:"sort_order"`
-		Type      *string `json:"type"`
+		Name             string  `json:"name"`
+		SortOrder        int     `json:"sort_order"`
+		Type             *string `json:"type"`
+		ExcludeFromStats *bool   `json:"exclude_from_stats"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -349,7 +353,8 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 		catType = trimmed
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "INSERT INTO categories (name, sort_order, type) VALUES (?, ?, ?)", req.Name, req.SortOrder, catType)
+	excludeFromStats := req.ExcludeFromStats != nil && *req.ExcludeFromStats
+	res, err := s.db.ExecContext(r.Context(), "INSERT INTO categories (name, sort_order, type, exclude_from_stats) VALUES (?, ?, ?, ?)", req.Name, req.SortOrder, catType, excludeFromStats)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "category already exists")
@@ -365,12 +370,14 @@ func (s *Server) handleCreateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var cat Category
+	var exclude int
 	cat.Tags = make([]Tag, 0)
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, exclude_from_stats, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &exclude, &cat.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
 		return
 	}
+	cat.ExcludeFromStats = exclude != 0
 
 	writeJSON(w, http.StatusCreated, cat)
 }
@@ -391,9 +398,10 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name      *string `json:"name"`
-		SortOrder *int    `json:"sort_order"`
-		Type      *string `json:"type"`
+		Name             *string `json:"name"`
+		SortOrder        *int    `json:"sort_order"`
+		Type             *string `json:"type"`
+		ExcludeFromStats *bool   `json:"exclude_from_stats"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -401,12 +409,13 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var existing struct {
-		name      string
-		sortOrder int
-		catType   string
+		name             string
+		sortOrder        int
+		catType          string
+		excludeFromStats int
 	}
-	err = s.db.QueryRowContext(r.Context(), "SELECT name, sort_order, type FROM categories WHERE id = ?", id).
-		Scan(&existing.name, &existing.sortOrder, &existing.catType)
+	err = s.db.QueryRowContext(r.Context(), "SELECT name, sort_order, type, exclude_from_stats FROM categories WHERE id = ?", id).
+		Scan(&existing.name, &existing.sortOrder, &existing.catType, &existing.excludeFromStats)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSONError(w, http.StatusNotFound, "category not found")
@@ -441,7 +450,12 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 		newType = trimmed
 	}
 
-	res, err := s.db.ExecContext(r.Context(), "UPDATE categories SET name = ?, sort_order = ?, type = ? WHERE id = ?", newName, newSortOrder, newType, id)
+	newExcludeFromStats := existing.excludeFromStats != 0
+	if req.ExcludeFromStats != nil {
+		newExcludeFromStats = *req.ExcludeFromStats
+	}
+
+	res, err := s.db.ExecContext(r.Context(), "UPDATE categories SET name = ?, sort_order = ?, type = ?, exclude_from_stats = ? WHERE id = ?", newName, newSortOrder, newType, newExcludeFromStats, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			writeJSONError(w, http.StatusBadRequest, "category already exists")
@@ -457,12 +471,14 @@ func (s *Server) handleUpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var cat Category
+	var exclude int
 	cat.Tags = make([]Tag, 0)
-	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, created_at FROM categories WHERE id = ?", id).
-		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &cat.CreatedAt); err != nil {
+	if err := s.db.QueryRowContext(r.Context(), "SELECT id, name, sort_order, type, exclude_from_stats, created_at FROM categories WHERE id = ?", id).
+		Scan(&cat.ID, &cat.Name, &cat.SortOrder, &cat.Type, &exclude, &cat.CreatedAt); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to read category: "+err.Error())
 		return
 	}
+	cat.ExcludeFromStats = exclude != 0
 
 	writeJSON(w, http.StatusOK, cat)
 }

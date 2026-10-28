@@ -281,7 +281,60 @@ void main() {
       puts.map((request) => jsonDecode(request.body)['sort_order']).toList(),
       [2, 1, 1],
     );
+    expect(
+      puts.every(
+        (request) => !(jsonDecode(request.body) as Map<String, dynamic>)
+            .containsKey('exclude_from_stats'),
+      ),
+      isTrue,
+    );
   });
+
+  test(
+    'category stats toggle writes the flag and refreshes config and stats',
+    () async {
+      var configGets = 0;
+      var statsGets = 0;
+      http.Request? put;
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.method == 'PUT' &&
+            request.url.path.startsWith('/api/categories/')) {
+          put = request;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return jsonResponse({
+            'id': 1,
+            'name': '餐饮美食',
+            'sort_order': 1,
+            'type': 'expense',
+            'exclude_from_stats': body['exclude_from_stats'],
+            'created_at': '',
+            'tags': <Object?>[],
+          });
+        }
+        if (request.url.path == '/api/categories') {
+          configGets++;
+        }
+        if (request.url.path == '/api/stats/summary') {
+          statsGets++;
+        }
+        return standardHandler(request);
+      });
+      await controllers.ledger.loadAll();
+
+      await controllers.ledger.setCategoryExcluded(
+        controllers.ledger.categories.single,
+        true,
+      );
+
+      expect(put, isNotNull);
+      expect(
+        (jsonDecode(put!.body) as Map<String, dynamic>)['exclude_from_stats'],
+        isTrue,
+      );
+      expect(configGets, 2);
+      expect(statsGets, 2);
+    },
+  );
 
   test('a 401 expires the session and clears business data', () async {
     var expired = 0;

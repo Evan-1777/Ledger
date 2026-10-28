@@ -274,6 +274,7 @@ class _TagRow extends StatelessWidget {
           else
             PopupMenuButton<_TagAction>(
               tooltip: '标签操作',
+              clipBehavior: Clip.antiAlias,
               onSelected: (action) {
                 switch (action) {
                   case _TagAction.rename:

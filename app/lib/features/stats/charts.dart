@@ -10,19 +10,23 @@ class DonutChart extends StatelessWidget {
     required this.categories,
     required this.total,
     required this.colors,
+    required this.centerLabel,
+    required this.semanticsLabel,
     this.size = 168,
   });
 
   final List<CategoryStat> categories;
   final double total;
   final List<Color> colors;
+  final String centerLabel;
+  final String semanticsLabel;
   final double size;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Semantics(
-      label: '支出构成环形图，共 ${formatMoney(total)}，${categories.length} 个分类',
+      label: '$semanticsLabel，共 ${formatMoney(total)}，${categories.length} 个分类',
       child: ExcludeSemantics(
         child: SizedBox(
           width: size,
@@ -35,23 +39,32 @@ class DonutChart extends StatelessWidget {
               background: scheme.surfaceContainerHighest,
             ),
             child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    formatMoney(total, withCurrency: false),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+              child: Padding(
+                padding: EdgeInsets.all(size * 0.18),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        formatMoney(total, withCurrency: false),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                      ),
+                      Text(
+                        centerLabel,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '本月支出',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

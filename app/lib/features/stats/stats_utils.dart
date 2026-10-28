@@ -1,15 +1,11 @@
 import 'dart:math' as math;
 
-import '../../core/api/models.dart';
+double dailyAverage(double amount, DateTime now) =>
+    amount / math.max(1, now.day);
 
-double dailyAverage(StatsSummary summary, DateTime now) =>
-    summary.monthExpense / math.max(1, now.day);
-
-double? monthOverMonth(StatsSummary summary) {
-  if (summary.lastMonthExpense <= 0) return null;
-  return (summary.monthExpense - summary.lastMonthExpense) /
-      summary.lastMonthExpense *
-      100;
+double? monthOverMonth(double current, double previous) {
+  if (previous <= 0) return null;
+  return (current - previous) / previous * 100;
 }
 
 double ratioOf(double part, double whole) =>

@@ -11,12 +11,24 @@ class TransactionDayGroup {
   final DateTime date;
   final List<Transaction> items;
 
-  double get expense => items
-      .where((item) => item.type == TransactionType.expense)
+  double get expense => expenseExcluding(const {});
+
+  double expenseExcluding(Set<int> excludedCategoryIds) => items
+      .where(
+        (item) =>
+            item.type == TransactionType.expense &&
+            !excludedCategoryIds.contains(item.categoryId),
+      )
       .fold(0, (sum, item) => sum + item.amount.abs());
 
-  double get income => items
-      .where((item) => item.type == TransactionType.income)
+  double get income => incomeExcluding(const {});
+
+  double incomeExcluding(Set<int> excludedCategoryIds) => items
+      .where(
+        (item) =>
+            item.type == TransactionType.income &&
+            !excludedCategoryIds.contains(item.categoryId),
+      )
       .fold(0, (sum, item) => sum + item.amount.abs());
 }
 
@@ -43,19 +55,30 @@ String dayHeader(TransactionDayGroup group, DateTime now) {
   return '$prefix · ${formatWeekday(group.date)}';
 }
 
-List<String> daySubtotalParts(TransactionDayGroup group) {
+List<String> daySubtotalParts(
+  TransactionDayGroup group, {
+  Set<int> excludedCategoryIds = const {},
+}) {
   final parts = <String>[];
-  if (group.expense > 0) {
-    parts.add('支出 ${formatMoney(group.expense)}');
+  final expense = group.expenseExcluding(excludedCategoryIds);
+  final income = group.incomeExcluding(excludedCategoryIds);
+  if (expense > 0) {
+    parts.add('支出 ${formatMoney(expense)}');
   }
-  if (group.income > 0) {
-    parts.add('收入 ${formatMoney(group.income)}');
+  if (income > 0) {
+    parts.add('收入 ${formatMoney(income)}');
   }
   return parts;
 }
 
-String daySubtotal(TransactionDayGroup group) {
-  return daySubtotalParts(group).join('  ');
+String daySubtotal(
+  TransactionDayGroup group, {
+  Set<int> excludedCategoryIds = const {},
+}) {
+  return daySubtotalParts(
+    group,
+    excludedCategoryIds: excludedCategoryIds,
+  ).join('  ');
 }
 
 String transactionMeta(Transaction transaction) {

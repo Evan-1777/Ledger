@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -233,8 +234,8 @@ func TestSettingsCRUDAndGuards(t *testing.T) {
 	var pm PaymentMethod
 	_ = json.NewDecoder(rec.Body).Decode(&pm)
 
-	// 2. Create a custom category
-	catBody := strings.NewReader(`{"name":"投资理财","sort_order":10}`)
+	// 2. Create a custom category excluded from stats
+	catBody := strings.NewReader(`{"name":"投资理财","sort_order":10,"exclude_from_stats":true}`)
 	req = httptest.NewRequest("POST", "/api/categories", catBody)
 	req.Header.Set("Authorization", authHeader)
 	rec = httptest.NewRecorder()
@@ -244,6 +245,64 @@ func TestSettingsCRUDAndGuards(t *testing.T) {
 	}
 	var cat Category
 	_ = json.NewDecoder(rec.Body).Decode(&cat)
+	if !cat.ExcludeFromStats {
+		t.Fatalf("expected created category to be excluded from stats")
+	}
+
+	// 2a. List reflects the flag
+	req = httptest.NewRequest("GET", "/api/categories", nil)
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to list categories: %d", rec.Code)
+	}
+	var listed []Category
+	if err := json.NewDecoder(rec.Body).Decode(&listed); err != nil {
+		t.Fatalf("failed to decode categories: %v", err)
+	}
+	var found bool
+	for _, item := range listed {
+		if item.ID == cat.ID {
+			found = true
+			if !item.ExcludeFromStats {
+				t.Fatalf("expected listed category to be excluded from stats")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("created category missing from list")
+	}
+
+	// 2b. Update without the flag preserves it
+	catUpdate, _ := json.Marshal(map[string]any{"name": "投资理财", "sort_order": 10})
+	req = httptest.NewRequest("PUT", "/api/categories/"+strconv.FormatInt(cat.ID, 10), strings.NewReader(string(catUpdate)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to update category: %d", rec.Code)
+	}
+	var updated Category
+	_ = json.NewDecoder(rec.Body).Decode(&updated)
+	if !updated.ExcludeFromStats {
+		t.Fatalf("expected update without the flag to preserve exclusion")
+	}
+
+	// 2c. Explicit false restores inclusion
+	catUpdate, _ = json.Marshal(map[string]any{"name": "投资理财", "sort_order": 10, "exclude_from_stats": false})
+	req = httptest.NewRequest("PUT", "/api/categories/"+strconv.FormatInt(cat.ID, 10), strings.NewReader(string(catUpdate)))
+	req.Header.Set("Authorization", authHeader)
+	rec = httptest.NewRecorder()
+	s.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("failed to update category with explicit flag: %d", rec.Code)
+	}
+	updated = Category{}
+	_ = json.NewDecoder(rec.Body).Decode(&updated)
+	if updated.ExcludeFromStats {
+		t.Fatalf("expected explicit false to restore inclusion")
+	}
 
 	// 3. Create a tag under this category
 	tagJSON, _ := json.Marshal(map[string]any{"category_id": cat.ID, "name": "基金定投", "sort_order": 1})
@@ -506,6 +565,153 @@ func TestStatsSummary(t *testing.T) {
 	}
 	if len(stats.MonthlyTrends) != 6 {
 		t.Errorf("expected 6 monthly trend records, got %d", len(stats.MonthlyTrends))
+	}
+	if stats.WeekIncome != 8000.0 || stats.LastMonthIncome != 0 {
+		t.Errorf("unexpected income summaries: week=%v lastMonth=%v", stats.WeekIncome, stats.LastMonthIncome)
+	}
+	if len(stats.IncomeCategoryDistribution) != 1 || stats.IncomeCategoryDistribution[0].Amount != 8000.0 || stats.IncomeCategoryDistribution[0].Percentage != 100.0 {
+		t.Errorf("unexpected income category distribution: %+v", stats.IncomeCategoryDistribution)
+	}
+	if len(stats.IncomePaymentDistribution) != 1 || stats.IncomePaymentDistribution[0].Amount != 8000.0 {
+		t.Errorf("unexpected income payment distribution: %+v", stats.IncomePaymentDistribution)
+	}
+}
+
+func TestStatsIncomeAndExclusionFilter(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+	lastMonthAt := monthStart.AddDate(0, -1, 0).AddDate(0, 0, 14).Add(12 * time.Hour)
+
+	createCategory := func(name, catType string) (int64, int64) {
+		res, err := s.db.Exec("INSERT INTO categories (name, sort_order, type) VALUES (?, 90, ?)", name, catType)
+		if err != nil {
+			t.Fatalf("failed to insert category %s: %v", name, err)
+		}
+		catID, _ := res.LastInsertId()
+		res, err = s.db.Exec("INSERT INTO tags (category_id, name, sort_order) VALUES (?, '默认', 1)", catID)
+		if err != nil {
+			t.Fatalf("failed to insert tag for %s: %v", name, err)
+		}
+		tagID, _ := res.LastInsertId()
+		return catID, tagID
+	}
+
+	insertTx := func(amount int64, txType string, pmID, catID, tagID int64, at time.Time) {
+		_, err := s.db.Exec(
+			"INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at, type) VALUES (?, 'stats test', ?, ?, ?, ?, ?)",
+			amount, pmID, catID, tagID, at.UTC().Format(time.RFC3339), txType,
+		)
+		if err != nil {
+			t.Fatalf("failed to insert transaction: %v", err)
+		}
+	}
+
+	bigIncome, bigIncomeTag := createCategory("大额收入", "income")
+	smallIncome, smallIncomeTag := createCategory("小额收入", "income")
+	transferIncome, transferIncomeTag := createCategory("内部转入", "income")
+	normalExpense, normalExpenseTag := createCategory("日常支出测试", "expense")
+	excludedExpense, excludedExpenseTag := createCategory("还款测试", "expense")
+
+	insertTx(600000, "income", 1, bigIncome, bigIncomeTag, now)
+	insertTx(200000, "income", 1, smallIncome, smallIncomeTag, now)
+	insertTx(500000, "income", 1, transferIncome, transferIncomeTag, now)
+	insertTx(100000, "income", 1, bigIncome, bigIncomeTag, lastMonthAt)
+	insertTx(-20000, "expense", 1, normalExpense, normalExpenseTag, now)
+	insertTx(-10000, "expense", 1, normalExpense, normalExpenseTag, lastMonthAt)
+	insertTx(-50000, "expense", 2, excludedExpense, excludedExpenseTag, now)
+	insertTx(-5000, "expense", 2, excludedExpense, excludedExpenseTag, lastMonthAt)
+
+	fetchStats := func() StatsSummaryResponse {
+		req := httptest.NewRequest("GET", "/api/stats/summary", nil)
+		req.Header.Set("Authorization", authHeader)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for stats summary, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var stats StatsSummaryResponse
+		if err := json.NewDecoder(rec.Body).Decode(&stats); err != nil {
+			t.Fatalf("failed to decode stats: %v", err)
+		}
+		return stats
+	}
+
+	before := fetchStats()
+	if before.WeekIncome != 13000 || before.MonthIncome != 13000 || before.LastMonthIncome != 1000 {
+		t.Errorf("unexpected income totals: week=%v month=%v lastMonth=%v", before.WeekIncome, before.MonthIncome, before.LastMonthIncome)
+	}
+	if before.WeekExpense != 700 || before.MonthExpense != 700 || before.LastMonthExpense != 150 {
+		t.Errorf("unexpected expense totals: week=%v month=%v lastMonth=%v", before.WeekExpense, before.MonthExpense, before.LastMonthExpense)
+	}
+	if before.MonthBalance != 12300 || before.SavingsRate != 94.6 {
+		t.Errorf("unexpected balance/savings: balance=%v rate=%v", before.MonthBalance, before.SavingsRate)
+	}
+	if len(before.IncomeCategoryDistribution) != 3 {
+		t.Fatalf("expected 3 income categories, got %d", len(before.IncomeCategoryDistribution))
+	}
+	wantIncomeOrder := []string{"大额收入", "内部转入", "小额收入"}
+	wantIncomeAmounts := []float64{6000, 5000, 2000}
+	wantIncomePcts := []float64{46.2, 38.5, 15.4}
+	for i, item := range before.IncomeCategoryDistribution {
+		if item.Name != wantIncomeOrder[i] || item.Amount != wantIncomeAmounts[i] || item.Percentage != wantIncomePcts[i] {
+			t.Errorf("income distribution[%d] = %+v, want name=%s amount=%v percentage=%v", i, item, wantIncomeOrder[i], wantIncomeAmounts[i], wantIncomePcts[i])
+		}
+		if len(item.Tags) != 1 || item.Tags[0].Percentage != 100.0 {
+			t.Errorf("income category %s missing tag drill-down: %+v", item.Name, item.Tags)
+		}
+	}
+	if len(before.PaymentDistribution) != 2 {
+		t.Fatalf("expected 2 expense channels, got %d", len(before.PaymentDistribution))
+	}
+	if before.PaymentDistribution[0].Name != "支付宝" || before.PaymentDistribution[0].Amount != 500 || before.PaymentDistribution[0].Percentage != 71.4 {
+		t.Errorf("unexpected leading expense channel: %+v", before.PaymentDistribution[0])
+	}
+	if len(before.IncomePaymentDistribution) != 1 || before.IncomePaymentDistribution[0].Amount != 13000 || before.IncomePaymentDistribution[0].Percentage != 100 {
+		t.Errorf("unexpected income channels: %+v", before.IncomePaymentDistribution)
+	}
+
+	if _, err := s.db.Exec("UPDATE categories SET exclude_from_stats = 1 WHERE id IN (?, ?)", transferIncome, excludedExpense); err != nil {
+		t.Fatalf("failed to exclude categories: %v", err)
+	}
+
+	after := fetchStats()
+	if after.WeekIncome != 8000 || after.MonthIncome != 8000 || after.LastMonthIncome != 1000 {
+		t.Errorf("excluded income totals wrong: week=%v month=%v lastMonth=%v", after.WeekIncome, after.MonthIncome, after.LastMonthIncome)
+	}
+	if after.WeekExpense != 200 || after.MonthExpense != 200 || after.LastMonthExpense != 100 {
+		t.Errorf("excluded expense totals wrong: week=%v month=%v lastMonth=%v", after.WeekExpense, after.MonthExpense, after.LastMonthExpense)
+	}
+	if after.MonthBalance != 7800 || after.SavingsRate != 97.5 {
+		t.Errorf("excluded balance/savings wrong: balance=%v rate=%v", after.MonthBalance, after.SavingsRate)
+	}
+	if len(after.IncomeCategoryDistribution) != 2 {
+		t.Fatalf("expected 2 included income categories, got %d", len(after.IncomeCategoryDistribution))
+	}
+	if after.IncomeCategoryDistribution[0].Name != "大额收入" || after.IncomeCategoryDistribution[0].Amount != 6000 || after.IncomeCategoryDistribution[0].Percentage != 75 {
+		t.Errorf("unexpected included income category: %+v", after.IncomeCategoryDistribution[0])
+	}
+	if after.IncomeCategoryDistribution[1].Name != "小额收入" || after.IncomeCategoryDistribution[1].Amount != 2000 || after.IncomeCategoryDistribution[1].Percentage != 25 {
+		t.Errorf("unexpected included income category: %+v", after.IncomeCategoryDistribution[1])
+	}
+	if len(after.CategoryDistribution) != 1 || after.CategoryDistribution[0].Name != "日常支出测试" || after.CategoryDistribution[0].Percentage != 100 {
+		t.Errorf("unexpected included expense categories: %+v", after.CategoryDistribution)
+	}
+	if len(after.PaymentDistribution) != 1 || after.PaymentDistribution[0].Name != "微信支付" || after.PaymentDistribution[0].Amount != 200 || after.PaymentDistribution[0].Percentage != 100 {
+		t.Errorf("unexpected included expense channels: %+v", after.PaymentDistribution)
+	}
+	if len(after.IncomePaymentDistribution) != 1 || after.IncomePaymentDistribution[0].Amount != 8000 {
+		t.Errorf("unexpected included income channels: %+v", after.IncomePaymentDistribution)
+	}
+	lastTrend := after.MonthlyTrends[len(after.MonthlyTrends)-1]
+	if lastTrend.Month != now.Format("2006-01") || lastTrend.Expense != 200 || lastTrend.Income != 8000 {
+		t.Errorf("unexpected current trend: %+v", lastTrend)
+	}
+	if !reflect.DeepEqual(after.AssetSummary, before.AssetSummary) {
+		t.Errorf("asset summary changed after stats exclusion: before=%+v after=%+v", before.AssetSummary, after.AssetSummary)
 	}
 }
 
@@ -938,9 +1144,9 @@ func TestRepaymentFullFlowAndInvariants(t *testing.T) {
 
 	// Repayment with source payment method being liability -> 400
 	repayWrongSource, _ := json.Marshal(map[string]any{
-		"type":                      "repayment",
-		"amount":                    100.0,
-		"payment_method_id":         liabPMID,
+		"type":                     "repayment",
+		"amount":                   100.0,
+		"payment_method_id":        liabPMID,
 		"source_payment_method_id": liabPMID,
 	})
 	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayWrongSource)))
@@ -1001,12 +1207,12 @@ func TestRepaymentFullFlowAndInvariants(t *testing.T) {
 
 	// 5. Create a valid repayment of 500.00 (from 招商银行卡 to 招商信用卡)
 	repayJSON, _ := json.Marshal(map[string]any{
-		"type":                      "repayment",
-		"amount":                    500.0,
-		"description":               "偿还信用卡",
-		"payment_method_id":         liabPMID,
+		"type":                     "repayment",
+		"amount":                   500.0,
+		"description":              "偿还信用卡",
+		"payment_method_id":        liabPMID,
 		"source_payment_method_id": assetPMID,
-		"transacted_at":             nowISO,
+		"transacted_at":            nowISO,
 	})
 	req = httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(repayJSON)))
 	req.Header.Set("Authorization", authHeader)
@@ -1035,14 +1241,14 @@ func TestRepaymentFullFlowAndInvariants(t *testing.T) {
 
 	// 6. Test PUT update on the repayment transaction
 	updateRepayJSON, _ := json.Marshal(map[string]any{
-		"type":                      "repayment",
-		"amount":                    600.0,
-		"description":               "偿还信用卡(更新为600)",
-		"payment_method_id":         liabPMID,
+		"type":                     "repayment",
+		"amount":                   600.0,
+		"description":              "偿还信用卡(更新为600)",
+		"payment_method_id":        liabPMID,
 		"source_payment_method_id": assetPMID,
-		"category_id":               createdRepay.CategoryID,
-		"tag_id":                    createdRepay.TagID,
-		"transacted_at":             nowISO,
+		"category_id":              createdRepay.CategoryID,
+		"tag_id":                   createdRepay.TagID,
+		"transacted_at":            nowISO,
 	})
 	req = httptest.NewRequest("PUT", "/api/transactions/"+strconv.FormatInt(createdRepay.ID, 10), strings.NewReader(string(updateRepayJSON)))
 	req.Header.Set("Authorization", authHeader)
@@ -1737,6 +1943,3 @@ func TestTransferTransactionWithFee(t *testing.T) {
 		t.Errorf("P&L polluted: expected CategoryDistribution empty, got %d items", len(statsAfter.CategoryDistribution))
 	}
 }
-
-
-

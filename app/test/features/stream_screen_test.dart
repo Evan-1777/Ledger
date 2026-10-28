@@ -7,6 +7,15 @@ import 'package:ledger_app/features/stream/stream_screen.dart';
 
 import '../support/harness.dart';
 
+Clip popupClip(WidgetTester tester, Finder finder) {
+  final ancestor = find.ancestor(
+    of: finder,
+    matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+  );
+  final target = ancestor.evaluate().isEmpty ? finder : ancestor.first;
+  return tester.widget<PopupMenuButton<dynamic>>(target).clipBehavior;
+}
+
 void main() {
   setUpAll(initTestLocale);
 
@@ -24,6 +33,10 @@ void main() {
     expect(find.text('¥9,551.50'), findsOneWidget);
     expect(find.text('午餐 · 牛肉面'), findsOneWidget);
     expect(find.text('全部'), findsOneWidget);
+    expect(
+      popupClip(tester, find.byKey(const ValueKey('filter-menu'))),
+      Clip.antiAlias,
+    );
 
     await tester.tap(find.byKey(const ValueKey('filter-menu')));
     await tester.pumpAndSettle();
@@ -151,6 +164,7 @@ void main() {
       controllers: controllers,
     );
 
+    expect(popupClip(tester, find.byTooltip('更多操作')), Clip.antiAlias);
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
@@ -170,6 +184,70 @@ void main() {
 
     expect(deletes.length, 1);
     expect(find.text('账单已删除'), findsOneWidget);
+  });
+
+  testWidgets('excluded categories leave the day subtotal but keep rows', (
+    tester,
+  ) async {
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/categories') {
+        return jsonResponse([
+          {
+            'id': 1,
+            'name': '餐饮美食',
+            'sort_order': 1,
+            'type': 'expense',
+            'exclude_from_stats': true,
+            'created_at': '',
+            'tags': [
+              {'id': 1, 'category_id': 1, 'name': '午餐', 'sort_order': 1},
+            ],
+          },
+          {
+            'id': 2,
+            'name': '交通出行',
+            'sort_order': 2,
+            'type': 'expense',
+            'exclude_from_stats': false,
+            'created_at': '',
+            'tags': [
+              {'id': 2, 'category_id': 2, 'name': '地铁', 'sort_order': 1},
+            ],
+          },
+        ]);
+      }
+      if (request.url.path == '/api/transactions') {
+        return jsonResponse([
+          transactionJson(id: 1, amountCents: -2800),
+          transactionJson(
+            id: 2,
+            amountCents: -1000,
+            description: '地铁通勤',
+            categoryId: 2,
+            categoryName: '交通出行',
+            tagId: 2,
+            tagName: '地铁',
+          ),
+        ]);
+      }
+      if (request.url.path == '/api/stats/summary') {
+        return jsonResponse(
+          statsJson(monthExpense: 10, monthIncome: 0, monthBalance: -10),
+        );
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    expect(find.text('支出 ¥10.00'), findsOneWidget);
+    expect(find.text('¥10.00'), findsOneWidget);
+    expect(find.text('午餐 · 牛肉面'), findsOneWidget);
+    expect(find.text('地铁通勤'), findsOneWidget);
   });
 
   testWidgets('stream fits 320dp with 2x text', (tester) async {

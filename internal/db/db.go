@@ -55,6 +55,7 @@ func migrateAndSeed(db *sql.DB) error {
 		name TEXT UNIQUE NOT NULL,
 		sort_order INTEGER DEFAULT 0,
 		type TEXT NOT NULL DEFAULT 'expense',
+		exclude_from_stats INTEGER NOT NULL DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -239,6 +240,7 @@ func migrateCategoriesColumns(tx *sql.Tx) error {
 	defer rows.Close()
 
 	hasType := false
+	hasExcludeFromStats := false
 	for rows.Next() {
 		var cid int
 		var name, colType string
@@ -247,8 +249,11 @@ func migrateCategoriesColumns(tx *sql.Tx) error {
 		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
 			return fmt.Errorf("failed to scan table_info: %w", err)
 		}
-		if name == "type" {
+		switch name {
+		case "type":
 			hasType = true
+		case "exclude_from_stats":
+			hasExcludeFromStats = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -266,6 +271,11 @@ func migrateCategoriesColumns(tx *sql.Tx) error {
 		}
 		if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE name = '债务偿还' AND type != 'system'"); err != nil {
 			return fmt.Errorf("failed to backfill 债务偿还 type: %w", err)
+		}
+	}
+	if !hasExcludeFromStats {
+		if _, err := tx.Exec("ALTER TABLE categories ADD COLUMN exclude_from_stats INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return fmt.Errorf("failed to add column exclude_from_stats to categories: %w", err)
 		}
 	}
 
@@ -436,4 +446,3 @@ func ensureSystemTransferCategory(tx *sql.Tx) error {
 
 	return nil
 }
-

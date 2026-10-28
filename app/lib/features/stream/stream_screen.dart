@@ -21,6 +21,10 @@ class StreamScreen extends StatelessWidget {
     final ledger = context.watch<LedgerController>();
     final now = DateTime.now();
     final groups = groupTransactions(ledger.transactions);
+    final excludedCategoryIds = ledger.categories
+        .where((category) => category.excludeFromStats)
+        .map((category) => category.id)
+        .toSet();
 
     return RefreshIndicator(
       onRefresh: ledger.loadAll,
@@ -65,7 +69,11 @@ class StreamScreen extends StatelessWidget {
                   )
                 else
                   for (final group in groups) ...[
-                    _DayCard(group: group, now: now),
+                    _DayCard(
+                      group: group,
+                      now: now,
+                      excludedCategoryIds: excludedCategoryIds,
+                    ),
                     const SizedBox(height: 12),
                   ],
               ]),
@@ -249,6 +257,7 @@ class _FilterMenu extends StatelessWidget {
     return PopupMenuButton<TransactionFilter>(
       key: const ValueKey('filter-menu'),
       tooltip: '筛选',
+      clipBehavior: Clip.antiAlias,
       initialValue: selected,
       onSelected: onSelected,
       itemBuilder: (context) => [
@@ -315,15 +324,23 @@ class _FilterMenu extends StatelessWidget {
 }
 
 class _DayCard extends StatelessWidget {
-  const _DayCard({required this.group, required this.now});
+  const _DayCard({
+    required this.group,
+    required this.now,
+    required this.excludedCategoryIds,
+  });
 
   final TransactionDayGroup group;
   final DateTime now;
+  final Set<int> excludedCategoryIds;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final subtotal = daySubtotalParts(group);
+    final subtotal = daySubtotalParts(
+      group,
+      excludedCategoryIds: excludedCategoryIds,
+    );
     return LedgerCard(
       padding: EdgeInsets.zero,
       child: Column(
@@ -434,6 +451,7 @@ class _TransactionRow extends StatelessWidget {
             ),
             PopupMenuButton<_RowAction>(
               tooltip: '更多操作',
+              clipBehavior: Clip.antiAlias,
               onSelected: (action) => _handleAction(context, action),
               itemBuilder: (context) => const [
                 PopupMenuItem(value: _RowAction.edit, child: Text('编辑')),

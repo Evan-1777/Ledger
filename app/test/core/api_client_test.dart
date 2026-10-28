@@ -241,6 +241,46 @@ void main() {
     expect(bodies[1]['transacted_at'], '2026-10-19T04:42:00.000Z');
   });
 
+  test(
+    'category update sends the exclusion flag only when requested',
+    () async {
+      final bodies = <Map<String, dynamic>>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return jsonResponse({
+            'id': 1,
+            'name': '餐饮美食',
+            'sort_order': 1,
+            'type': 'expense',
+            'exclude_from_stats': true,
+            'created_at': '',
+            'tags': <Object?>[],
+          });
+        }),
+        baseUrl: () => 'https://ledger.test',
+        tokenProvider: () async => 'token',
+      );
+
+      await api.updateCategory(
+        1,
+        name: '餐饮美食',
+        sortOrder: 1,
+        type: CategoryType.expense,
+      );
+      await api.updateCategory(
+        1,
+        name: '餐饮美食',
+        sortOrder: 1,
+        type: CategoryType.expense,
+        excludeFromStats: true,
+      );
+
+      expect(bodies[0].containsKey('exclude_from_stats'), isFalse);
+      expect(bodies[1]['exclude_from_stats'], isTrue);
+    },
+  );
+
   test('tag update always includes the current sort order', () async {
     late http.Request captured;
     final api = ApiClient(

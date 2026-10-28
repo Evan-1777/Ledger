@@ -139,6 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   canMoveDown: i < list.length - 1,
                   onTap: () => TagSheet.show(context, list[i]),
                   onRename: () => _openCategoryDialog(list[i], _categoryType),
+                  onToggleStats: () => _toggleStats(list[i]),
                   onMoveUp: () => _move(list[i], -1),
                   onMoveDown: () => _move(list[i], 1),
                   onDelete: () => _deleteCategory(list[i]),
@@ -307,6 +308,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _toggleStats(Category category) async {
+    final excluded = !category.excludeFromStats;
+    try {
+      await context.read<LedgerController>().setCategoryExcluded(
+        category,
+        excluded,
+      );
+      if (!mounted) return;
+      showLedgerSnackBar(context, excluded ? '已设为不计入收支统计' : '已计入收支统计');
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      showLedgerSnackBar(context, error.message, isError: true);
+    }
+  }
+
   Future<void> _move(Category category, int direction) async {
     try {
       await context.read<LedgerController>().moveCategory(category, direction);
@@ -384,6 +400,7 @@ class _CategoryRow extends StatelessWidget {
     required this.canMoveDown,
     required this.onTap,
     required this.onRename,
+    required this.onToggleStats,
     required this.onMoveUp,
     required this.onMoveDown,
     required this.onDelete,
@@ -394,6 +411,7 @@ class _CategoryRow extends StatelessWidget {
   final bool canMoveDown;
   final VoidCallback onTap;
   final VoidCallback onRename;
+  final VoidCallback onToggleStats;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
   final VoidCallback onDelete;
@@ -433,7 +451,9 @@ class _CategoryRow extends StatelessWidget {
                     style: theme.textTheme.bodyLarge,
                   ),
                   Text(
-                    '${category.tags.length} 个细分标签',
+                    category.excludeFromStats
+                        ? '${category.tags.length} 个细分标签 · 不计入统计'
+                        : '${category.tags.length} 个细分标签',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -443,10 +463,13 @@ class _CategoryRow extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               tooltip: '分类操作',
+              clipBehavior: Clip.antiAlias,
               onSelected: (value) {
                 switch (value) {
                   case 'rename':
                     onRename();
+                  case 'stats':
+                    onToggleStats();
                   case 'up':
                     onMoveUp();
                   case 'down':
@@ -457,6 +480,10 @@ class _CategoryRow extends StatelessWidget {
               },
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'rename', child: Text('重命名')),
+                PopupMenuItem(
+                  value: 'stats',
+                  child: Text(category.excludeFromStats ? '计入收支统计' : '不计入收支统计'),
+                ),
                 PopupMenuItem(
                   value: 'up',
                   enabled: canMoveUp,
@@ -599,6 +626,7 @@ class _ChannelRow extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               tooltip: '账户操作',
+              clipBehavior: Clip.antiAlias,
               onSelected: (value) {
                 if (value == 'edit') {
                   onEdit();

@@ -100,6 +100,7 @@ Category category({
   int id = 1,
   String name = '餐饮美食',
   CategoryType type = CategoryType.expense,
+  bool excludeFromStats = false,
   int sortOrder = 1,
   List<Tag>? tags,
 }) => Category(
@@ -107,6 +108,7 @@ Category category({
   name: name,
   sortOrder: sortOrder,
   type: type,
+  excludeFromStats: excludeFromStats,
   tags: tags ?? const [Tag(id: 1, categoryId: 1, name: '午餐', sortOrder: 1)],
 );
 
@@ -180,13 +182,17 @@ class MemoryLedgerCache implements LedgerCache {
 
 StatsSummary emptyStats() => const StatsSummary(
   weekExpense: 0,
+  weekIncome: 0,
   monthExpense: 0,
-  lastMonthExpense: 0,
   monthIncome: 0,
+  lastMonthExpense: 0,
+  lastMonthIncome: 0,
   monthBalance: 0,
   savingsRate: 0,
   categoryDistribution: [],
+  incomeCategoryDistribution: [],
   paymentDistribution: [],
+  incomePaymentDistribution: [],
   monthlyTrends: [],
   assetSummary: AssetSummary(
     totalAssets: 0,

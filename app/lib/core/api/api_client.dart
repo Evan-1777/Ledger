@@ -209,11 +209,17 @@ class ApiClient {
     required String name,
     required int sortOrder,
     required CategoryType type,
+    bool? excludeFromStats,
   }) async {
     final decoded = await _expectOk(
       'PUT',
       '/api/categories/$id',
-      body: {'name': name, 'sort_order': sortOrder, 'type': type.api},
+      body: {
+        'name': name,
+        'sort_order': sortOrder,
+        'type': type.api,
+        'exclude_from_stats': ?excludeFromStats,
+      },
     );
     return _one(decoded, Category.fromJson);
   }

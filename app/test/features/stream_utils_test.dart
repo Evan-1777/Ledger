@@ -50,6 +50,34 @@ void main() {
     expect(daySubtotal(group), '支出 ¥28.00  收入 ¥3,200.00');
   });
 
+  test('day subtotals skip categories excluded from stats', () {
+    final list = [
+      transactionModel(id: 1, amountCents: -2800),
+      transactionModel(
+        id: 2,
+        amountCents: -1000,
+        categoryId: 2,
+        categoryName: '交通出行',
+      ),
+      transactionModel(
+        id: 3,
+        type: TransactionType.income,
+        amountCents: 320000,
+        categoryId: 4,
+        categoryName: '职业收入',
+      ),
+    ];
+    final group = groupTransactions(list).single;
+
+    expect(
+      daySubtotal(group, excludedCategoryIds: {1}),
+      '支出 ¥10.00  收入 ¥3,200.00',
+    );
+    expect(group.expenseExcluding({1}), 10);
+    expect(group.incomeExcluding({1}), 3200);
+    expect(daySubtotal(group), '支出 ¥38.00  收入 ¥3,200.00');
+  });
+
   test('day header includes relative label, date and weekday', () {
     final now = DateTime(2026, 10, 19, 12);
     final groups = groupTransactions([

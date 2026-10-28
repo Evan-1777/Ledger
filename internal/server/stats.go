@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"time"
@@ -63,16 +64,20 @@ type AssetSummary struct {
 }
 
 type StatsSummaryResponse struct {
-	WeekExpense          float64             `json:"week_expense"`
-	MonthExpense         float64             `json:"month_expense"`
-	LastMonthExpense     float64             `json:"last_month_expense"`
-	MonthIncome          float64             `json:"month_income"`
-	MonthBalance         float64             `json:"month_balance"`
-	SavingsRate          float64             `json:"savings_rate"`
-	CategoryDistribution []CategoryStat      `json:"category_distribution"`
-	PaymentDistribution  []PaymentMethodStat `json:"payment_distribution"`
-	MonthlyTrends        []MonthlyTrend      `json:"monthly_trends"`
-	AssetSummary         AssetSummary        `json:"asset_summary"`
+	WeekExpense                float64             `json:"week_expense"`
+	WeekIncome                 float64             `json:"week_income"`
+	MonthExpense               float64             `json:"month_expense"`
+	MonthIncome                float64             `json:"month_income"`
+	LastMonthExpense           float64             `json:"last_month_expense"`
+	LastMonthIncome            float64             `json:"last_month_income"`
+	MonthBalance               float64             `json:"month_balance"`
+	SavingsRate                float64             `json:"savings_rate"`
+	CategoryDistribution       []CategoryStat      `json:"category_distribution"`
+	IncomeCategoryDistribution []CategoryStat      `json:"income_category_distribution"`
+	PaymentDistribution        []PaymentMethodStat `json:"payment_distribution"`
+	IncomePaymentDistribution  []PaymentMethodStat `json:"income_payment_distribution"`
+	MonthlyTrends              []MonthlyTrend      `json:"monthly_trends"`
+	AssetSummary               AssetSummary        `json:"asset_summary"`
 }
 
 func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
@@ -105,48 +110,44 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	lastMonthEndUTC := lastMonthEnd.UTC().Format(time.RFC3339)
 
 	// 1. Week expense
-	var weekExpenseCents int64
-	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
-		weekStartUTC, weekEndUTC,
-	).Scan(&weekExpenseCents); err != nil {
+	weekExpense, err := s.sumByType(r.Context(), "expense", weekStartUTC, weekEndUTC)
+	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query week expense: "+err.Error())
 		return
 	}
-	weekExpense := math.Abs(float64(weekExpenseCents)) / 100.0
 
 	// 2. Month expense
-	var monthExpenseCents int64
-	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
-		monthStartUTC, monthEndUTC,
-	).Scan(&monthExpenseCents); err != nil {
+	monthExpense, err := s.sumByType(r.Context(), "expense", monthStartUTC, monthEndUTC)
+	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month expense: "+err.Error())
 		return
 	}
-	monthExpense := math.Abs(float64(monthExpenseCents)) / 100.0
 
 	// 3. Last month expense
-	var lastMonthExpenseCents int64
-	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
-		lastMonthStartUTC, lastMonthEndUTC,
-	).Scan(&lastMonthExpenseCents); err != nil {
+	lastMonthExpense, err := s.sumByType(r.Context(), "expense", lastMonthStartUTC, lastMonthEndUTC)
+	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query last month expense: "+err.Error())
 		return
 	}
-	lastMonthExpense := math.Abs(float64(lastMonthExpenseCents)) / 100.0
 
-	// 4. Month income
-	var monthIncomeCents int64
-	if err := s.db.QueryRowContext(r.Context(),
-		"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'income'",
-		monthStartUTC, monthEndUTC,
-	).Scan(&monthIncomeCents); err != nil {
+	// 4. Income summaries
+	weekIncome, err := s.sumByType(r.Context(), "income", weekStartUTC, weekEndUTC)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query week income: "+err.Error())
+		return
+	}
+
+	monthIncome, err := s.sumByType(r.Context(), "income", monthStartUTC, monthEndUTC)
+	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month income: "+err.Error())
 		return
 	}
-	monthIncome := float64(monthIncomeCents) / 100.0
+
+	lastMonthIncome, err := s.sumByType(r.Context(), "income", lastMonthStartUTC, lastMonthEndUTC)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query last month income: "+err.Error())
+		return
+	}
 
 	monthBalance := monthIncome - monthExpense
 	var savingsRate float64
@@ -154,131 +155,29 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		savingsRate = math.Round((monthBalance/monthIncome)*1000) / 10
 	}
 
-	// 5. Category distribution (current month)
-	catDist := make([]CategoryStat, 0)
-	catIndex := make(map[int64]int)
-
-	catRows, err := s.db.QueryContext(r.Context(), `
-		SELECT c.id, c.name, COALESCE(SUM(t.amount_cents), 0)
-		FROM categories c
-		JOIN transactions t ON t.category_id = c.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
-		GROUP BY c.id, c.name
-		ORDER BY SUM(t.amount_cents) ASC
-	`, monthStartUTC, monthEndUTC)
+	// 5. Category and payment distributions (current month)
+	catDist, err := s.categoryDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query category distribution: "+err.Error())
 		return
 	}
-	defer catRows.Close()
 
-	for catRows.Next() {
-		var catID int64
-		var catName string
-		var catCents int64
-		if err := catRows.Scan(&catID, &catName, &catCents); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "failed to scan category distribution: "+err.Error())
-			return
-		}
-		amt := math.Abs(float64(catCents)) / 100.0
-		var pct float64
-		if monthExpense > 0 {
-			pct = math.Round((amt/monthExpense)*1000) / 10
-		}
-		catIndex[catID] = len(catDist)
-		catDist = append(catDist, CategoryStat{
-			ID:         catID,
-			Name:       catName,
-			Amount:     amt,
-			Percentage: pct,
-			Tags:       make([]TagStat, 0),
-		})
-	}
-	if err := catRows.Err(); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "error reading category distribution: "+err.Error())
-		return
-	}
-
-	// Sub-tag drill-down
-	tagRows, err := s.db.QueryContext(r.Context(), `
-		SELECT t.category_id, tg.id, tg.name, COALESCE(SUM(t.amount_cents), 0)
-		FROM tags tg
-		JOIN transactions t ON t.tag_id = tg.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
-		GROUP BY t.category_id, tg.id, tg.name
-		ORDER BY SUM(t.amount_cents) ASC
-	`, monthStartUTC, monthEndUTC)
+	incomeCatDist, err := s.categoryDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to query tag distribution: "+err.Error())
-		return
-	}
-	defer tagRows.Close()
-
-	for tagRows.Next() {
-		var catID, tagID int64
-		var tagName string
-		var tagCents int64
-		if err := tagRows.Scan(&catID, &tagID, &tagName, &tagCents); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "failed to scan tag distribution: "+err.Error())
-			return
-		}
-		if idx, ok := catIndex[catID]; ok {
-			amt := math.Abs(float64(tagCents)) / 100.0
-			var pct float64
-			if catDist[idx].Amount > 0 {
-				pct = math.Round((amt/catDist[idx].Amount)*1000) / 10
-			}
-			catDist[idx].Tags = append(catDist[idx].Tags, TagStat{
-				ID:         tagID,
-				Name:       tagName,
-				Amount:     amt,
-				Percentage: pct,
-			})
-		}
-	}
-	if err := tagRows.Err(); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "error reading tag distribution: "+err.Error())
+		writeJSONError(w, http.StatusInternalServerError, "failed to query income category distribution: "+err.Error())
 		return
 	}
 
 	// 6. Payment distribution (current month)
-	pmDist := make([]PaymentMethodStat, 0)
-	pmRows, err := s.db.QueryContext(r.Context(), `
-		SELECT pm.id, pm.name, COALESCE(SUM(t.amount_cents), 0)
-		FROM payment_methods pm
-		JOIN transactions t ON t.payment_method_id = pm.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = 'expense'
-		GROUP BY pm.id, pm.name
-		ORDER BY SUM(t.amount_cents) ASC
-	`, monthStartUTC, monthEndUTC)
+	pmDist, err := s.paymentDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query payment distribution: "+err.Error())
 		return
 	}
-	defer pmRows.Close()
 
-	for pmRows.Next() {
-		var pmID int64
-		var pmName string
-		var pmCents int64
-		if err := pmRows.Scan(&pmID, &pmName, &pmCents); err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "failed to scan payment distribution: "+err.Error())
-			return
-		}
-		amt := math.Abs(float64(pmCents)) / 100.0
-		var pct float64
-		if monthExpense > 0 {
-			pct = math.Round((amt/monthExpense)*1000) / 10
-		}
-		pmDist = append(pmDist, PaymentMethodStat{
-			ID:         pmID,
-			Name:       pmName,
-			Amount:     amt,
-			Percentage: pct,
-		})
-	}
-	if err := pmRows.Err(); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "error reading payment distribution: "+err.Error())
+	incomePmDist, err := s.paymentDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query income payment distribution: "+err.Error())
 		return
 	}
 
@@ -290,27 +189,22 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		mStartUTC := mStart.UTC().Format(time.RFC3339)
 		mEndUTC := mEnd.UTC().Format(time.RFC3339)
 
-		var expCents, incCents int64
-		if err := s.db.QueryRowContext(r.Context(),
-			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'expense'",
-			mStartUTC, mEndUTC,
-		).Scan(&expCents); err != nil {
+		trendExpense, err := s.sumByType(r.Context(), "expense", mStartUTC, mEndUTC)
+		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend expense: "+err.Error())
 			return
 		}
 
-		if err := s.db.QueryRowContext(r.Context(),
-			"SELECT COALESCE(SUM(amount_cents), 0) FROM transactions WHERE transacted_at >= ? AND transacted_at <= ? AND type = 'income'",
-			mStartUTC, mEndUTC,
-		).Scan(&incCents); err != nil {
+		trendIncome, err := s.sumByType(r.Context(), "income", mStartUTC, mEndUTC)
+		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend income: "+err.Error())
 			return
 		}
 
 		monthlyTrends = append(monthlyTrends, MonthlyTrend{
 			Month:   mStart.Format("2006-01"),
-			Expense: math.Abs(float64(expCents)) / 100.0,
-			Income:  float64(incCents) / 100.0,
+			Expense: trendExpense,
+			Income:  trendIncome,
 		})
 	}
 
@@ -427,17 +321,156 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := StatsSummaryResponse{
-		WeekExpense:          weekExpense,
-		MonthExpense:         monthExpense,
-		LastMonthExpense:     lastMonthExpense,
-		MonthIncome:          monthIncome,
-		MonthBalance:         monthBalance,
-		SavingsRate:          savingsRate,
-		CategoryDistribution: catDist,
-		PaymentDistribution:  pmDist,
-		MonthlyTrends:        monthlyTrends,
-		AssetSummary:         assetSummary,
+		WeekExpense:                weekExpense,
+		WeekIncome:                 weekIncome,
+		MonthExpense:               monthExpense,
+		MonthIncome:                monthIncome,
+		LastMonthExpense:           lastMonthExpense,
+		LastMonthIncome:            lastMonthIncome,
+		MonthBalance:               monthBalance,
+		SavingsRate:                savingsRate,
+		CategoryDistribution:       catDist,
+		IncomeCategoryDistribution: incomeCatDist,
+		PaymentDistribution:        pmDist,
+		IncomePaymentDistribution:  incomePmDist,
+		MonthlyTrends:              monthlyTrends,
+		AssetSummary:               assetSummary,
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) sumByType(ctx context.Context, txType, startUTC, endUTC string) (float64, error) {
+	var cents int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(t.amount_cents), 0)
+		FROM transactions t
+		JOIN categories c ON c.id = t.category_id
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+	`, startUTC, endUTC, txType).Scan(&cents)
+	if err != nil {
+		return 0, err
+	}
+	return math.Abs(float64(cents)) / 100.0, nil
+}
+
+func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64) ([]CategoryStat, error) {
+	dist := make([]CategoryStat, 0)
+	index := make(map[int64]int)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.name, COALESCE(SUM(t.amount_cents), 0)
+		FROM categories c
+		JOIN transactions t ON t.category_id = c.id
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		GROUP BY c.id, c.name
+		ORDER BY ABS(SUM(t.amount_cents)) DESC
+	`, startUTC, endUTC, txType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var catID int64
+		var catName string
+		var catCents int64
+		if err := rows.Scan(&catID, &catName, &catCents); err != nil {
+			return nil, err
+		}
+		amt := math.Abs(float64(catCents)) / 100.0
+		var pct float64
+		if total > 0 {
+			pct = math.Round((amt/total)*1000) / 10
+		}
+		index[catID] = len(dist)
+		dist = append(dist, CategoryStat{
+			ID:         catID,
+			Name:       catName,
+			Amount:     amt,
+			Percentage: pct,
+			Tags:       make([]TagStat, 0),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	tagRows, err := s.db.QueryContext(ctx, `
+		SELECT t.category_id, tg.id, tg.name, COALESCE(SUM(t.amount_cents), 0)
+		FROM tags tg
+		JOIN transactions t ON t.tag_id = tg.id
+		JOIN categories c ON c.id = t.category_id
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		GROUP BY t.category_id, tg.id, tg.name
+		ORDER BY ABS(SUM(t.amount_cents)) DESC
+	`, startUTC, endUTC, txType)
+	if err != nil {
+		return nil, err
+	}
+	defer tagRows.Close()
+
+	for tagRows.Next() {
+		var catID, tagID int64
+		var tagName string
+		var tagCents int64
+		if err := tagRows.Scan(&catID, &tagID, &tagName, &tagCents); err != nil {
+			return nil, err
+		}
+		if idx, ok := index[catID]; ok {
+			amt := math.Abs(float64(tagCents)) / 100.0
+			var pct float64
+			if dist[idx].Amount > 0 {
+				pct = math.Round((amt/dist[idx].Amount)*1000) / 10
+			}
+			dist[idx].Tags = append(dist[idx].Tags, TagStat{
+				ID:         tagID,
+				Name:       tagName,
+				Amount:     amt,
+				Percentage: pct,
+			})
+		}
+	}
+
+	return dist, tagRows.Err()
+}
+
+func (s *Server) paymentDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64) ([]PaymentMethodStat, error) {
+	dist := make([]PaymentMethodStat, 0)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT pm.id, pm.name, COALESCE(SUM(t.amount_cents), 0)
+		FROM payment_methods pm
+		JOIN transactions t ON t.payment_method_id = pm.id
+		JOIN categories c ON c.id = t.category_id
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		GROUP BY pm.id, pm.name
+		ORDER BY ABS(SUM(t.amount_cents)) DESC
+	`, startUTC, endUTC, txType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pmID int64
+		var pmName string
+		var pmCents int64
+		if err := rows.Scan(&pmID, &pmName, &pmCents); err != nil {
+			return nil, err
+		}
+		amt := math.Abs(float64(pmCents)) / 100.0
+		var pct float64
+		if total > 0 {
+			pct = math.Round((amt/total)*1000) / 10
+		}
+		dist = append(dist, PaymentMethodStat{
+			ID:         pmID,
+			Name:       pmName,
+			Amount:     amt,
+			Percentage: pct,
+		})
+	}
+
+	return dist, rows.Err()
 }

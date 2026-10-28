@@ -63,6 +63,51 @@ void main() {
     expect(find.text('午餐'), findsOneWidget);
   });
 
+  testWidgets('income view swaps metrics, composition and channels', (
+    tester,
+  ) async {
+    final controllers = await testControllersWithHandler(defaultApi);
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StatsScreen(),
+      controllers: controllers,
+      size: const Size(390, 1400),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('支出构成'), findsOneWidget);
+    expect(find.text('本周花费'), findsOneWidget);
+    expect(find.text('支付途径'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('stats-view-income')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('收入构成'), findsOneWidget);
+    expect(find.text('本周收入'), findsOneWidget);
+    expect(find.text('当月收入'), findsOneWidget);
+    expect(find.text('上月收入'), findsOneWidget);
+    expect(find.text('日均收入'), findsOneWidget);
+    expect(find.text('收入途径'), findsOneWidget);
+    expect(find.text('本月收入'), findsWidgets);
+    expect(find.text('支出构成'), findsNothing);
+    expect(find.text('本周花费'), findsNothing);
+    expect(find.text('支付途径'), findsNothing);
+    expect(find.text('本月支出'), findsNothing);
+
+    await tester.tap(find.text('趋势'));
+    await tester.pumpAndSettle();
+    expect(find.text('近 6 个月收支'), findsOneWidget);
+    await tester.tap(find.text('构成'));
+    await tester.pumpAndSettle();
+    expect(find.text('收入构成'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('stats-view-expense')));
+    await tester.pumpAndSettle();
+    expect(find.text('支出构成'), findsOneWidget);
+    expect(find.text('本周花费'), findsOneWidget);
+  });
+
   testWidgets('metric cards share height across all four', (tester) async {
     final controllers = await testControllersWithHandler(defaultApi);
     await controllers.ledger.loadAll();
@@ -220,14 +265,29 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('stats-view-income')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const ValueKey('stats-view-income')));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('收入构成'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('收入构成'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
       find.text('趋势'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.pumpAndSettle();
     await tester.tap(find.text('趋势'));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    expect(find.text('近 6 个月收支'), findsOneWidget);
   });
 }

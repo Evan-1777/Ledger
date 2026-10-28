@@ -126,6 +126,7 @@ class Category {
     required this.name,
     required this.sortOrder,
     required this.type,
+    required this.excludeFromStats,
     required this.tags,
   });
 
@@ -133,6 +134,7 @@ class Category {
   final String name;
   final int sortOrder;
   final CategoryType type;
+  final bool excludeFromStats;
   final List<Tag> tags;
 
   factory Category.fromJson(Map<String, dynamic> json) => Category(
@@ -140,6 +142,7 @@ class Category {
     name: _asString(json['name']),
     sortOrder: _asInt(json['sort_order']),
     type: CategoryType.fromApi(json['type'] as String?),
+    excludeFromStats: json['exclude_from_stats'] == true,
     tags: _asList(
       json['tags'],
     ).map((item) => Tag.fromJson(item as Map<String, dynamic>)).toList(),
@@ -150,6 +153,7 @@ class Category {
     'name': name,
     'sort_order': sortOrder,
     'type': type.name,
+    'exclude_from_stats': excludeFromStats,
     'tags': [for (final tag in tags) tag.toJson()],
   };
 }
@@ -498,39 +502,55 @@ class AssetSummary {
 class StatsSummary {
   const StatsSummary({
     required this.weekExpense,
+    required this.weekIncome,
     required this.monthExpense,
-    required this.lastMonthExpense,
     required this.monthIncome,
+    required this.lastMonthExpense,
+    required this.lastMonthIncome,
     required this.monthBalance,
     required this.savingsRate,
     required this.categoryDistribution,
+    required this.incomeCategoryDistribution,
     required this.paymentDistribution,
+    required this.incomePaymentDistribution,
     required this.monthlyTrends,
     required this.assetSummary,
   });
 
   final double weekExpense;
+  final double weekIncome;
   final double monthExpense;
-  final double lastMonthExpense;
   final double monthIncome;
+  final double lastMonthExpense;
+  final double lastMonthIncome;
   final double monthBalance;
   final double savingsRate;
   final List<CategoryStat> categoryDistribution;
+  final List<CategoryStat> incomeCategoryDistribution;
   final List<PaymentMethodStat> paymentDistribution;
+  final List<PaymentMethodStat> incomePaymentDistribution;
   final List<MonthlyTrend> monthlyTrends;
   final AssetSummary assetSummary;
 
   factory StatsSummary.fromJson(Map<String, dynamic> json) => StatsSummary(
     weekExpense: _asDouble(json['week_expense']),
+    weekIncome: _asDouble(json['week_income']),
     monthExpense: _asDouble(json['month_expense']),
-    lastMonthExpense: _asDouble(json['last_month_expense']),
     monthIncome: _asDouble(json['month_income']),
+    lastMonthExpense: _asDouble(json['last_month_expense']),
+    lastMonthIncome: _asDouble(json['last_month_income']),
     monthBalance: _asDouble(json['month_balance']),
     savingsRate: _asDouble(json['savings_rate']),
     categoryDistribution: _asList(json['category_distribution'])
         .map((item) => CategoryStat.fromJson(item as Map<String, dynamic>))
         .toList(),
+    incomeCategoryDistribution: _asList(json['income_category_distribution'])
+        .map((item) => CategoryStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
     paymentDistribution: _asList(json['payment_distribution'])
+        .map((item) => PaymentMethodStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
+    incomePaymentDistribution: _asList(json['income_payment_distribution'])
         .map((item) => PaymentMethodStat.fromJson(item as Map<String, dynamic>))
         .toList(),
     monthlyTrends: _asList(json['monthly_trends'])
@@ -543,16 +563,24 @@ class StatsSummary {
 
   Map<String, dynamic> toJson() => {
     'week_expense': weekExpense,
+    'week_income': weekIncome,
     'month_expense': monthExpense,
-    'last_month_expense': lastMonthExpense,
     'month_income': monthIncome,
+    'last_month_expense': lastMonthExpense,
+    'last_month_income': lastMonthIncome,
     'month_balance': monthBalance,
     'savings_rate': savingsRate,
     'category_distribution': [
       for (final category in categoryDistribution) category.toJson(),
     ],
+    'income_category_distribution': [
+      for (final category in incomeCategoryDistribution) category.toJson(),
+    ],
     'payment_distribution': [
       for (final channel in paymentDistribution) channel.toJson(),
+    ],
+    'income_payment_distribution': [
+      for (final channel in incomePaymentDistribution) channel.toJson(),
     ],
     'monthly_trends': [for (final trend in monthlyTrends) trend.toJson()],
     'asset_summary': assetSummary.toJson(),

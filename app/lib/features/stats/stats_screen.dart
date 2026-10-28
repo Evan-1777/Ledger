@@ -12,6 +12,8 @@ import 'stats_utils.dart';
 
 enum _ChartMode { composition, trend }
 
+enum _StatsView { expense, income }
+
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
@@ -21,6 +23,7 @@ class StatsScreen extends StatefulWidget {
 
 class _StatsScreenState extends State<StatsScreen> {
   _ChartMode _mode = _ChartMode.composition;
+  _StatsView _view = _StatsView.expense;
 
   @override
   Widget build(BuildContext context) {
@@ -61,14 +64,42 @@ class _StatsScreenState extends State<StatsScreen> {
                   const SizedBox(height: 12),
                   _BalanceHero(stats: stats),
                   const SizedBox(height: 16),
-                  _Metrics(stats: stats, now: now),
+                  SegmentedButton<_StatsView>(
+                    showSelectedIcon: false,
+                    expandedInsets: EdgeInsets.zero,
+                    segments: const [
+                      ButtonSegment(
+                        value: _StatsView.expense,
+                        label: Text('支出', key: ValueKey('stats-view-expense')),
+                      ),
+                      ButtonSegment(
+                        value: _StatsView.income,
+                        label: Text('收入', key: ValueKey('stats-view-income')),
+                      ),
+                    ],
+                    selected: {_view},
+                    onSelectionChanged: (selection) =>
+                        setState(() => _view = selection.first),
+                  ),
+                  const SizedBox(height: 16),
+                  _Metrics(stats: stats, now: now, view: _view),
                   const SizedBox(height: 24),
                   _buildChartCard(context, stats),
                   const SizedBox(height: 24),
-                  const SectionHeader(title: '支付途径', padding: EdgeInsets.zero),
+                  SectionHeader(
+                    title: _view == _StatsView.income ? '收入途径' : '支付途径',
+                    padding: EdgeInsets.zero,
+                  ),
                   _PaymentDistribution(
-                    items: stats.paymentDistribution,
-                    total: stats.monthExpense,
+                    items: _view == _StatsView.income
+                        ? stats.incomePaymentDistribution
+                        : stats.paymentDistribution,
+                    total: _view == _StatsView.income
+                        ? stats.monthIncome
+                        : stats.monthExpense,
+                    emptyTitle: _view == _StatsView.income
+                        ? '当月暂无渠道收入'
+                        : '当月暂无渠道支出',
                   ),
                 ]),
               ),
@@ -82,9 +113,11 @@ class _StatsScreenState extends State<StatsScreen> {
     final theme = Theme.of(context);
     final finance = financeColors(context);
     final composition = _mode == _ChartMode.composition;
-    final categories = stats.categoryDistribution
-        .where((item) => item.amount > 0)
-        .toList();
+    final income = _view == _StatsView.income;
+    final categories =
+        (income ? stats.incomeCategoryDistribution : stats.categoryDistribution)
+            .where((item) => item.amount > 0)
+            .toList();
 
     return LedgerCard(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -95,7 +128,7 @@ class _StatsScreenState extends State<StatsScreen> {
             children: [
               Expanded(
                 child: Text(
-                  composition ? '支出构成' : '近 6 个月收支',
+                  composition ? (income ? '收入构成' : '支出构成') : '近 6 个月收支',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -121,8 +154,11 @@ class _StatsScreenState extends State<StatsScreen> {
           composition
               ? _CompositionPanel(
                   categories: categories,
-                  total: stats.monthExpense,
+                  total: income ? stats.monthIncome : stats.monthExpense,
                   colors: finance.chart,
+                  emptyTitle: income ? '当月暂无分类收入' : '当月暂无分类支出',
+                  centerLabel: income ? '本月收入' : '本月支出',
+                  semanticsLabel: income ? '收入构成环形图' : '支出构成环形图',
                 )
               : _TrendPanel(
                   trends: stats.monthlyTrends,
@@ -278,31 +314,41 @@ class _HeroMetric extends StatelessWidget {
 }
 
 class _Metrics extends StatelessWidget {
-  const _Metrics({required this.stats, required this.now});
+  const _Metrics({required this.stats, required this.now, required this.view});
 
   final StatsSummary stats;
   final DateTime now;
+  final _StatsView view;
 
   @override
   Widget build(BuildContext context) {
     final finance = financeColors(context);
-    final mom = monthOverMonth(stats);
+    final income = view == _StatsView.income;
+    final current = income ? stats.monthIncome : stats.monthExpense;
+    final previous = income ? stats.lastMonthIncome : stats.lastMonthExpense;
+    final mom = monthOverMonth(current, previous);
+    final noteColor = mom == null
+        ? null
+        : income
+        ? (mom >= 0 ? finance.income : finance.expense)
+        : (mom > 0 ? finance.expense : finance.income);
     final items = [
-      _MetricData(label: '本周花费', value: stats.weekExpense),
       _MetricData(
-        label: '当月花费',
-        value: stats.monthExpense,
+        label: income ? '本周收入' : '本周花费',
+        value: income ? stats.weekIncome : stats.weekExpense,
+      ),
+      _MetricData(
+        label: income ? '当月收入' : '当月花费',
+        value: current,
         note: mom == null
             ? null
             : '较上月 ${mom >= 0 ? '+' : ''}${mom.toStringAsFixed(1)}%',
-        noteColor: mom == null
-            ? null
-            : (mom > 0 ? finance.expense : finance.income),
+        noteColor: noteColor,
       ),
-      _MetricData(label: '上月花费', value: stats.lastMonthExpense),
+      _MetricData(label: income ? '上月收入' : '上月花费', value: previous),
       _MetricData(
-        label: '日均花费',
-        value: dailyAverage(stats, now),
+        label: income ? '日均收入' : '日均花费',
+        value: dailyAverage(current, now),
         note: '按已过 ${now.day} 天',
       ),
     ];
@@ -412,11 +458,17 @@ class _CompositionPanel extends StatefulWidget {
     required this.categories,
     required this.total,
     required this.colors,
+    required this.emptyTitle,
+    required this.centerLabel,
+    required this.semanticsLabel,
   });
 
   final List<CategoryStat> categories;
   final double total;
   final List<Color> colors;
+  final String emptyTitle;
+  final String centerLabel;
+  final String semanticsLabel;
 
   @override
   State<_CompositionPanel> createState() => _CompositionPanelState();
@@ -430,7 +482,7 @@ class _CompositionPanelState extends State<_CompositionPanel> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     if (widget.categories.isEmpty || widget.total <= 0) {
-      return const EmptyState(title: '当月暂无分类支出');
+      return EmptyState(title: widget.emptyTitle);
     }
     final selected = widget.categories.where((item) => item.id == _selectedId);
     final selectedCategory = selected.isEmpty ? null : selected.first;
@@ -443,6 +495,8 @@ class _CompositionPanelState extends State<_CompositionPanel> {
             categories: widget.categories,
             total: widget.total,
             colors: widget.colors,
+            centerLabel: widget.centerLabel,
+            semanticsLabel: widget.semanticsLabel,
             size: 160,
           ),
         ),
@@ -663,10 +717,15 @@ class _DotLabel extends StatelessWidget {
 }
 
 class _PaymentDistribution extends StatelessWidget {
-  const _PaymentDistribution({required this.items, required this.total});
+  const _PaymentDistribution({
+    required this.items,
+    required this.total,
+    required this.emptyTitle,
+  });
 
   final List<PaymentMethodStat> items;
   final double total;
+  final String emptyTitle;
 
   @override
   Widget build(BuildContext context) {
@@ -675,7 +734,7 @@ class _PaymentDistribution extends StatelessWidget {
     final sorted = [...items]..sort((a, b) => b.amount.compareTo(a.amount));
     return LedgerCard(
       child: sorted.isEmpty
-          ? const EmptyState(title: '当月暂无渠道支出')
+          ? EmptyState(title: emptyTitle)
           : Column(
               children: [
                 for (var i = 0; i < sorted.length; i++) ...[
@@ -690,10 +749,18 @@ class _PaymentDistribution extends StatelessWidget {
                           style: theme.textTheme.bodyMedium,
                         ),
                       ),
-                      Text(
-                        formatMoney(sorted[i].amount, withCurrency: false),
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            formatMoney(sorted[i].amount, withCurrency: false),
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),

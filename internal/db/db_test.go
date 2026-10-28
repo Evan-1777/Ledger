@@ -61,6 +61,15 @@ func TestInitDB(t *testing.T) {
 		t.Errorf("expected 7 categories (5 default + 1 repayment + 1 transfer), got %d", catCount)
 	}
 
+	// Verify categories default to included in stats
+	var statsIncluded int
+	if err := database.QueryRow("SELECT COUNT(*) FROM categories WHERE exclude_from_stats = 0").Scan(&statsIncluded); err != nil {
+		t.Fatalf("failed to query exclude_from_stats: %v", err)
+	}
+	if statsIncluded != catCount {
+		t.Errorf("expected all %d categories included in stats, got %d", catCount, statsIncluded)
+	}
+
 	// Verify tags seeded (16 defaults + 1 system repayment tag + 1 system transfer tag)
 	var tagCount int
 	if err := database.QueryRow("SELECT COUNT(*) FROM tags").Scan(&tagCount); err != nil {
@@ -530,6 +539,7 @@ func TestCategoriesMigration(t *testing.T) {
 	defer rows.Close()
 
 	hasType := false
+	hasExcludeFromStats := false
 	for rows.Next() {
 		var cid int
 		var name, colType string
@@ -538,12 +548,29 @@ func TestCategoriesMigration(t *testing.T) {
 		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
 			t.Fatalf("failed to scan table_info: %v", err)
 		}
-		if name == "type" {
+		switch name {
+		case "type":
 			hasType = true
+		case "exclude_from_stats":
+			hasExcludeFromStats = true
 		}
 	}
 	if !hasType {
 		t.Fatalf("categories table missing type column")
+	}
+	if !hasExcludeFromStats {
+		t.Fatalf("categories table missing exclude_from_stats column")
+	}
+
+	var upgradedCatCount, upgradedIncluded int
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories").Scan(&upgradedCatCount); err != nil {
+		t.Fatalf("failed to count categories: %v", err)
+	}
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories WHERE exclude_from_stats = 0").Scan(&upgradedIncluded); err != nil {
+		t.Fatalf("failed to query exclude_from_stats: %v", err)
+	}
+	if upgradedIncluded != upgradedCatCount {
+		t.Errorf("expected all %d upgraded categories included in stats, got %d", upgradedCatCount, upgradedIncluded)
 	}
 
 	// Verify backfilled type values
@@ -680,6 +707,3 @@ func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
 		t.Errorf("expected system_category_transfer_id to match user's category (1), got %s", sysCatID)
 	}
 }
-
-
-

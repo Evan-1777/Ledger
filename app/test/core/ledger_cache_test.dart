@@ -21,12 +21,16 @@ Future<SharedPreferencesLedgerCache> _cacheFor(String? serverUrl) async {
 
 CachedLedgerConfig _config() => CachedLedgerConfig(
   categories: [
-    category(tags: const [Tag(id: 7, categoryId: 1, name: '早餐', sortOrder: 2)]),
+    category(
+      excludeFromStats: true,
+      tags: const [Tag(id: 7, categoryId: 1, name: '早餐', sortOrder: 2)],
+    ),
     const Category(
       id: 8,
       name: '债务偿还',
       sortOrder: 8,
       type: CategoryType.system,
+      excludeFromStats: false,
       tags: [],
     ),
   ],
@@ -70,6 +74,7 @@ void main() {
         'name': '债务偿还',
         'sort_order': 8,
         'type': 'system',
+        'exclude_from_stats': false,
         'tags': [
           {'id': 8, 'category_id': 8, 'name': '负债还款', 'sort_order': 1},
         ],
@@ -78,6 +83,7 @@ void main() {
       final restored = Category.fromJson(_encodeDecode(category.toJson()));
 
       expect(restored.type, CategoryType.system);
+      expect(restored.excludeFromStats, isFalse);
       expect(restored.toJson(), equals(category.toJson()));
     });
 
@@ -108,6 +114,7 @@ void main() {
         ['餐饮美食', '债务偿还'],
       );
       expect(config.categories.last.type, CategoryType.system);
+      expect(config.categories.first.excludeFromStats, isTrue);
       expect(config.categories.first.tags.single.name, '早餐');
       expect(config.channels.last.type, ChannelType.liability);
       expect(config.channels.last.creditLimit, 20000);

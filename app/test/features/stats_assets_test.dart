@@ -10,30 +10,19 @@ void main() {
     final summary = StatsSummary.fromJson(statsJson());
     final now = DateTime(2026, 10, 10);
 
-    expect(dailyAverage(summary, now), closeTo(324.85, 0.001));
-    expect(monthOverMonth(summary), closeTo(12.4, 0.1));
+    expect(dailyAverage(summary.monthExpense, now), closeTo(324.85, 0.001));
+    expect(
+      monthOverMonth(summary.monthExpense, summary.lastMonthExpense),
+      closeTo(12.4, 0.1),
+    );
     expect(ratioOf(0, 0), 0);
     expect(ratioOf(2, 1), 1);
     expect(trendLabel('2026-03'), '3月');
   });
 
   test('month over month is null when last month is empty', () {
-    final summary = StatsSummary.fromJson(statsJson());
-    final zero = StatsSummary(
-      weekExpense: summary.weekExpense,
-      monthExpense: summary.monthExpense,
-      lastMonthExpense: 0,
-      monthIncome: summary.monthIncome,
-      monthBalance: summary.monthBalance,
-      savingsRate: summary.savingsRate,
-      categoryDistribution: summary.categoryDistribution,
-      paymentDistribution: summary.paymentDistribution,
-      monthlyTrends: summary.monthlyTrends,
-      assetSummary: summary.assetSummary,
-    );
-
-    expect(monthOverMonth(zero), isNull);
-    expect(dailyAverage(zero, DateTime(2026, 10, 1)), zero.monthExpense);
+    expect(monthOverMonth(0, 0), isNull);
+    expect(dailyAverage(0, DateTime(2026, 10, 1)), 0);
   });
 
   test('assets sort by balance and share only positive balances', () {
