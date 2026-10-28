@@ -61,13 +61,19 @@ func TestInitDB(t *testing.T) {
 		t.Errorf("expected 7 categories (5 default + 1 repayment + 1 transfer), got %d", catCount)
 	}
 
-	// Verify categories default to included in stats
-	var statsIncluded int
+	// Verify user categories default to included while system categories are excluded
+	var statsIncluded, systemExcluded int
 	if err := database.QueryRow("SELECT COUNT(*) FROM categories WHERE exclude_from_stats = 0").Scan(&statsIncluded); err != nil {
 		t.Fatalf("failed to query exclude_from_stats: %v", err)
 	}
-	if statsIncluded != catCount {
-		t.Errorf("expected all %d categories included in stats, got %d", catCount, statsIncluded)
+	if statsIncluded != 5 {
+		t.Errorf("expected 5 user categories included in stats, got %d", statsIncluded)
+	}
+	if err := database.QueryRow("SELECT COUNT(*) FROM categories WHERE type = 'system' AND exclude_from_stats = 1").Scan(&systemExcluded); err != nil {
+		t.Fatalf("failed to query system category exclusion: %v", err)
+	}
+	if systemExcluded != 2 {
+		t.Errorf("expected 2 system categories excluded from stats, got %d", systemExcluded)
 	}
 
 	// Verify tags seeded (16 defaults + 1 system repayment tag + 1 system transfer tag)
@@ -562,15 +568,18 @@ func TestCategoriesMigration(t *testing.T) {
 		t.Fatalf("categories table missing exclude_from_stats column")
 	}
 
-	var upgradedCatCount, upgradedIncluded int
+	var upgradedCatCount, upgradedIncluded, upgradedSystemExcluded int
 	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories").Scan(&upgradedCatCount); err != nil {
 		t.Fatalf("failed to count categories: %v", err)
 	}
 	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories WHERE exclude_from_stats = 0").Scan(&upgradedIncluded); err != nil {
 		t.Fatalf("failed to query exclude_from_stats: %v", err)
 	}
-	if upgradedIncluded != upgradedCatCount {
-		t.Errorf("expected all %d upgraded categories included in stats, got %d", upgradedCatCount, upgradedIncluded)
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM categories WHERE type = 'system' AND exclude_from_stats = 1").Scan(&upgradedSystemExcluded); err != nil {
+		t.Fatalf("failed to query system category exclusion: %v", err)
+	}
+	if upgradedSystemExcluded != 2 || upgradedIncluded != upgradedCatCount-upgradedSystemExcluded {
+		t.Errorf("unexpected category scope after upgrade: total=%d included=%d systemExcluded=%d", upgradedCatCount, upgradedIncluded, upgradedSystemExcluded)
 	}
 
 	// Verify backfilled type values
@@ -671,6 +680,17 @@ func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
 		sort_order INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
+	CREATE TABLE transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		amount_cents INTEGER NOT NULL,
+		description TEXT NOT NULL,
+		payment_method_id INTEGER NOT NULL REFERENCES payment_methods(id) ON DELETE RESTRICT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE RESTRICT,
+		transacted_at TEXT NOT NULL,
+		type TEXT NOT NULL DEFAULT 'expense',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
 	CREATE TABLE system_meta (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
@@ -678,6 +698,10 @@ func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
 	INSERT INTO system_meta (key, value) VALUES ('seed_initialized', 'true');
 	-- Old user had created their own '账户转账' category before the feature existed
 	INSERT INTO categories (name, sort_order) VALUES ('账户转账', 10);
+	INSERT INTO payment_methods (name, sort_order) VALUES ('旧银行卡', 1);
+	INSERT INTO tags (category_id, name, sort_order) VALUES (1, '旧标签', 1);
+	INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at, type)
+	VALUES (-1200, '历史转账支出', 1, 1, 1, '2026-09-01T12:00:00Z', 'expense');
 	`
 	if _, err := rawDB.Exec(oldSchema); err != nil {
 		rawDB.Close()
@@ -705,5 +729,32 @@ func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
 	}
 	if sysCatID != "1" {
 		t.Errorf("expected system_category_transfer_id to match user's category (1), got %s", sysCatID)
+	}
+
+	var excluded int
+	if err := upgradedDB.QueryRow("SELECT exclude_from_stats FROM categories WHERE name = '账户转账'").Scan(&excluded); err != nil {
+		t.Fatalf("failed to query exclude_from_stats: %v", err)
+	}
+	if excluded != 1 {
+		t.Errorf("expected pre-existing 账户转账 to be excluded from stats, got %d", excluded)
+	}
+
+	// The legacy expense under the converted category must not enter stats.
+	var countedLegacy, totalLegacy int
+	if err := upgradedDB.QueryRow(`
+		SELECT COUNT(*) FROM transactions t
+		JOIN categories c ON c.id = t.category_id
+		WHERE c.exclude_from_stats = 0
+	`).Scan(&countedLegacy); err != nil {
+		t.Fatalf("failed to count legacy transactions in stats: %v", err)
+	}
+	if countedLegacy != 0 {
+		t.Errorf("expected legacy expense under 账户转账 to be excluded from stats, got %d counted", countedLegacy)
+	}
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM transactions").Scan(&totalLegacy); err != nil {
+		t.Fatalf("failed to count legacy transactions: %v", err)
+	}
+	if totalLegacy != 1 {
+		t.Errorf("expected legacy transaction preserved, got %d", totalLegacy)
 	}
 }

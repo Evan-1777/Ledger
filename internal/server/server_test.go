@@ -496,7 +496,10 @@ func TestStatsSummary(t *testing.T) {
 
 	authHeader := "Bearer " + token
 
-	now := time.Now()
+	now := time.Date(2026, 10, 28, 20, 0, 0, 0, time.Local)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() { nowFunc = time.Now })
+
 	// Create income transaction this month
 	txIncome, _ := json.Marshal(map[string]any{
 		"amount":            8000.0,
@@ -582,7 +585,9 @@ func TestStatsIncomeAndExclusionFilter(t *testing.T) {
 	defer cleanup()
 
 	authHeader := "Bearer " + token
-	now := time.Now()
+	now := time.Date(2026, 10, 28, 20, 0, 0, 0, time.Local)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() { nowFunc = time.Now })
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
 	lastMonthAt := monthStart.AddDate(0, -1, 0).AddDate(0, 0, 14).Add(12 * time.Hour)
 
@@ -619,6 +624,7 @@ func TestStatsIncomeAndExclusionFilter(t *testing.T) {
 	insertTx(600000, "income", 1, bigIncome, bigIncomeTag, now)
 	insertTx(200000, "income", 1, smallIncome, smallIncomeTag, now)
 	insertTx(500000, "income", 1, transferIncome, transferIncomeTag, now)
+	insertTx(50000, "income", 1, transferIncome, transferIncomeTag, lastMonthAt)
 	insertTx(100000, "income", 1, bigIncome, bigIncomeTag, lastMonthAt)
 	insertTx(-20000, "expense", 1, normalExpense, normalExpenseTag, now)
 	insertTx(-10000, "expense", 1, normalExpense, normalExpenseTag, lastMonthAt)
@@ -641,7 +647,7 @@ func TestStatsIncomeAndExclusionFilter(t *testing.T) {
 	}
 
 	before := fetchStats()
-	if before.WeekIncome != 13000 || before.MonthIncome != 13000 || before.LastMonthIncome != 1000 {
+	if before.WeekIncome != 13000 || before.MonthIncome != 13000 || before.LastMonthIncome != 1500 {
 		t.Errorf("unexpected income totals: week=%v month=%v lastMonth=%v", before.WeekIncome, before.MonthIncome, before.LastMonthIncome)
 	}
 	if before.WeekExpense != 700 || before.MonthExpense != 700 || before.LastMonthExpense != 150 {

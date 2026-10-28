@@ -395,7 +395,7 @@ func ensureSystemRepaymentCategory(tx *sql.Tx) error {
 	if err := tx.QueryRow("SELECT id FROM categories WHERE name = '债务偿还'").Scan(&catID); err != nil {
 		return fmt.Errorf("failed to get system repayment category id: %w", err)
 	}
-	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE id = ?", catID); err != nil {
+	if _, err := tx.Exec("UPDATE categories SET type = 'system', exclude_from_stats = 1 WHERE id = ?", catID); err != nil {
 		return fmt.Errorf("failed to ensure system repayment category type: %w", err)
 	}
 
@@ -425,7 +425,7 @@ func ensureSystemTransferCategory(tx *sql.Tx) error {
 	if err := tx.QueryRow("SELECT id FROM categories WHERE name = '账户转账'").Scan(&catID); err != nil {
 		return fmt.Errorf("failed to get system transfer category id: %w", err)
 	}
-	if _, err := tx.Exec("UPDATE categories SET type = 'system' WHERE id = ?", catID); err != nil {
+	if _, err := tx.Exec("UPDATE categories SET type = 'system', exclude_from_stats = 1 WHERE id = ?", catID); err != nil {
 		return fmt.Errorf("failed to ensure system transfer category type: %w", err)
 	}
 

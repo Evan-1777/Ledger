@@ -80,9 +80,12 @@ type StatsSummaryResponse struct {
 	AssetSummary               AssetSummary        `json:"asset_summary"`
 }
 
+// nowFunc supplies the current time for stats intervals; tests freeze it.
+var nowFunc = time.Now
+
 func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	loc := time.Local
-	now := time.Now().In(loc)
+	now := nowFunc().In(loc)
 
 	// Week interval (Monday to Sunday)
 	weekdayOffset := int(now.Weekday() - time.Monday)

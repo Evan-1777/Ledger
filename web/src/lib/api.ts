@@ -101,6 +101,7 @@ export interface AssetSummary {
   liability_channels: LiabilityChannelStat[];
 }
 
+// 仅声明 Web 已消费的字段；服务端其余统计字段按需补充。
 export interface StatsSummary {
   week_expense: number;
   month_expense: number;

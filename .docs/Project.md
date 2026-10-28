@@ -49,8 +49,8 @@ Ledger/
 │  ├─ config/
 │  │  └─ config.go           # 环境变量配置加载（PORT, DB_PATH, ADMIN_PASSWORD, TOKEN_SECRET）
 │  ├─ db/
-│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、5张数据表含 system_meta 迁移、payment_methods/transactions/categories 探针热迁移含 fee_cents 与分类统计排除列、系统还款与转账分类/标签智能注入）
-│  │  └─ db_test.go          # 数据层初始化、老库平滑升级、防复活幂等性、外键约束与探针热迁移测试
+│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、5张数据表含 system_meta 迁移、payment_methods/transactions/categories 探针热迁移含 fee_cents 与分类统计排除列、系统还款与转账分类/标签智能注入与默认统计排除）
+│  │  └─ db_test.go          # 数据层初始化、老库平滑升级（含系统分类历史流水统计排除）、防复活幂等性、外键约束与探针热迁移测试
 │  └─ server/
 │     ├─ server.go           # HTTP 路由注册分发、健康检查与 SPA 静态文件回退服务
 │     ├─ auth.go             # 管理员密码登录、防爆破时延、HMAC Token 签发与 RequireAuth 访问守卫
@@ -58,7 +58,7 @@ Ledger/
 │     ├─ settings.go         # 资产/负债渠道（payment_methods）、类型（categories 支持 type 与 exclude_from_stats 统计口径）与标签 CRUD API、409 账单引用删除拦截与系统分类/标签 ID 级不可变保护
 │     ├─ transactions.go     # 单笔账单录入/更新/删除/列表查询，金额带符号分位转换、还款与转账双渠道校验、转账手续费原子存取与负数拦截、收支隔离筛选
 │     ├─ stats.go            # 多维收支与宏观资产负债统计汇总：支出/收入共用按类型聚合（汇总、分类构成含标签下钻、渠道分布、6 个月趋势）、分类统计排除统一过滤与绝对值降序、还款与转账双边核算、转账手续费纯资产扣减与净资产守恒、渠道明细与信用使用率
-│     └─ server_test.go      # 全业务端点集成测试（鉴权、设置 CRUD 含统计口径往返、409/400 拦截、账单 CRUD、还款与转账全链路及守恒核算、多维收支/收入统计与排除过滤）
+│     └─ server_test.go      # 全业务端点集成测试（鉴权、设置 CRUD 含统计口径往返、409/400 拦截、账单 CRUD、还款与转账全链路及守恒核算、多维收支/收入统计与上月收入排除过滤）
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
@@ -235,6 +235,7 @@ Ledger/
 - 2026-10-20 客户端布局修复复审吸收（Review 报告）——保留并补记 2x 约束构件：实测 320dp + 2x 下删除流水行与图例金额的 `Flexible`/`Expanded` + `FittedBox` 会使两处 `Row` 分别溢出 33px 与 46px，图例百分比在 52 宽固定列内折行到 240 高，三者均为门禁所需；流水行 `Expanded(flex: 2)` 的 2:1 分配无需求依据，删除后金额在 2x 下可用宽度由 1/3 回到 1/2，描述列由省略号让位。顶栏测试改断言渲染结果：`AppBar` 矩形 64、标题左缘 20 与垂直居中、首个内容顶边 64、滚动后标题离场，并新增 2x 用例；`tester.getSize(find.byType(SliverAppBar))` 实测不是 `RenderBox`，改取 `AppBar`；图表卡内部滚动断言限定到卡片子树。行高记录校正为 M3 `headlineMedium` 28/36（原记 28/34 源自 demo 的 34px，非实现值）。驳回：标题 `FittedBox` 改单行省略（2x 下实测封顶 48 高、约 1.33 倍，省略号只会截断两字标题）；`PopupMenuButton.initialValue` 视为与勾选图标重复（其同时决定菜单弹出位置）。`dart format` 无变更、`flutter analyze` 无问题、`flutter test` 93 项通过。
 - 2026-10-21 Android 客户端冷启动缓存优先渲染与会话乐观恢复——新增 `core/storage/ledger_cache.dart`：配置、流水、统计各存一条 JSON 信封（version=1 + 服务器地址），读取校验版本与地址，损坏或跨服务器数据静默丢弃，写入失败不影响业务加载；容量以 100 条流水窗口为界，超出迁移 SQLite/文件；模型补与 `fromJson` 对称的 `toJson`。`LedgerController` 增加 `hydrateFromCache()` 在首帧前填充内存，三个加载器成功后写穿快照（失败路径不写），流水仅在「全部」筛选时写入以免子集污染。`SessionController` 改为本地有 token 即乐观进入 authenticated，后台校验 `/api/auth/check`：401 清 token 回登录，网络/超时保留会话；`restore/login/logout/expire/updateServer` 引入代际号，旧校验结果不影响新会话。入口在 `runApp` 前 `await restore` 并注入真实缓存，删除不可达的品牌启动页（booting 仅保留最小进度指示）；`LedgerApp` 在首帧构建前水合并启动三域加载，登录转换时再次水合，会话失效仍只清内存、保留磁盘快照。版本按发布要求定为 `0.1.5+4`（本地曾临时升至 0.2.0+4），随 `v0.1.5` tag 发布。
 - 2026-10-21 冷启动交付复审吸收（Review 报告）——补缓存信封版本失效用例（三域写入 `version: 2` 的合法数据形状，断言读取均为 null），锁定"版本不匹配整体失效"的契约；`SessionController` 增加 `revalidate()`，`LedgerApp` 在应用回到前台时调用，补上离线冷启动校验失败后缺少再次校验时机的问题，仍保持 401 回登录、网络/超时保留会话；会话门术语由"品牌启动态"校正为"最小进度指示"。驳回：写盘时读取服务器地址的串服竞态（`_write` 在首个 `await` 前同步取值，与代际检查处于同一同步执行段，`updateServer` 无法插入，原判不成立）；刷新成功通知等待缓存写盘（单次偏好写入，改为后台写会引入乱序，收益仅数毫秒）；改写归档 Plan 的 `0.2.0+4` 记录（归档为历史快照，版本由后续发布提交改为 `0.1.5+4`，Project.md 已记录）；删除 `booting` 分支与 401 路径的显式 `clear()`（前者是枚举初始态的最小回退，后者供无 UI 监听时的控制器自清理，删除需改状态机与测试）。`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 114 项通过。
+- 2026-10-28 收入统计复审吸收（Quick）——系统还款/转账分类在 `ensureSystem*Category` 的幂等 UPDATE 中同步置 `exclude_from_stats = 1`，覆盖老库同名自建分类被转为系统分类后、其历史 expense/income 流水无法经 UI/API 排除的缺口；系统分类本就不参与收支（还款/转账按 type 排除），该标志只影响迁移带入的历史流水，并补带历史流水的老库升级用例。统计处理器改用包级 `nowFunc` 取当前时间，两个统计集成用例冻结到固定时刻，消除跨周/月边界的假失败；上月补一笔被排除分类收入，直接断言 `last_month_income` 从 1500 回落到 1000。Web `StatsSummary` 仅注明已消费字段，不补未消费收入字段（YAGNI）。驳回：视角切换重置分类选中态（另一视角无对应分类时详情自然隐藏，切回恢复原选择，无错误数据）。门禁：`go vet ./...` 0、`go test -count=1 ./...` 24 项通过、`cd web && npm run lint && npm test` 38 项通过。
 - 2026-10-28 收入统计补全、分类统计排除与弹出菜单圆角收敛——分类表新增 `exclude_from_stats`（全新建库默认 0，老库经 `PRAGMA table_info` 探针补列），分类 CRUD 支持读写该字段且更新未传时保留原值；统计聚合抽出 `sumByType`、`categoryDistribution`、`paymentDistribution`，支出与收入共用并统一 JOIN categories 排除标记，分布按 `ABS(SUM(amount_cents)) DESC` 排序、百分比以同类型过滤后总额为分母，新增 `week_income`、`last_month_income`、`income_category_distribution`、`income_payment_distribution`，资产负债口径保持不变；客户端新增统计页支出/收入视角（结余头条与指标卡之间的全宽分段控件，切换不重置构成/趋势，环图中心与语义文案参数化），流水日小计复用分类标记，分类行溢出菜单提供统计口径切换并在副标题显示「不计入统计」，五处 `PopupMenuButton` 统一 `Clip.antiAlias`；320dp + 2x 门禁暴露收入长金额与环图中心溢出，分别以渠道金额 `Flexible + FittedBox`、环心留白 + `FittedBox` 收敛。门禁：`go vet ./...` 0、`go test -v ./...` 24 项通过、`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 122 项通过。
 
 ## 术语
