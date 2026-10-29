@@ -250,71 +250,67 @@ class _FilterMenu extends StatelessWidget {
   final TransactionFilter selected;
   final ValueChanged<TransactionFilter> onSelected;
 
+  Future<void> _open(BuildContext context) async {
+    final picked = await showLedgerPicker<TransactionFilter>(
+      context: context,
+      title: '筛选',
+      children: [
+        for (final filter in TransactionFilter.values)
+          LedgerPickerOption(
+            key: ValueKey('filter-${filter.name}'),
+            label: filter.label,
+            selected: filter == selected,
+            onTap: () => Navigator.of(context).pop(filter),
+          ),
+      ],
+    );
+    if (picked != null) onSelected(picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return PopupMenuButton<TransactionFilter>(
+    return Material(
       key: const ValueKey('filter-menu'),
-      tooltip: '筛选',
-      clipBehavior: Clip.antiAlias,
-      initialValue: selected,
-      onSelected: onSelected,
-      itemBuilder: (context) => [
-        for (final filter in TransactionFilter.values)
-          PopupMenuItem(
-            key: ValueKey('filter-${filter.name}'),
-            value: filter,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: filter == selected
-                      ? Icon(
-                          Icons.check_rounded,
-                          size: 18,
-                          color: scheme.primary,
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 8),
-                Text(filter.label),
-              ],
-            ),
-          ),
-      ],
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 36),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.filter_alt_outlined,
-                  size: 18,
-                  color: scheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  selected.label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: scheme.onSurface,
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: () => _open(context),
+        borderRadius: BorderRadius.circular(999),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Center(
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 36),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.filter_alt_outlined,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
                   ),
-                ),
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.expand_more_rounded,
-                  size: 18,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    selected.label,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.expand_more_rounded,
+                    size: 18,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -147,6 +147,8 @@ Future<http.Response> defaultApi(
       return jsonResponse(transactions ?? [transactionJson()]);
     case '/api/stats/summary':
       return jsonResponse(statsJson());
+    case '/api/stats/range':
+      return jsonResponse(rangeStatsJson());
     default:
       return jsonResponse({});
   }
@@ -301,6 +303,62 @@ Map<String, Object?> transactionJson({
   'tag_name': tagName,
   'transacted_at': transactedAt,
   'created_at': transactedAt,
+};
+
+Map<String, Object?> rangeStatsJson({
+  int days = 28,
+  double expense = 3248.5,
+  double income = 12800,
+  double balance = 9551.5,
+  double previousExpense = 2890,
+  double previousIncome = 11000,
+  int expenseCount = 42,
+  int incomeCount = 3,
+}) => {
+  'days': days,
+  'expense': expense,
+  'income': income,
+  'balance': balance,
+  'previous_expense': previousExpense,
+  'previous_income': previousIncome,
+  'expense_count': expenseCount,
+  'income_count': incomeCount,
+  'category_distribution': [
+    {
+      'id': 1,
+      'name': '餐饮美食',
+      'amount': 1400,
+      'percentage': 43.1,
+      'tags': [
+        {'id': 1, 'name': '午餐', 'amount': 800, 'percentage': 57.1},
+      ],
+    },
+  ],
+  'income_category_distribution': [
+    {
+      'id': 4,
+      'name': '职业收入',
+      'amount': 12800,
+      'percentage': 100,
+      'tags': [
+        {'id': 4, 'name': '主业工资', 'amount': 12800, 'percentage': 100},
+      ],
+    },
+  ],
+  'payment_distribution': [
+    {'id': 1, 'name': '招商银行卡', 'amount': 2000, 'percentage': 61.6},
+  ],
+  'income_payment_distribution': [
+    {'id': 1, 'name': '招商银行卡', 'amount': 12800, 'percentage': 100},
+  ],
+  'monthly_trends': [
+    for (var i = 5; i >= 0; i--)
+      {
+        'month': '2026-0${5 - i + 1}',
+        'expense': 1000.0 + i * 10,
+        'income': 12000,
+      },
+  ],
 };
 
 Map<String, Object?> statsJson({

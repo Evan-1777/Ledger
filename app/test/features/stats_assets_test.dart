@@ -8,9 +8,7 @@ import '../support/harness.dart';
 void main() {
   test('stats derivatives handle zero denominators', () {
     final summary = StatsSummary.fromJson(statsJson());
-    final now = DateTime(2026, 10, 10);
-
-    expect(dailyAverage(summary.monthExpense, now), closeTo(324.85, 0.001));
+    expect(dailyAverage(summary.monthExpense, 10), closeTo(324.85, 0.001));
     expect(
       monthOverMonth(summary.monthExpense, summary.lastMonthExpense),
       closeTo(12.4, 0.1),
@@ -22,7 +20,7 @@ void main() {
 
   test('month over month is null when last month is empty', () {
     expect(monthOverMonth(0, 0), isNull);
-    expect(dailyAverage(0, DateTime(2026, 10, 1)), 0);
+    expect(dailyAverage(0, 1), 0);
   });
 
   test('assets sort by balance and share only positive balances', () {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api/models.dart';
-import '../../core/format/dates.dart';
 import '../../core/format/money.dart';
 import '../../core/state/ledger_controller.dart';
 import '../../core/theme/finance_colors.dart';
@@ -25,44 +24,79 @@ class _StatsScreenState extends State<StatsScreen> {
   _ChartMode _mode = _ChartMode.composition;
   _StatsView _view = _StatsView.expense;
 
+  Future<void> _openFilter(LedgerController ledger) async {
+    final applied = await showModalBottomSheet<StatsQuery>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => _StatsFilterSheet(
+        initial: ledger.statsQuery,
+        categories: ledger.categories,
+      ),
+    );
+    if (applied == null || !mounted) return;
+    final matches = ledger.categories.where(
+      (item) => item.id == applied.categoryId,
+    );
+    final category = matches.isEmpty ? null : matches.first;
+    final nextView = switch (category?.type) {
+      CategoryType.income => _StatsView.income,
+      CategoryType.expense => _StatsView.expense,
+      _ => _view,
+    };
+    if (nextView != _view) setState(() => _view = nextView);
+    await ledger.setStatsQuery(applied);
+  }
+
   @override
   Widget build(BuildContext context) {
     final ledger = context.watch<LedgerController>();
-    final stats = ledger.stats;
+    final stats = ledger.rangeStats;
     final now = DateTime.now();
+    final range = DateTimeRange(
+      start: ledger.statsQuery.start,
+      end: ledger.statsQuery.end,
+    );
+    final preset = rangePresetFor(range, now);
+    final summary =
+        '${rangeLabel(preset, range)} · ${dimensionSummary(ledger.statsQuery, ledger.categories)}';
 
     return RefreshIndicator(
-      onRefresh: ledger.loadAll,
+      onRefresh: () async {
+        await Future.wait([ledger.loadStats(), ledger.loadRangeStats()]);
+      },
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           const LedgerSliverAppBar(title: '统计'),
-          if (stats == null && ledger.statsLoading)
-            const SliverPadding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 100),
-              sliver: SliverToBoxAdapter(child: SkeletonList(rows: 5)),
-            )
-          else if (stats == null)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: ErrorState(
-                message: ledger.statsError ?? '加载统计失败',
-                onRetry: ledger.loadStats,
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  Text(
-                    formatMonth(now),
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _StatsSummaryBar(
+                  summary: summary,
+                  onTap: () => _openFilter(ledger),
+                ),
+                const SizedBox(height: 12),
+                if (stats == null && ledger.rangeStatsLoading)
+                  const SkeletonList(rows: 5)
+                else if (stats == null)
+                  SizedBox(
+                    height: 320,
+                    child: ErrorState(
+                      message: ledger.rangeStatsError ?? '加载统计失败',
+                      onRetry: ledger.loadRangeStats,
                     ),
+                  )
+                else ...[
+                  _BalanceHero(
+                    stats: stats,
+                    hasDimension: ledger.statsQuery.hasDimension,
                   ),
-                  const SizedBox(height: 12),
-                  _BalanceHero(stats: stats),
                   const SizedBox(height: 16),
                   SegmentedButton<_StatsView>(
                     showSelectedIcon: false,
@@ -82,7 +116,7 @@ class _StatsScreenState extends State<StatsScreen> {
                         setState(() => _view = selection.first),
                   ),
                   const SizedBox(height: 16),
-                  _Metrics(stats: stats, now: now, view: _view),
+                  _Metrics(stats: stats, view: _view),
                   const SizedBox(height: 24),
                   _buildChartCard(context, stats),
                   const SizedBox(height: 24),
@@ -95,21 +129,22 @@ class _StatsScreenState extends State<StatsScreen> {
                         ? stats.incomePaymentDistribution
                         : stats.paymentDistribution,
                     total: _view == _StatsView.income
-                        ? stats.monthIncome
-                        : stats.monthExpense,
+                        ? stats.income
+                        : stats.expense,
                     emptyTitle: _view == _StatsView.income
-                        ? '当月暂无渠道收入'
-                        : '当月暂无渠道支出',
+                        ? '暂无渠道收入'
+                        : '暂无渠道支出',
                   ),
-                ]),
-              ),
+                ],
+              ]),
             ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildChartCard(BuildContext context, StatsSummary stats) {
+  Widget _buildChartCard(BuildContext context, RangeStats stats) {
     final theme = Theme.of(context);
     final finance = financeColors(context);
     final composition = _mode == _ChartMode.composition;
@@ -154,10 +189,10 @@ class _StatsScreenState extends State<StatsScreen> {
           composition
               ? _CompositionPanel(
                   categories: categories,
-                  total: income ? stats.monthIncome : stats.monthExpense,
+                  total: income ? stats.income : stats.expense,
                   colors: finance.chart,
-                  emptyTitle: income ? '当月暂无分类收入' : '当月暂无分类支出',
-                  centerLabel: income ? '本月收入' : '本月支出',
+                  emptyTitle: income ? '暂无分类收入' : '暂无分类支出',
+                  centerLabel: income ? '收入' : '支出',
                   semanticsLabel: income ? '收入构成环形图' : '支出构成环形图',
                 )
               : _TrendPanel(
@@ -171,18 +206,305 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 }
 
-class _BalanceHero extends StatelessWidget {
-  const _BalanceHero({required this.stats});
+class _StatsSummaryBar extends StatelessWidget {
+  const _StatsSummaryBar({required this.summary, required this.onTap});
 
-  final StatsSummary stats;
+  final String summary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            summary,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          key: const ValueKey('stats-filter'),
+          onPressed: onTap,
+          icon: const Icon(Icons.filter_alt_outlined, size: 18),
+          label: const Text('筛选'),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatsFilterSheet extends StatefulWidget {
+  const _StatsFilterSheet({required this.initial, required this.categories});
+
+  final StatsQuery initial;
+  final List<Category> categories;
+
+  @override
+  State<_StatsFilterSheet> createState() => _StatsFilterSheetState();
+}
+
+class _StatsFilterSheetState extends State<_StatsFilterSheet> {
+  late final DateTime _now;
+  late StatsRangePreset _preset;
+  late DateTimeRange _range;
+  int? _categoryId;
+  int? _tagId;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _range = DateTimeRange(
+      start: widget.initial.start,
+      end: widget.initial.end,
+    );
+    _preset = rangePresetFor(_range, _now);
+    _categoryId = widget.initial.categoryId;
+    _tagId = widget.initial.tagId;
+  }
+
+  List<Category> get _orderedCategories => [
+    ...widget.categories.where((item) => item.type == CategoryType.expense),
+    ...widget.categories.where((item) => item.type == CategoryType.income),
+  ];
+
+  Category? get _category {
+    final matches = widget.categories.where((item) => item.id == _categoryId);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  Future<void> _selectPreset(StatsRangePreset preset) async {
+    if (preset != StatsRangePreset.custom) {
+      setState(() {
+        _preset = preset;
+        _range = resolveRange(preset, _now);
+      });
+      return;
+    }
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(_now.year, _now.month, _now.day),
+      initialDateRange: _range,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _preset = StatsRangePreset.custom;
+      _range = picked;
+    });
+  }
+
+  void _reset() {
+    setState(() {
+      _preset = StatsRangePreset.month;
+      _range = resolveRange(StatsRangePreset.month, _now);
+      _categoryId = null;
+      _tagId = null;
+    });
+  }
+
+  void _apply() {
+    Navigator.of(context).pop(
+      StatsQuery(
+        start: _range.start,
+        end: _range.end,
+        categoryId: _categoryId,
+        tagId: _tagId,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final category = _category;
+    final media = MediaQuery.sizeOf(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: media.height * 0.85),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 32,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: scheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '筛选',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _FilterSectionLabel('日期范围'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final preset in StatsRangePreset.values)
+                        ChoiceChip(
+                          key: ValueKey('stats-range-${preset.name}'),
+                          label: Text(
+                            preset == StatsRangePreset.custom &&
+                                    _preset == StatsRangePreset.custom
+                                ? rangeLabel(StatsRangePreset.custom, _range)
+                                : preset.label,
+                          ),
+                          selected: _preset == preset,
+                          onSelected: (_) => _selectPreset(preset),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _FilterSectionLabel('分类'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ChoiceChip(
+                        key: const ValueKey('stats-category-all'),
+                        label: const Text('全部分类'),
+                        selected: _categoryId == null,
+                        onSelected: (_) => setState(() {
+                          _categoryId = null;
+                          _tagId = null;
+                        }),
+                      ),
+                      for (final item in _orderedCategories)
+                        ChoiceChip(
+                          key: ValueKey('stats-category-${item.id}'),
+                          label: Text(item.name),
+                          selected: _categoryId == item.id,
+                          onSelected: (_) => setState(() {
+                            _categoryId = item.id;
+                            _tagId = null;
+                          }),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _FilterSectionLabel('标签'),
+                  const SizedBox(height: 8),
+                  if (category == null)
+                    Text(
+                      '选择分类后可筛选标签',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          key: const ValueKey('stats-tag-all'),
+                          label: const Text('全部标签'),
+                          selected: _tagId == null,
+                          onSelected: (_) => setState(() => _tagId = null),
+                        ),
+                        for (final tag in category.tags)
+                          ChoiceChip(
+                            key: ValueKey('stats-tag-${tag.id}'),
+                            label: Text(tag.name),
+                            selected: _tagId == tag.id,
+                            onSelected: (_) => setState(() => _tagId = tag.id),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: Row(
+                children: [
+                  TextButton(
+                    key: const ValueKey('stats-filter-reset'),
+                    onPressed: _reset,
+                    child: const Text('重置'),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('stats-filter-apply'),
+                      onPressed: _apply,
+                      child: const Text('应用'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterSectionLabel extends StatelessWidget {
+  const _FilterSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(
+        context,
+      ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+class _BalanceHero extends StatelessWidget {
+  const _BalanceHero({required this.stats, required this.hasDimension});
+
+  final RangeStats stats;
+  final bool hasDimension;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final finance = financeColors(context);
-    final positive = stats.monthBalance >= 0;
-    final totalFlow = stats.monthIncome + stats.monthExpense;
+    final positive = stats.balance >= 0;
+    final totalFlow = stats.income + stats.expense;
+    final count = stats.expenseCount + stats.incomeCount;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -197,13 +519,13 @@ class _BalanceHero extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '本月结余',
+                  '结余',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
               ),
-              if (stats.monthIncome > 0)
+              if (hasDimension)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -214,7 +536,24 @@ class _BalanceHero extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    '储蓄率 ${formatPercent(stats.savingsRate)}',
+                    '$count 笔',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: finance.income,
+                    ),
+                  ),
+                )
+              else if (stats.income > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: finance.incomeContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '储蓄率 ${formatPercent(stats.balance / stats.income * 100)}',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: finance.income,
                     ),
@@ -227,7 +566,7 @@ class _BalanceHero extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(
-              formatMoney(stats.monthBalance),
+              formatMoney(stats.balance),
               style: theme.textTheme.displaySmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: positive ? scheme.onSurface : finance.expense,
@@ -241,14 +580,14 @@ class _BalanceHero extends StatelessWidget {
               Expanded(
                 child: _HeroMetric(
                   label: '收入',
-                  value: stats.monthIncome,
+                  value: stats.income,
                   color: finance.income,
                 ),
               ),
               Expanded(
                 child: _HeroMetric(
                   label: '支出',
-                  value: stats.monthExpense,
+                  value: stats.expense,
                   color: finance.expense,
                 ),
               ),
@@ -259,7 +598,7 @@ class _BalanceHero extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: stats.monthIncome / totalFlow,
+                value: stats.income / totalFlow,
                 minHeight: 6,
                 color: finance.income,
                 backgroundColor: finance.expense,
@@ -314,18 +653,18 @@ class _HeroMetric extends StatelessWidget {
 }
 
 class _Metrics extends StatelessWidget {
-  const _Metrics({required this.stats, required this.now, required this.view});
+  const _Metrics({required this.stats, required this.view});
 
-  final StatsSummary stats;
-  final DateTime now;
+  final RangeStats stats;
   final _StatsView view;
 
   @override
   Widget build(BuildContext context) {
     final finance = financeColors(context);
     final income = view == _StatsView.income;
-    final current = income ? stats.monthIncome : stats.monthExpense;
-    final previous = income ? stats.lastMonthIncome : stats.lastMonthExpense;
+    final current = income ? stats.income : stats.expense;
+    final previous = income ? stats.previousIncome : stats.previousExpense;
+    final count = income ? stats.incomeCount : stats.expenseCount;
     final mom = monthOverMonth(current, previous);
     final noteColor = mom == null
         ? null
@@ -334,22 +673,23 @@ class _Metrics extends StatelessWidget {
         : (mom > 0 ? finance.expense : finance.income);
     final items = [
       _MetricData(
-        label: income ? '本周收入' : '本周花费',
-        value: income ? stats.weekIncome : stats.weekExpense,
-      ),
-      _MetricData(
-        label: income ? '当月收入' : '当月花费',
+        label: income ? '本期收入' : '本期支出',
         value: current,
         note: mom == null
             ? null
-            : '较上月 ${mom >= 0 ? '+' : ''}${mom.toStringAsFixed(1)}%',
+            : '较上期 ${mom >= 0 ? '+' : ''}${mom.toStringAsFixed(1)}%',
         noteColor: noteColor,
       ),
-      _MetricData(label: income ? '上月收入' : '上月花费', value: previous),
       _MetricData(
-        label: income ? '日均收入' : '日均花费',
-        value: dailyAverage(current, now),
-        note: '按已过 ${now.day} 天',
+        label: income ? '日均收入' : '日均支出',
+        value: dailyAverage(current, stats.days),
+        note: '按 ${stats.days} 天',
+      ),
+      _MetricData(label: income ? '上期收入' : '上期支出', value: previous),
+      _MetricData(
+        label: '单笔均额',
+        value: count == 0 ? 0 : current / count,
+        note: '$count 笔',
       ),
     ];
 
@@ -416,14 +756,20 @@ class _MetricCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              formatMoney(data.value),
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                fontFeatures: const [FontFeature.tabularFigures()],
+          SizedBox(
+            height: MediaQuery.textScalerOf(context).scale(28),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  formatMoney(data.value),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
               ),
             ),
           ),

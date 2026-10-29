@@ -721,6 +721,269 @@ func TestStatsIncomeAndExclusionFilter(t *testing.T) {
 	}
 }
 
+type rangeStatsFixture struct {
+	server                   *Server
+	token                    string
+	now                      time.Time
+	expenseCat, otherExpense int64
+	excludedCat, incomeCat   int64
+	lunchTag, dinnerTag      int64
+	metroTag, salaryTag      int64
+	excludedTag              int64
+	walletID, cardID         int64
+}
+
+func setupRangeStatsFixture(t *testing.T) rangeStatsFixture {
+	t.Helper()
+	s, token, cleanup := setupTestServer(t)
+	t.Cleanup(cleanup)
+
+	now := time.Date(2026, 10, 28, 20, 0, 0, 0, time.Local)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	createCategory := func(name, catType string, tags ...string) (int64, []int64) {
+		res, err := s.db.Exec("INSERT INTO categories (name, sort_order, type) VALUES (?, 90, ?)", name, catType)
+		if err != nil {
+			t.Fatalf("insert category %s: %v", name, err)
+		}
+		catID, _ := res.LastInsertId()
+		tagIDs := make([]int64, 0, len(tags))
+		for i, tag := range tags {
+			res, err := s.db.Exec("INSERT INTO tags (category_id, name, sort_order) VALUES (?, ?, ?)", catID, tag, i+1)
+			if err != nil {
+				t.Fatalf("insert tag %s: %v", tag, err)
+			}
+			tagID, _ := res.LastInsertId()
+			tagIDs = append(tagIDs, tagID)
+		}
+		return catID, tagIDs
+	}
+	createChannel := func(name string) int64 {
+		res, err := s.db.Exec("INSERT INTO payment_methods (name, sort_order, type) VALUES (?, 90, 'asset')", name)
+		if err != nil {
+			t.Fatalf("insert channel %s: %v", name, err)
+		}
+		id, _ := res.LastInsertId()
+		return id
+	}
+	insertTx := func(amount int64, txType string, pmID, catID, tagID int64, at time.Time) {
+		_, err := s.db.Exec(
+			"INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at, type) VALUES (?, 'range test', ?, ?, ?, ?, ?)",
+			amount, pmID, catID, tagID, at.UTC().Format(time.RFC3339), txType,
+		)
+		if err != nil {
+			t.Fatalf("insert transaction: %v", err)
+		}
+	}
+
+	expenseCat, expenseTags := createCategory("区间餐饮", "expense", "午餐", "晚餐")
+	excludedCat, excludedTags := createCategory("区间排除", "expense", "排除")
+	otherExpense, otherTags := createCategory("区间交通", "expense", "地铁")
+	incomeCat, incomeTags := createCategory("区间薪资", "income", "工资")
+	category, _ := s.db.Exec("UPDATE categories SET exclude_from_stats = 1 WHERE id = ?", excludedCat)
+	if n, _ := category.RowsAffected(); n != 1 {
+		t.Fatalf("failed to exclude category")
+	}
+
+	walletID := createChannel("区间钱包")
+	cardID := createChannel("区间银行卡")
+
+	local := func(month time.Month, day, hour int) time.Time {
+		return time.Date(2026, month, day, hour, 0, 0, 0, time.Local)
+	}
+	insertTx(-1000, "expense", walletID, expenseCat, expenseTags[0], local(time.October, 1, 0))
+	insertTx(-2000, "expense", walletID, expenseCat, expenseTags[1], local(time.October, 5, 12))
+	insertTx(-500, "expense", cardID, otherExpense, otherTags[0], local(time.October, 10, 12))
+	insertTx(-5000, "expense", cardID, excludedCat, excludedTags[0], local(time.October, 28, 12))
+	insertTx(8000, "income", walletID, incomeCat, incomeTags[0], local(time.October, 15, 12))
+	insertTx(-1500, "expense", walletID, expenseCat, expenseTags[0], local(time.September, 15, 12))
+	insertTx(4000, "income", walletID, incomeCat, incomeTags[0], local(time.September, 20, 12))
+	insertTx(-2000, "expense", walletID, expenseCat, expenseTags[0], local(time.September, 29, 12))
+	insertTx(-2500, "expense", walletID, otherExpense, otherTags[0], local(time.August, 10, 12))
+
+	return rangeStatsFixture{
+		server: s, token: token, now: now,
+		expenseCat: expenseCat, otherExpense: otherExpense, excludedCat: excludedCat, incomeCat: incomeCat,
+		lunchTag: expenseTags[0], dinnerTag: expenseTags[1], metroTag: otherTags[0], salaryTag: incomeTags[0], excludedTag: excludedTags[0],
+		walletID: walletID, cardID: cardID,
+	}
+}
+
+func (f rangeStatsFixture) fetch(t *testing.T, start, end string, extra string) (int, RangeStatsResponse, string) {
+	t.Helper()
+	url := "/api/stats/range"
+	if start != "" || end != "" {
+		url += "?start=" + start + "&end=" + end
+	}
+	if extra != "" {
+		url += "&" + extra
+	}
+	req := httptest.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+f.token)
+	rec := httptest.NewRecorder()
+	f.server.ServeHTTP(rec, req)
+	var resp RangeStatsResponse
+	if rec.Code == http.StatusOK {
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode range stats: %v", err)
+		}
+	}
+	return rec.Code, resp, rec.Body.String()
+}
+
+func TestStatsRange(t *testing.T) {
+	f := setupRangeStatsFixture(t)
+
+	status, stats, body := f.fetch(t, "2026-10-01", "2026-10-28", "")
+	if status != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", status, body)
+	}
+	if stats.Days != 28 {
+		t.Errorf("days = %d, want 28", stats.Days)
+	}
+	if stats.Expense != 35 || stats.Income != 80 || stats.Balance != 45 {
+		t.Errorf("totals = expense %v income %v balance %v, want 35/80/45", stats.Expense, stats.Income, stats.Balance)
+	}
+	if stats.PreviousExpense != 15 || stats.PreviousIncome != 40 {
+		t.Errorf("previous = %v/%v, want 15/40", stats.PreviousExpense, stats.PreviousIncome)
+	}
+	if stats.ExpenseCount != 3 || stats.IncomeCount != 1 {
+		t.Errorf("counts = %d/%d, want 3/1", stats.ExpenseCount, stats.IncomeCount)
+	}
+	if len(stats.CategoryDistribution) != 2 {
+		t.Fatalf("expense categories = %d, want 2: %+v", len(stats.CategoryDistribution), stats.CategoryDistribution)
+	}
+	if got := stats.CategoryDistribution[0]; got.Name != "区间餐饮" || got.Amount != 30 || got.Percentage != 85.7 {
+		t.Errorf("leading expense category = %+v", got)
+	}
+	if len(stats.CategoryDistribution[0].Tags) != 2 {
+		t.Fatalf("expense tags = %+v, want 2", stats.CategoryDistribution[0].Tags)
+	}
+	if got := stats.CategoryDistribution[0].Tags[0]; got.Name != "晚餐" || got.Amount != 20 || got.Percentage != 66.7 {
+		t.Errorf("leading tag = %+v", got)
+	}
+	if got := stats.CategoryDistribution[0].Tags[1]; got.Name != "午餐" || got.Amount != 10 || got.Percentage != 33.3 {
+		t.Errorf("second tag = %+v", got)
+	}
+	if len(stats.IncomeCategoryDistribution) != 1 || stats.IncomeCategoryDistribution[0].Amount != 80 || stats.IncomeCategoryDistribution[0].Percentage != 100 {
+		t.Errorf("income categories = %+v", stats.IncomeCategoryDistribution)
+	}
+	if len(stats.PaymentDistribution) != 2 || stats.PaymentDistribution[0].Name != "区间钱包" || stats.PaymentDistribution[0].Amount != 30 || stats.PaymentDistribution[0].Percentage != 85.7 {
+		t.Errorf("payment distribution = %+v", stats.PaymentDistribution)
+	}
+	if len(stats.IncomePaymentDistribution) != 1 || stats.IncomePaymentDistribution[0].Amount != 80 {
+		t.Errorf("income payment distribution = %+v", stats.IncomePaymentDistribution)
+	}
+	if len(stats.MonthlyTrends) != 6 || stats.MonthlyTrends[0].Month != "2026-05" || stats.MonthlyTrends[5].Month != "2026-10" {
+		t.Fatalf("trend months = %+v", stats.MonthlyTrends)
+	}
+	if stats.MonthlyTrends[3].Expense != 25 || stats.MonthlyTrends[4].Expense != 35 || stats.MonthlyTrends[5].Expense != 35 || stats.MonthlyTrends[5].Income != 80 {
+		t.Errorf("unexpected trends: %+v", stats.MonthlyTrends)
+	}
+	if stats.MonthlyTrends[4].Income != 40 {
+		t.Errorf("previous month trend income = %v, want 40", stats.MonthlyTrends[4].Income)
+	}
+
+	status, defaults, body := f.fetch(t, "", "", "")
+	if status != http.StatusOK {
+		t.Fatalf("default range status = %d: %s", status, body)
+	}
+	if defaults.Days != 28 || defaults.Expense != stats.Expense || defaults.Income != stats.Income {
+		t.Errorf("default range = %+v, want same month-to-date totals", defaults)
+	}
+
+	status, clamped, body := f.fetch(t, "2026-10-01", "2026-10-31", "")
+	if status != http.StatusOK {
+		t.Fatalf("month-end range status = %d: %s", status, body)
+	}
+	if clamped.Days != 28 || clamped.PreviousExpense != 35 || clamped.PreviousIncome != 40 {
+		t.Errorf("month-end clamp = days %d previous %v/%v, want 28 and 35/40", clamped.Days, clamped.PreviousExpense, clamped.PreviousIncome)
+	}
+}
+
+func TestStatsRangeFilters(t *testing.T) {
+	f := setupRangeStatsFixture(t)
+
+	categoryQuery := "category_id=" + strconv.FormatInt(f.expenseCat, 10)
+	status, stats, body := f.fetch(t, "2026-10-01", "2026-10-28", categoryQuery)
+	if status != http.StatusOK {
+		t.Fatalf("category filter status = %d: %s", status, body)
+	}
+	if stats.Expense != 30 || stats.Income != 0 || stats.Balance != -30 || stats.ExpenseCount != 2 || stats.IncomeCount != 0 {
+		t.Errorf("category filtered totals = %+v", stats)
+	}
+	if len(stats.CategoryDistribution) != 1 || stats.CategoryDistribution[0].Amount != 30 || stats.CategoryDistribution[0].Percentage != 100 {
+		t.Errorf("category filtered distribution = %+v", stats.CategoryDistribution)
+	}
+	if len(stats.CategoryDistribution[0].Tags) != 2 || len(stats.PaymentDistribution) != 1 || stats.PaymentDistribution[0].Name != "区间钱包" {
+		t.Errorf("category filtered drill-down = tags %+v channels %+v", stats.CategoryDistribution[0].Tags, stats.PaymentDistribution)
+	}
+	if stats.PreviousExpense != 15 || stats.PreviousIncome != 0 {
+		t.Errorf("category filtered previous = %v/%v", stats.PreviousExpense, stats.PreviousIncome)
+	}
+	if stats.MonthlyTrends[5].Expense != 30 || stats.MonthlyTrends[5].Income != 0 {
+		t.Errorf("category filtered trend = %+v", stats.MonthlyTrends[5])
+	}
+
+	tagQuery := "category_id=" + strconv.FormatInt(f.expenseCat, 10) + "&tag_id=" + strconv.FormatInt(f.lunchTag, 10)
+	status, stats, body = f.fetch(t, "2026-10-01", "2026-10-28", tagQuery)
+	if status != http.StatusOK {
+		t.Fatalf("tag filter status = %d: %s", status, body)
+	}
+	if stats.Expense != 10 || stats.ExpenseCount != 1 || stats.PreviousExpense != 15 {
+		t.Errorf("tag filtered totals = %+v", stats)
+	}
+	if len(stats.CategoryDistribution) != 1 || len(stats.CategoryDistribution[0].Tags) != 1 {
+		t.Fatalf("tag filtered distribution = %+v", stats.CategoryDistribution)
+	}
+	if tag := stats.CategoryDistribution[0].Tags[0]; tag.Name != "午餐" || tag.Amount != 10 || tag.Percentage != 100 {
+		t.Errorf("tag drill-down = %+v", tag)
+	}
+	if len(stats.PaymentDistribution) != 1 || stats.PaymentDistribution[0].Amount != 10 || stats.PaymentDistribution[0].Percentage != 100 {
+		t.Errorf("tag filtered channels = %+v", stats.PaymentDistribution)
+	}
+	if stats.MonthlyTrends[5].Expense != 10 || stats.MonthlyTrends[5].Income != 0 {
+		t.Errorf("tag filtered trend = %+v", stats.MonthlyTrends[5])
+	}
+
+	excludedQuery := "category_id=" + strconv.FormatInt(f.excludedCat, 10)
+	status, stats, body = f.fetch(t, "2026-10-01", "2026-10-28", excludedQuery)
+	if status != http.StatusOK {
+		t.Fatalf("excluded filter status = %d: %s", status, body)
+	}
+	if stats.Expense != 0 || stats.Income != 0 || stats.ExpenseCount != 0 || len(stats.CategoryDistribution) != 0 || len(stats.PaymentDistribution) != 0 {
+		t.Errorf("excluded category leaked into range stats: %+v", stats)
+	}
+	for _, trend := range stats.MonthlyTrends {
+		if trend.Expense != 0 || trend.Income != 0 {
+			t.Errorf("excluded category leaked into trend: %+v", stats.MonthlyTrends)
+		}
+	}
+
+	badQueries := []string{
+		"?start=2026-10-01",
+		"?end=2026-10-28",
+		"?start=2026-13-01&end=2026-10-28",
+		"?start=2026-10-29&end=2026-10-28",
+		"?start=2026-10-01&end=2026-10-28&category_id=0",
+		"?start=2026-10-01&end=2026-10-28&category_id=abc",
+		"?start=2026-10-01&end=2026-10-28&tag_id=-1",
+	}
+	for _, query := range badQueries {
+		req := httptest.NewRequest("GET", "/api/stats/range"+query, nil)
+		req.Header.Set("Authorization", "Bearer "+f.token)
+		rec := httptest.NewRecorder()
+		f.server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("query %s: status = %d, want 400 (%s)", query, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), `"error"`) {
+			t.Errorf("query %s: missing JSON error body: %s", query, rec.Body.String())
+		}
+	}
+}
+
 func jsonNumber(id int64) string {
 	b, _ := json.Marshal(id)
 	return string(b)

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:ledger_app/core/format/dates.dart';
 import 'package:ledger_app/core/widgets/ledger_widgets.dart';
 import 'package:ledger_app/features/stats/stats_screen.dart';
 
@@ -13,13 +15,18 @@ void expectEqualMetricCards(WidgetTester tester) {
         .ancestor(of: find.text(label), matching: find.byType(LedgerCard))
         .first,
   );
-  final week = card('本周花费');
-  final month = card('当月花费');
-  final lastMonth = card('上月花费');
-  final daily = card('日均花费');
-  expect(week.top, month.top);
-  expect(lastMonth.top, daily.top);
-  final heights = [week.height, month.height, lastMonth.height, daily.height];
+  final current = card('本期支出');
+  final daily = card('日均支出');
+  final previous = card('上期支出');
+  final average = card('单笔均额');
+  expect(current.top, daily.top);
+  expect(previous.top, average.top);
+  final heights = [
+    current.height,
+    daily.height,
+    previous.height,
+    average.height,
+  ];
   expect(
     heights.reduce(math.max) - heights.reduce(math.min),
     lessThanOrEqualTo(0.5),
@@ -29,24 +36,59 @@ void expectEqualMetricCards(WidgetTester tester) {
 void main() {
   setUpAll(initTestLocale);
 
-  testWidgets('stats page shows hero, metrics and chart toggle', (
-    tester,
-  ) async {
-    final controllers = await testControllersWithHandler(defaultApi);
+  Future<TestControllers> mountStats(
+    WidgetTester tester, {
+    Future<http.Response> Function(http.Request)? handler,
+    Size size = const Size(390, 1400),
+    TextScaler textScaler = TextScaler.noScaling,
+  }) async {
+    final controllers = await testControllersWithHandler(handler ?? defaultApi);
     await controllers.ledger.loadAll();
     await pumpWithProviders(
       tester,
       home: const StatsScreen(),
       controllers: controllers,
+      size: size,
+      textScaler: textScaler,
+    );
+    await tester.pumpAndSettle();
+    return controllers;
+  }
+
+  http.Request lastRangeRequest(List<http.Request> requests) =>
+      requests.lastWhere((request) => request.url.path == '/api/stats/range');
+
+  String dateParam(DateTime date) => formatDateParam(date);
+
+  testWidgets('stats page shows range summary, hero, metrics and chart', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    final controllers = await mountStats(
+      tester,
+      handler: (request) async {
+        requests.add(request);
+        return defaultApi(request);
+      },
     );
 
-    expect(find.byType(LedgerSliverAppBar), findsOneWidget);
-    expect(find.text('本月结余'), findsOneWidget);
+    final now = DateTime.now();
+    expect(find.text('结余'), findsOneWidget);
+    expect(find.text('本月 · 全部维度'), findsOneWidget);
     expect(find.text('¥9,551.50'), findsOneWidget);
-    expect(find.text('本周花费'), findsOneWidget);
-    expect(find.text('当月花费'), findsOneWidget);
+    expect(find.text('本期支出'), findsOneWidget);
+    expect(find.text('日均支出'), findsOneWidget);
+    expect(find.text('上期支出'), findsOneWidget);
+    expect(find.text('单笔均额'), findsOneWidget);
     expect(find.text('支出构成'), findsOneWidget);
     expect(find.text('餐饮美食'), findsWidgets);
+    expect(find.text('储蓄率 74.6%'), findsOneWidget);
+
+    final query = lastRangeRequest(requests).url.queryParameters;
+    expect(query['start'], dateParam(DateTime(now.year, now.month)));
+    expect(query['end'], dateParam(now));
+    expect(query.containsKey('category_id'), isFalse);
+    expect(query.containsKey('tag_id'), isFalse);
 
     await tester.tap(find.text('趋势'));
     await tester.pumpAndSettle();
@@ -61,39 +103,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('细分标签'), findsOneWidget);
     expect(find.text('午餐'), findsOneWidget);
+    expect(controllers.ledger.rangeStats?.expense, 3248.5);
   });
 
   testWidgets('income view swaps metrics, composition and channels', (
     tester,
   ) async {
-    final controllers = await testControllersWithHandler(defaultApi);
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
-      tester,
-      home: const StatsScreen(),
-      controllers: controllers,
-      size: const Size(390, 1400),
-    );
-    await tester.pumpAndSettle();
+    await mountStats(tester);
 
     expect(find.text('支出构成'), findsOneWidget);
-    expect(find.text('本周花费'), findsOneWidget);
+    expect(find.text('本期支出'), findsOneWidget);
     expect(find.text('支付途径'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('stats-view-income')));
     await tester.pumpAndSettle();
 
     expect(find.text('收入构成'), findsOneWidget);
-    expect(find.text('本周收入'), findsOneWidget);
-    expect(find.text('当月收入'), findsOneWidget);
-    expect(find.text('上月收入'), findsOneWidget);
+    expect(find.text('本期收入'), findsOneWidget);
     expect(find.text('日均收入'), findsOneWidget);
+    expect(find.text('上期收入'), findsOneWidget);
     expect(find.text('收入途径'), findsOneWidget);
-    expect(find.text('本月收入'), findsWidgets);
     expect(find.text('支出构成'), findsNothing);
-    expect(find.text('本周花费'), findsNothing);
+    expect(find.text('本期支出'), findsNothing);
     expect(find.text('支付途径'), findsNothing);
-    expect(find.text('本月支出'), findsNothing);
 
     await tester.tap(find.text('趋势'));
     await tester.pumpAndSettle();
@@ -105,44 +137,237 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('stats-view-expense')));
     await tester.pumpAndSettle();
     expect(find.text('支出构成'), findsOneWidget);
-    expect(find.text('本周花费'), findsOneWidget);
+    expect(find.text('本期支出'), findsOneWidget);
+  });
+
+  testWidgets('filter draft does not apply until the user confirms', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await mountStats(
+      tester,
+      handler: (request) async {
+        requests.add(request);
+        return defaultApi(request);
+      },
+    );
+    final before = requests
+        .where((r) => r.url.path == '/api/stats/range')
+        .length;
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    expect(find.text('日期范围'), findsOneWidget);
+    expect(find.text('选择分类后可筛选标签'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('stats-range-lastMonth')));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('本月 · 全部维度'), findsOneWidget);
+    expect(
+      requests.where((r) => r.url.path == '/api/stats/range').length,
+      before,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-range-lastMonth')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    final now = DateTime.now();
+    final query = lastRangeRequest(requests).url.queryParameters;
+    expect(query['start'], dateParam(DateTime(now.year, now.month - 1)));
+    expect(query['end'], dateParam(DateTime(now.year, now.month, 0)));
+    expect(find.text('上月 · 全部维度'), findsOneWidget);
+  });
+
+  testWidgets('applying income or tag dimensions switches view and request', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await mountStats(
+      tester,
+      handler: (request) async {
+        requests.add(request);
+        return defaultApi(request);
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('stats-category-4')));
+    await tester.tap(find.byKey(const ValueKey('stats-category-4')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('收入构成'), findsOneWidget);
+    expect(find.text('本月 · 职业收入'), findsOneWidget);
+    expect(lastRangeRequest(requests).url.queryParameters['category_id'], '4');
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('stats-category-1')));
+    await tester.tap(find.byKey(const ValueKey('stats-category-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-tag-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    final query = lastRangeRequest(requests).url.queryParameters;
+    expect(query['category_id'], '1');
+    expect(query['tag_id'], '1');
+    expect(find.text('支出构成'), findsOneWidget);
+    expect(find.text('本月 · 餐饮美食 · 午餐'), findsOneWidget);
+  });
+
+  testWidgets('reset restores the default month without dimensions', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await mountStats(
+      tester,
+      handler: (request) async {
+        requests.add(request);
+        return defaultApi(request);
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-range-lastMonth')));
+    await tester.tap(find.byKey(const ValueKey('stats-category-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-tag-1')));
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+    expect(find.text('上月 · 餐饮美食 · 午餐'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-reset')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    final now = DateTime.now();
+    final query = lastRangeRequest(requests).url.queryParameters;
+    expect(query['start'], dateParam(DateTime(now.year, now.month)));
+    expect(query['end'], dateParam(now));
+    expect(query.containsKey('category_id'), isFalse);
+    expect(query.containsKey('tag_id'), isFalse);
+    expect(find.text('本月 · 全部维度'), findsOneWidget);
+  });
+
+  testWidgets('custom date picker cancel keeps the draft unchanged', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await mountStats(
+      tester,
+      handler: (request) async {
+        requests.add(request);
+        return defaultApi(request);
+      },
+    );
+    final before = lastRangeRequest(requests).url.queryParameters;
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-range-custom')));
+    await tester.pumpAndSettle();
+    expect(find.byType(DateRangePickerDialog), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(lastRangeRequest(requests).url.queryParameters, before);
+    expect(find.text('本月 · 全部维度'), findsOneWidget);
+  });
+
+  testWidgets('dimension filter replaces savings rate with count badge', (
+    tester,
+  ) async {
+    await mountStats(tester);
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-category-1')));
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('45 笔'), findsOneWidget);
+    expect(find.textContaining('储蓄率'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-reset')));
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('储蓄率'), findsOneWidget);
+    expect(find.text('45 笔'), findsNothing);
+  });
+
+  testWidgets('range failure clears old numbers and retry recovers', (
+    tester,
+  ) async {
+    var fail = false;
+    final controllers = await mountStats(
+      tester,
+      handler: (request) async {
+        if (fail && request.url.path == '/api/stats/range') {
+          return jsonResponse({'error': 'server error'}, status: 500);
+        }
+        return defaultApi(request);
+      },
+    );
+    expect(find.text('¥9,551.50'), findsOneWidget);
+
+    fail = true;
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-range-lastMonth')));
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ErrorState), findsOneWidget);
+    expect(find.text('¥9,551.50'), findsNothing);
+
+    fail = false;
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ErrorState), findsNothing);
+    expect(find.text('¥9,551.50'), findsOneWidget);
+    expect(controllers.ledger.rangeStatsError, isNull);
   });
 
   testWidgets('metric cards share height across all four', (tester) async {
-    final controllers = await testControllersWithHandler(defaultApi);
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
-      tester,
-      home: const StatsScreen(),
-      controllers: controllers,
-      size: const Size(390, 1400),
-    );
-    await tester.pumpAndSettle();
+    await mountStats(tester);
     expectEqualMetricCards(tester);
 
-    final noNote = statsJson();
-    noNote['last_month_expense'] = 0;
-    final noNoteControllers = await testControllersWithHandler((request) async {
-      if (request.url.path == '/api/stats/summary') {
-        return jsonResponse(noNote);
-      }
-      return defaultApi(request);
-    });
-    await noNoteControllers.ledger.loadAll();
-    await pumpWithProviders(
+    final noNote = rangeStatsJson(previousExpense: 0);
+    await mountStats(
       tester,
-      home: const StatsScreen(),
-      controllers: noNoteControllers,
-      size: const Size(390, 1400),
+      handler: (request) async {
+        if (request.url.path == '/api/stats/range') {
+          return jsonResponse(noNote);
+        }
+        return defaultApi(request);
+      },
     );
-    await tester.pumpAndSettle();
     expectEqualMetricCards(tester);
   });
 
   testWidgets('chart card sizes to content without inner scrolling', (
     tester,
   ) async {
-    final stats = statsJson(monthExpense: 171);
+    final stats = rangeStatsJson(expense: 171);
     stats['category_distribution'] = [
       {
         'id': 1,
@@ -180,20 +405,15 @@ void main() {
         'tags': <Object?>[],
       },
     ];
-    final controllers = await testControllersWithHandler((request) async {
-      if (request.url.path == '/api/stats/summary') {
-        return jsonResponse(stats);
-      }
-      return defaultApi(request);
-    });
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
+    await mountStats(
       tester,
-      home: const StatsScreen(),
-      controllers: controllers,
-      size: const Size(390, 1400),
+      handler: (request) async {
+        if (request.url.path == '/api/stats/range') {
+          return jsonResponse(stats);
+        }
+        return defaultApi(request);
+      },
     );
-    await tester.pumpAndSettle();
 
     final compositionCard = find
         .ancestor(of: find.text('支出构成'), matching: find.byType(LedgerCard))
@@ -227,42 +447,55 @@ void main() {
   });
 
   testWidgets('stats page handles empty data', (tester) async {
-    final controllers = await testControllersWithHandler((request) async {
-      if (request.url.path == '/api/stats/summary') {
-        return jsonResponse({
-          ...statsJson(monthExpense: 0, monthIncome: 0, monthBalance: 0),
-          'category_distribution': [],
-          'payment_distribution': [],
-          'monthly_trends': [],
-        });
-      }
-      return defaultApi(request);
-    });
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
+    final empty = rangeStatsJson(
+      expense: 0,
+      income: 0,
+      balance: 0,
+      previousExpense: 0,
+      previousIncome: 0,
+      expenseCount: 0,
+      incomeCount: 0,
+    );
+    empty['category_distribution'] = <Object?>[];
+    empty['income_category_distribution'] = <Object?>[];
+    empty['payment_distribution'] = <Object?>[];
+    empty['income_payment_distribution'] = <Object?>[];
+    empty['monthly_trends'] = <Object?>[];
+    await mountStats(
       tester,
-      home: const StatsScreen(),
-      controllers: controllers,
+      handler: (request) async {
+        if (request.url.path == '/api/stats/range') {
+          return jsonResponse(empty);
+        }
+        return defaultApi(request);
+      },
     );
 
-    expect(find.text('当月暂无分类支出'), findsOneWidget);
+    expect(find.text('暂无分类支出'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -1000));
     await tester.pumpAndSettle();
-    expect(find.text('当月暂无渠道支出'), findsOneWidget);
-    expect(find.text('储蓄率 0.0%'), findsNothing);
+    expect(find.text('暂无渠道支出'), findsOneWidget);
+    expect(find.textContaining('储蓄率'), findsNothing);
   });
 
-  testWidgets('stats fit 320dp with 2x text', (tester) async {
-    final controllers = await testControllersWithHandler(defaultApi);
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
+  testWidgets('stats filter fits 320dp with 2x text', (tester) async {
+    await mountStats(
       tester,
-      home: const StatsScreen(),
-      controllers: controllers,
       size: const Size(320, 800),
       textScaler: const TextScaler.linear(2),
     );
+
+    await tester.tap(find.byKey(const ValueKey('stats-filter')));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('stats-range-lastMonth')),
+    );
+    await tester.tap(find.byKey(const ValueKey('stats-range-lastMonth')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stats-filter-apply')));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
 
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('stats-view-income')),
@@ -271,23 +504,12 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('stats-view-income')));
     await tester.pumpAndSettle();
-
     await tester.scrollUntilVisible(
       find.text('收入构成'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('收入构成'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('趋势'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('趋势'));
-    await tester.pumpAndSettle();
-
     expect(tester.takeException(), isNull);
-    expect(find.text('近 6 个月收支'), findsOneWidget);
   });
 }

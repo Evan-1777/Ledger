@@ -452,4 +452,192 @@ void main() {
     expect(configGets, 2);
     expect(statsGets, 1);
   });
+
+  test(
+    'stats query change requests range with filters and updates result',
+    () async {
+      final rangeRequests = <http.Request>[];
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.url.path == '/api/stats/range') {
+          rangeRequests.add(request);
+          return jsonResponse(rangeStatsJson(expense: 777, expenseCount: 2));
+        }
+        return standardHandler(request);
+      });
+
+      await controllers.ledger.loadAll();
+      await controllers.ledger.setStatsQuery(
+        StatsQuery(
+          start: DateTime(2026, 9, 1),
+          end: DateTime(2026, 9, 30),
+          categoryId: 1,
+          tagId: 1,
+        ),
+      );
+
+      final query = rangeRequests.last.url.queryParameters;
+      expect(query, {
+        'start': '2026-09-01',
+        'end': '2026-09-30',
+        'category_id': '1',
+        'tag_id': '1',
+      });
+      expect(controllers.ledger.rangeStats?.expense, 777);
+      expect(controllers.ledger.rangeStats?.expenseCount, 2);
+      expect(controllers.ledger.rangeStatsError, isNull);
+    },
+  );
+
+  test('a stale range response cannot overwrite the newest query', () async {
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/stats/range') {
+        final category = request.url.queryParameters['category_id'];
+        if (category == '1') {
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+          return jsonResponse(rangeStatsJson(expense: 100));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return jsonResponse(rangeStatsJson(expense: 200));
+      }
+      return standardHandler(request);
+    });
+
+    final stale = controllers.ledger.setStatsQuery(
+      StatsQuery(
+        start: DateTime(2026, 10, 1),
+        end: DateTime(2026, 10, 28),
+        categoryId: 1,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    await controllers.ledger.setStatsQuery(
+      StatsQuery(
+        start: DateTime(2026, 10, 1),
+        end: DateTime(2026, 10, 28),
+        categoryId: 2,
+      ),
+    );
+    await stale;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    expect(controllers.ledger.statsQuery.categoryId, 2);
+    expect(controllers.ledger.rangeStats?.expense, 200);
+  });
+
+  test('deleting the filtered tag clears it and reloads the range', () async {
+    var deleted = false;
+    var rangeGets = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE' && request.url.path == '/api/tags/1') {
+        deleted = true;
+        return jsonResponse({'success': true});
+      }
+      if (request.url.path == '/api/categories') {
+        return jsonResponse([
+          {
+            'id': 1,
+            'name': '餐饮美食',
+            'sort_order': 1,
+            'type': 'expense',
+            'exclude_from_stats': false,
+            'created_at': '',
+            'tags': deleted
+                ? <Object?>[]
+                : [
+                    {'id': 1, 'category_id': 1, 'name': '午餐', 'sort_order': 1},
+                  ],
+          },
+        ]);
+      }
+      if (request.url.path == '/api/stats/range') {
+        rangeGets++;
+        return jsonResponse(rangeStatsJson());
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadConfig();
+    await controllers.ledger.setStatsQuery(
+      StatsQuery(
+        start: DateTime(2026, 10, 1),
+        end: DateTime(2026, 10, 28),
+        categoryId: 1,
+        tagId: 1,
+      ),
+    );
+    final before = rangeGets;
+
+    await controllers.ledger.deleteTag(
+      const Tag(id: 1, categoryId: 1, name: '午餐', sortOrder: 1),
+    );
+
+    expect(controllers.ledger.statsQuery.categoryId, 1);
+    expect(controllers.ledger.statsQuery.tagId, isNull);
+    expect(rangeGets, before + 1);
+    expect(controllers.ledger.statsQuery.start, DateTime(2026, 10, 1));
+  });
+
+  test('deleting the filtered category clears both dimensions', () async {
+    var deleted = false;
+    final rangeRequests = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE' &&
+          request.url.path == '/api/categories/1') {
+        deleted = true;
+        return jsonResponse({'success': true});
+      }
+      if (request.url.path == '/api/categories') {
+        return jsonResponse(
+          deleted
+              ? <Object?>[]
+              : [
+                  {
+                    'id': 1,
+                    'name': '餐饮美食',
+                    'sort_order': 1,
+                    'type': 'expense',
+                    'exclude_from_stats': false,
+                    'created_at': '',
+                    'tags': [
+                      {
+                        'id': 1,
+                        'category_id': 1,
+                        'name': '午餐',
+                        'sort_order': 1,
+                      },
+                    ],
+                  },
+                ],
+        );
+      }
+      if (request.url.path == '/api/stats/range') {
+        rangeRequests.add(request);
+        return jsonResponse(rangeStatsJson());
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadConfig();
+    await controllers.ledger.setStatsQuery(
+      StatsQuery(
+        start: DateTime(2026, 10, 1),
+        end: DateTime(2026, 10, 28),
+        categoryId: 1,
+        tagId: 1,
+      ),
+    );
+
+    await controllers.ledger.deleteCategory(
+      controllers.ledger.categories.single,
+    );
+
+    expect(controllers.ledger.statsQuery.categoryId, isNull);
+    expect(controllers.ledger.statsQuery.tagId, isNull);
+    expect(
+      rangeRequests.last.url.queryParameters.keys,
+      isNot(contains('category_id')),
+    );
+    expect(
+      rangeRequests.last.url.queryParameters.keys,
+      isNot(contains('tag_id')),
+    );
+  });
 }

@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,6 +66,43 @@ type AssetSummary struct {
 	LiabilityChannels []LiabilityChannelStat `json:"liability_channels"`
 }
 
+// statsFilter narrows every stats aggregation to a single category or tag.
+// Zero values mean no restriction so the summary endpoint keeps its contract.
+type statsFilter struct {
+	CategoryID int64
+	TagID      int64
+}
+
+func (f statsFilter) clause() (string, []any) {
+	var query strings.Builder
+	args := make([]any, 0, 2)
+	if f.CategoryID > 0 {
+		query.WriteString(" AND t.category_id = ?")
+		args = append(args, f.CategoryID)
+	}
+	if f.TagID > 0 {
+		query.WriteString(" AND t.tag_id = ?")
+		args = append(args, f.TagID)
+	}
+	return query.String(), args
+}
+
+type RangeStatsResponse struct {
+	Days                       int                 `json:"days"`
+	Expense                    float64             `json:"expense"`
+	Income                     float64             `json:"income"`
+	Balance                    float64             `json:"balance"`
+	PreviousExpense            float64             `json:"previous_expense"`
+	PreviousIncome             float64             `json:"previous_income"`
+	ExpenseCount               int                 `json:"expense_count"`
+	IncomeCount                int                 `json:"income_count"`
+	CategoryDistribution       []CategoryStat      `json:"category_distribution"`
+	IncomeCategoryDistribution []CategoryStat      `json:"income_category_distribution"`
+	PaymentDistribution        []PaymentMethodStat `json:"payment_distribution"`
+	IncomePaymentDistribution  []PaymentMethodStat `json:"income_payment_distribution"`
+	MonthlyTrends              []MonthlyTrend      `json:"monthly_trends"`
+}
+
 type StatsSummaryResponse struct {
 	WeekExpense                float64             `json:"week_expense"`
 	WeekIncome                 float64             `json:"week_income"`
@@ -113,40 +153,40 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	lastMonthEndUTC := lastMonthEnd.UTC().Format(time.RFC3339)
 
 	// 1. Week expense
-	weekExpense, err := s.sumByType(r.Context(), "expense", weekStartUTC, weekEndUTC)
+	weekExpense, err := s.sumByType(r.Context(), "expense", weekStartUTC, weekEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query week expense: "+err.Error())
 		return
 	}
 
 	// 2. Month expense
-	monthExpense, err := s.sumByType(r.Context(), "expense", monthStartUTC, monthEndUTC)
+	monthExpense, err := s.sumByType(r.Context(), "expense", monthStartUTC, monthEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month expense: "+err.Error())
 		return
 	}
 
 	// 3. Last month expense
-	lastMonthExpense, err := s.sumByType(r.Context(), "expense", lastMonthStartUTC, lastMonthEndUTC)
+	lastMonthExpense, err := s.sumByType(r.Context(), "expense", lastMonthStartUTC, lastMonthEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query last month expense: "+err.Error())
 		return
 	}
 
 	// 4. Income summaries
-	weekIncome, err := s.sumByType(r.Context(), "income", weekStartUTC, weekEndUTC)
+	weekIncome, err := s.sumByType(r.Context(), "income", weekStartUTC, weekEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query week income: "+err.Error())
 		return
 	}
 
-	monthIncome, err := s.sumByType(r.Context(), "income", monthStartUTC, monthEndUTC)
+	monthIncome, err := s.sumByType(r.Context(), "income", monthStartUTC, monthEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query month income: "+err.Error())
 		return
 	}
 
-	lastMonthIncome, err := s.sumByType(r.Context(), "income", lastMonthStartUTC, lastMonthEndUTC)
+	lastMonthIncome, err := s.sumByType(r.Context(), "income", lastMonthStartUTC, lastMonthEndUTC, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query last month income: "+err.Error())
 		return
@@ -159,26 +199,26 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Category and payment distributions (current month)
-	catDist, err := s.categoryDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense)
+	catDist, err := s.categoryDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query category distribution: "+err.Error())
 		return
 	}
 
-	incomeCatDist, err := s.categoryDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome)
+	incomeCatDist, err := s.categoryDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query income category distribution: "+err.Error())
 		return
 	}
 
 	// 6. Payment distribution (current month)
-	pmDist, err := s.paymentDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense)
+	pmDist, err := s.paymentDistribution(r.Context(), "expense", monthStartUTC, monthEndUTC, monthExpense, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query payment distribution: "+err.Error())
 		return
 	}
 
-	incomePmDist, err := s.paymentDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome)
+	incomePmDist, err := s.paymentDistribution(r.Context(), "income", monthStartUTC, monthEndUTC, monthIncome, statsFilter{})
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "failed to query income payment distribution: "+err.Error())
 		return
@@ -192,13 +232,13 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		mStartUTC := mStart.UTC().Format(time.RFC3339)
 		mEndUTC := mEnd.UTC().Format(time.RFC3339)
 
-		trendExpense, err := s.sumByType(r.Context(), "expense", mStartUTC, mEndUTC)
+		trendExpense, err := s.sumByType(r.Context(), "expense", mStartUTC, mEndUTC, statsFilter{})
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend expense: "+err.Error())
 			return
 		}
 
-		trendIncome, err := s.sumByType(r.Context(), "income", mStartUTC, mEndUTC)
+		trendIncome, err := s.sumByType(r.Context(), "income", mStartUTC, mEndUTC, statsFilter{})
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to query trend income: "+err.Error())
 			return
@@ -343,32 +383,234 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) sumByType(ctx context.Context, txType, startUTC, endUTC string) (float64, error) {
+func (s *Server) handleStatsRange(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	startRaw := query.Get("start")
+	endRaw := query.Get("end")
+	if (startRaw == "") != (endRaw == "") {
+		writeJSONError(w, http.StatusBadRequest, "start and end must be provided together")
+		return
+	}
+
+	now := nowFunc().In(time.Local)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+
+	var start, end time.Time
+	if startRaw == "" {
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.Local)
+		end = today
+	} else {
+		var err error
+		start, err = time.ParseInLocation("2006-01-02", startRaw, time.Local)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid start date, expected yyyy-MM-dd")
+			return
+		}
+		end, err = time.ParseInLocation("2006-01-02", endRaw, time.Local)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid end date, expected yyyy-MM-dd")
+			return
+		}
+	}
+	if start.After(end) {
+		writeJSONError(w, http.StatusBadRequest, "start must not be after end")
+		return
+	}
+
+	categoryID, err := parseOptionalPositiveID(query.Get("category_id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "category_id must be a positive integer")
+		return
+	}
+	tagID, err := parseOptionalPositiveID(query.Get("tag_id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "tag_id must be a positive integer")
+		return
+	}
+	filter := statsFilter{CategoryID: categoryID, TagID: tagID}
+
+	startUTC := start.UTC().Format(time.RFC3339)
+	endUTC := end.AddDate(0, 0, 1).Add(-time.Nanosecond).UTC().Format(time.RFC3339)
+
+	expense, err := s.sumByType(r.Context(), "expense", startUTC, endUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range expense: "+err.Error())
+		return
+	}
+	income, err := s.sumByType(r.Context(), "income", startUTC, endUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range income: "+err.Error())
+		return
+	}
+	expenseCount, err := s.countByType(r.Context(), "expense", startUTC, endUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to count range expense: "+err.Error())
+		return
+	}
+	incomeCount, err := s.countByType(r.Context(), "income", startUTC, endUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to count range income: "+err.Error())
+		return
+	}
+
+	previousStart := shiftMonthClamped(start, -1)
+	previousEnd := shiftMonthClamped(end, -1)
+	previousStartUTC := previousStart.UTC().Format(time.RFC3339)
+	previousEndUTC := previousEnd.AddDate(0, 0, 1).Add(-time.Nanosecond).UTC().Format(time.RFC3339)
+
+	previousExpense, err := s.sumByType(r.Context(), "expense", previousStartUTC, previousEndUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query previous expense: "+err.Error())
+		return
+	}
+	previousIncome, err := s.sumByType(r.Context(), "income", previousStartUTC, previousEndUTC, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query previous income: "+err.Error())
+		return
+	}
+
+	categoryDistribution, err := s.categoryDistribution(r.Context(), "expense", startUTC, endUTC, expense, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range category distribution: "+err.Error())
+		return
+	}
+	incomeCategoryDistribution, err := s.categoryDistribution(r.Context(), "income", startUTC, endUTC, income, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range income category distribution: "+err.Error())
+		return
+	}
+	paymentDistribution, err := s.paymentDistribution(r.Context(), "expense", startUTC, endUTC, expense, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range payment distribution: "+err.Error())
+		return
+	}
+	incomePaymentDistribution, err := s.paymentDistribution(r.Context(), "income", startUTC, endUTC, income, filter)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to query range income payment distribution: "+err.Error())
+		return
+	}
+
+	monthStart := time.Date(end.Year(), end.Month(), 1, 0, 0, 0, 0, time.Local)
+	monthlyTrends := make([]MonthlyTrend, 0, 6)
+	for i := 5; i >= 0; i-- {
+		mStart := monthStart.AddDate(0, -i, 0)
+		mEnd := mStart.AddDate(0, 1, 0).Add(-time.Nanosecond)
+		mStartUTC := mStart.UTC().Format(time.RFC3339)
+		mEndUTC := mEnd.UTC().Format(time.RFC3339)
+		trendExpense, err := s.sumByType(r.Context(), "expense", mStartUTC, mEndUTC, filter)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to query range trend expense: "+err.Error())
+			return
+		}
+		trendIncome, err := s.sumByType(r.Context(), "income", mStartUTC, mEndUTC, filter)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to query range trend income: "+err.Error())
+			return
+		}
+		monthlyTrends = append(monthlyTrends, MonthlyTrend{
+			Month:   mStart.Format("2006-01"),
+			Expense: trendExpense,
+			Income:  trendIncome,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, RangeStatsResponse{
+		Days:                       rangeDays(start, end, today),
+		Expense:                    expense,
+		Income:                     income,
+		Balance:                    income - expense,
+		PreviousExpense:            previousExpense,
+		PreviousIncome:             previousIncome,
+		ExpenseCount:               expenseCount,
+		IncomeCount:                incomeCount,
+		CategoryDistribution:       categoryDistribution,
+		IncomeCategoryDistribution: incomeCategoryDistribution,
+		PaymentDistribution:        paymentDistribution,
+		IncomePaymentDistribution:  incomePaymentDistribution,
+		MonthlyTrends:              monthlyTrends,
+	})
+}
+
+func parseOptionalPositiveID(raw string) (int64, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid positive id %q", raw)
+	}
+	return id, nil
+}
+
+func rangeDays(start, end, today time.Time) int {
+	if start.After(today) {
+		return 1
+	}
+	last := end
+	if today.Before(end) {
+		last = today
+	}
+	a := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	b := time.Date(last.Year(), last.Month(), last.Day(), 0, 0, 0, 0, time.UTC)
+	return int(b.Sub(a).Hours()/24) + 1
+}
+
+func shiftMonthClamped(date time.Time, months int) time.Time {
+	first := time.Date(date.Year(), date.Month()+time.Month(months), 1, 0, 0, 0, 0, date.Location())
+	lastDay := first.AddDate(0, 1, -1).Day()
+	day := date.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(first.Year(), first.Month(), day, 0, 0, 0, 0, date.Location())
+}
+
+func (s *Server) sumByType(ctx context.Context, txType, startUTC, endUTC string, filter statsFilter) (float64, error) {
 	var cents int64
+	filterSQL, filterArgs := filter.clause()
+	args := append([]any{startUTC, endUTC, txType}, filterArgs...)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(t.amount_cents), 0)
 		FROM transactions t
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
-	`, startUTC, endUTC, txType).Scan(&cents)
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+	`, args...).Scan(&cents)
 	if err != nil {
 		return 0, err
 	}
 	return math.Abs(float64(cents)) / 100.0, nil
 }
 
-func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64) ([]CategoryStat, error) {
+func (s *Server) countByType(ctx context.Context, txType, startUTC, endUTC string, filter statsFilter) (int, error) {
+	var count int
+	filterSQL, filterArgs := filter.clause()
+	args := append([]any{startUTC, endUTC, txType}, filterArgs...)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM transactions t
+		JOIN categories c ON c.id = t.category_id
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+	`, args...).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64, filter statsFilter) ([]CategoryStat, error) {
 	dist := make([]CategoryStat, 0)
 	index := make(map[int64]int)
+	filterSQL, filterArgs := filter.clause()
 
+	args := append([]any{startUTC, endUTC, txType}, filterArgs...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id, c.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM categories c
 		JOIN transactions t ON t.category_id = c.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
 		GROUP BY c.id, c.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
-	`, startUTC, endUTC, txType)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -399,15 +641,16 @@ func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, end
 		return nil, err
 	}
 
+	tagArgs := append([]any{startUTC, endUTC, txType}, filterArgs...)
 	tagRows, err := s.db.QueryContext(ctx, `
 		SELECT t.category_id, tg.id, tg.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM tags tg
 		JOIN transactions t ON t.tag_id = tg.id
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
 		GROUP BY t.category_id, tg.id, tg.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
-	`, startUTC, endUTC, txType)
+	`, tagArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -438,18 +681,20 @@ func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, end
 	return dist, tagRows.Err()
 }
 
-func (s *Server) paymentDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64) ([]PaymentMethodStat, error) {
+func (s *Server) paymentDistribution(ctx context.Context, txType, startUTC, endUTC string, total float64, filter statsFilter) ([]PaymentMethodStat, error) {
 	dist := make([]PaymentMethodStat, 0)
+	filterSQL, filterArgs := filter.clause()
+	args := append([]any{startUTC, endUTC, txType}, filterArgs...)
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT pm.id, pm.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM payment_methods pm
 		JOIN transactions t ON t.payment_method_id = pm.id
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
 		GROUP BY pm.id, pm.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
-	`, startUTC, endUTC, txType)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}

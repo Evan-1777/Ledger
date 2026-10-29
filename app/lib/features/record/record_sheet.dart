@@ -45,7 +45,6 @@ class _RecordSheetState extends State<RecordSheet> {
   int? _tagId;
   int? _targetChannelId;
   int? _sourceChannelId;
-  bool _categoryOpen = false;
   bool _showFee = false;
   bool _busy = false;
   bool _bootstrapped = false;
@@ -112,6 +111,15 @@ class _RecordSheetState extends State<RecordSheet> {
   Category? get _selectedCategory {
     for (final category in context.read<LedgerController>().categories) {
       if (category.id == _categoryId) return category;
+    }
+    return null;
+  }
+
+  Tag? get _selectedTag {
+    final category = _selectedCategory;
+    if (category == null) return null;
+    for (final tag in category.tags) {
+      if (tag.id == _tagId) return tag;
     }
     return null;
   }
@@ -245,7 +253,6 @@ class _RecordSheetState extends State<RecordSheet> {
       _type = type;
       _categoryId = null;
       _tagId = null;
-      _categoryOpen = false;
       _showFee = false;
       _feeController.clear();
       _error = null;
@@ -386,6 +393,86 @@ class _RecordSheetState extends State<RecordSheet> {
     }
   }
 
+  Future<void> _openCategoryPicker() async {
+    final categories = _categoriesForType();
+    final picked = await showLedgerPicker<Category>(
+      context: context,
+      title: '选择分类',
+      description: _type == TransactionType.income ? '收入分类' : '支出分类',
+      children: categories.isEmpty
+          ? [
+              EmptyState(
+                title: '暂无分类，请先在设置中添加',
+                icon: Icons.category_outlined,
+                actionLabel: widget.onOpenSettings == null ? null : '前往设置',
+                onAction: widget.onOpenSettings == null
+                    ? null
+                    : () => _openSettingsFromPicker(context),
+              ),
+            ]
+          : [
+              for (final category in categories)
+                LedgerPickerOption(
+                  key: ValueKey('record-category-${category.id}'),
+                  label: category.name,
+                  subtitle: category.tags.isEmpty
+                      ? '暂无细分标签'
+                      : category.tags.map((tag) => tag.name).join(' · '),
+                  leading: Icons.sell_outlined,
+                  selected: category.id == _categoryId,
+                  onTap: () => Navigator.of(context).pop(category),
+                ),
+            ],
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _categoryId = picked.id;
+      _tagId = picked.tags.isEmpty ? null : picked.tags.first.id;
+      _error = null;
+    });
+  }
+
+  Future<void> _openTagPicker() async {
+    final category = _selectedCategory;
+    final tags = category?.tags ?? const <Tag>[];
+    final picked = await showLedgerPicker<Tag>(
+      context: context,
+      title: '选择标签',
+      description: category?.name,
+      children: [
+        if (category == null)
+          const EmptyState(title: '先选择分类', icon: Icons.sell_outlined)
+        else if (tags.isEmpty)
+          const EmptyState(title: '该分类暂无细分标签', icon: Icons.local_offer_outlined)
+        else
+          for (final tag in tags)
+            LedgerPickerOption(
+              key: ValueKey('record-tag-${tag.id}'),
+              label: tag.name,
+              leading: Icons.local_offer_outlined,
+              selected: tag.id == _tagId,
+              onTap: () => Navigator.of(context).pop(tag),
+            ),
+      ],
+      footer: category != null && tags.isEmpty && widget.onOpenSettings != null
+          ? TextButton(
+              onPressed: () => _openSettingsFromPicker(context),
+              child: const Text('前往设置添加标签'),
+            )
+          : null,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _tagId = picked.id;
+      _error = null;
+    });
+  }
+
+  void _openSettingsFromPicker(BuildContext pickerContext) {
+    Navigator.of(pickerContext).pop();
+    _openSettings();
+  }
+
   void _openSettings() {
     Navigator.of(context).pop();
     widget.onOpenSettings?.call();
@@ -488,7 +575,7 @@ class _RecordSheetState extends State<RecordSheet> {
                     const SizedBox(height: 20),
                     if (_type == TransactionType.expense ||
                         _type == TransactionType.income)
-                      _buildCategorySection(theme, scheme)
+                      _buildCategoryFields(theme, scheme)
                     else
                       _buildSystemCategory(theme, scheme),
                     const SizedBox(height: 20),
@@ -585,113 +672,63 @@ class _RecordSheetState extends State<RecordSheet> {
     );
   }
 
-  Widget _buildCategorySection(ThemeData theme, ColorScheme scheme) {
-    final categories = _categoriesForType();
-    final selected = _selectedCategory;
-
+  Widget _buildCategoryFields(ThemeData theme, ColorScheme scheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _FieldLabel('分类与标签', style: theme.textTheme.labelLarge),
-            ),
-            if (selected != null)
-              TextButton(
-                onPressed: () => setState(() => _categoryOpen = !_categoryOpen),
-                child: Text(_categoryOpen ? '收起' : '更换'),
-              ),
-          ],
-        ),
+        _FieldLabel('分类', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        LedgerCard(
-          color: scheme.surfaceContainerHigh,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          onTap: () => setState(() => _categoryOpen = !_categoryOpen),
-          child: Row(
-            children: [
-              Icon(
-                selected == null
-                    ? Icons.category_outlined
-                    : Icons.sell_outlined,
-                size: 20,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  selected == null
-                      ? '选择分类'
-                      : [
-                          selected.name,
-                          if (_tagId != null)
-                            for (final tag in selected.tags)
-                              if (tag.id == _tagId) tag.name,
-                        ].join(' · '),
-                  style: theme.textTheme.bodyLarge,
-                ),
-              ),
-              Icon(Icons.expand_more_rounded, color: scheme.onSurfaceVariant),
-            ],
-          ),
+        _buildPickerField(
+          key: const ValueKey('record-category'),
+          theme: theme,
+          scheme: scheme,
+          icon: Icons.sell_outlined,
+          value: _selectedCategory?.name ?? '选择分类',
+          onTap: _openCategoryPicker,
         ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          child: !_categoryOpen
-              ? const SizedBox(width: double.infinity)
-              : Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final category in categories)
-                            ChoiceChip(
-                              label: Text(category.name),
-                              selected: category.id == _categoryId,
-                              onSelected: (_) => setState(() {
-                                _categoryId = category.id;
-                                _tagId = category.tags.isEmpty
-                                    ? null
-                                    : category.tags.first.id;
-                              }),
-                            ),
-                        ],
-                      ),
-                      if (selected != null) ...[
-                        const SizedBox(height: 14),
-                        if (selected.tags.isEmpty)
-                          Text(
-                            '该分类暂无细分标签，请先在设置中添加',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.error,
-                            ),
-                          )
-                        else
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final tag in selected.tags)
-                                ChoiceChip(
-                                  label: Text(tag.name),
-                                  selected: tag.id == _tagId,
-                                  onSelected: (_) =>
-                                      setState(() => _tagId = tag.id),
-                                ),
-                            ],
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
+        const SizedBox(height: 16),
+        _FieldLabel('标签', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        _buildPickerField(
+          key: const ValueKey('record-tag'),
+          theme: theme,
+          scheme: scheme,
+          icon: Icons.local_offer_outlined,
+          value: _selectedTag?.name ?? '选择标签',
+          onTap: _openTagPicker,
         ),
       ],
+    );
+  }
+
+  Widget _buildPickerField({
+    required Key key,
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required IconData icon,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return LedgerCard(
+      key: key,
+      color: scheme.surfaceContainerHigh,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      onTap: onTap,
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyLarge,
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+        ],
+      ),
     );
   }
 

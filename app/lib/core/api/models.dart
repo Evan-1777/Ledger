@@ -499,6 +499,98 @@ class AssetSummary {
   };
 }
 
+class RangeStats {
+  const RangeStats({
+    required this.days,
+    required this.expense,
+    required this.income,
+    required this.balance,
+    required this.previousExpense,
+    required this.previousIncome,
+    required this.expenseCount,
+    required this.incomeCount,
+    required this.categoryDistribution,
+    required this.incomeCategoryDistribution,
+    required this.paymentDistribution,
+    required this.incomePaymentDistribution,
+    required this.monthlyTrends,
+  });
+
+  final int days;
+  final double expense;
+  final double income;
+  final double balance;
+  final double previousExpense;
+  final double previousIncome;
+  final int expenseCount;
+  final int incomeCount;
+  final List<CategoryStat> categoryDistribution;
+  final List<CategoryStat> incomeCategoryDistribution;
+  final List<PaymentMethodStat> paymentDistribution;
+  final List<PaymentMethodStat> incomePaymentDistribution;
+  final List<MonthlyTrend> monthlyTrends;
+
+  factory RangeStats.fromJson(Map<String, dynamic> json) => RangeStats(
+    days: _asInt(json['days']),
+    expense: _asDouble(json['expense']),
+    income: _asDouble(json['income']),
+    balance: _asDouble(json['balance']),
+    previousExpense: _asDouble(json['previous_expense']),
+    previousIncome: _asDouble(json['previous_income']),
+    expenseCount: _asInt(json['expense_count']),
+    incomeCount: _asInt(json['income_count']),
+    categoryDistribution: _asList(json['category_distribution'])
+        .map((item) => CategoryStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
+    incomeCategoryDistribution: _asList(json['income_category_distribution'])
+        .map((item) => CategoryStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
+    paymentDistribution: _asList(json['payment_distribution'])
+        .map((item) => PaymentMethodStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
+    incomePaymentDistribution: _asList(json['income_payment_distribution'])
+        .map((item) => PaymentMethodStat.fromJson(item as Map<String, dynamic>))
+        .toList(),
+    monthlyTrends: _asList(json['monthly_trends'])
+        .map((item) => MonthlyTrend.fromJson(item as Map<String, dynamic>))
+        .toList(),
+  );
+}
+
+class StatsQuery {
+  StatsQuery({
+    required DateTime start,
+    required DateTime end,
+    this.categoryId,
+    this.tagId,
+  }) : start = _dateOnly(start),
+       end = _dateOnly(end);
+
+  factory StatsQuery.currentMonth(DateTime now) =>
+      StatsQuery(start: DateTime(now.year, now.month), end: now);
+
+  final DateTime start;
+  final DateTime end;
+  final int? categoryId;
+  final int? tagId;
+
+  bool get hasDimension => categoryId != null || tagId != null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is StatsQuery &&
+      other.start == start &&
+      other.end == end &&
+      other.categoryId == categoryId &&
+      other.tagId == tagId;
+
+  @override
+  int get hashCode => Object.hash(start, end, categoryId, tagId);
+
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+}
+
 class StatsSummary {
   const StatsSummary({
     required this.weekExpense,

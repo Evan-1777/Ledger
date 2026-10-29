@@ -44,9 +44,19 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.byType(SkeletonList), findsNothing);
-    expect(find.byType(EmptyState), findsNothing);
-    expect(find.byType(ErrorState), findsNothing);
+    final stream = find.byType(StreamScreen);
+    expect(
+      find.descendant(of: stream, matching: find.byType(SkeletonList)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: stream, matching: find.byType(EmptyState)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: stream, matching: find.byType(ErrorState)),
+      findsNothing,
+    );
     expect(find.text('管理员密码'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 300));

@@ -73,6 +73,7 @@ func (s *Server) routes() {
 
 	// Stats routes
 	s.mux.HandleFunc("GET /api/stats/summary", s.requireAuth(s.handleStatsSummary))
+	s.mux.HandleFunc("GET /api/stats/range", s.requireAuth(s.handleStatsRange))
 
 	// Static & SPA fallback
 	if s.staticFS != nil {

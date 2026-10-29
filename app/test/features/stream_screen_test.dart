@@ -33,10 +33,6 @@ void main() {
     expect(find.text('¥9,551.50'), findsOneWidget);
     expect(find.text('午餐 · 牛肉面'), findsOneWidget);
     expect(find.text('全部'), findsOneWidget);
-    expect(
-      popupClip(tester, find.byKey(const ValueKey('filter-menu'))),
-      Clip.antiAlias,
-    );
 
     await tester.tap(find.byKey(const ValueKey('filter-menu')));
     await tester.pumpAndSettle();
@@ -49,6 +45,12 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey('filter-$filter')), findsOneWidget);
     }
+    expect(
+      tester
+          .widget<LedgerPickerOption>(find.byKey(const ValueKey('filter-all')))
+          .selected,
+      isTrue,
+    );
   });
 
   testWidgets('filter tap requests the matching type', (tester) async {
@@ -80,7 +82,7 @@ void main() {
   });
 
   testWidgets(
-    'filter menu exposes options and keeps the current label visible',
+    'filter sheet exposes options and keeps the current label visible',
     (tester) async {
       final controllers = await testControllersWithHandler(defaultApi);
       await controllers.ledger.loadAll();
@@ -114,6 +116,7 @@ void main() {
         find.descendant(of: trigger, matching: find.text('支出')),
         findsOneWidget,
       );
+      expect(find.text('筛选'), findsNothing);
 
       final hero = tester.getRect(
         find
@@ -269,5 +272,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byKey(const ValueKey('filter-expense')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('filter-expense'))).height,
+      greaterThanOrEqualTo(48),
+    );
   });
 }

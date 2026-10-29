@@ -48,18 +48,23 @@ class LedgerController extends ChangeNotifier {
   List<PaymentMethod> channels = [];
   List<Transaction> transactions = [];
   StatsSummary? stats;
+  RangeStats? rangeStats;
+  StatsQuery statsQuery = StatsQuery.currentMonth(DateTime.now());
   TransactionFilter filter = TransactionFilter.all;
 
   bool configLoading = false;
   bool transactionsLoading = false;
   bool statsLoading = false;
+  bool rangeStatsLoading = false;
   String? configError;
   String? transactionsError;
   String? statsError;
+  String? rangeStatsError;
 
   int _configGeneration = 0;
   int _transactionsGeneration = 0;
   int _statsGeneration = 0;
+  int _rangeStatsGeneration = 0;
   bool _expiring = false;
   final Set<int> _deletingTransactions = {};
 
@@ -80,7 +85,12 @@ class LedgerController extends ChangeNotifier {
   }
 
   Future<void> loadAll() async {
-    await Future.wait([loadConfig(), loadTransactions(), loadStats()]);
+    await Future.wait([
+      loadConfig(),
+      loadTransactions(),
+      loadStats(),
+      loadRangeStats(),
+    ]);
   }
 
   /// 首帧前用上次同步的快照填充内存，缺失或损坏的域保持原状。
@@ -114,6 +124,7 @@ class LedgerController extends ChangeNotifier {
       await _cache?.writeConfig(
         CachedLedgerConfig(categories: categories, channels: channels),
       );
+      await _pruneStatsQuery();
     } on ApiException catch (error) {
       if (generation != _configGeneration) return;
       if (error.isUnauthorized) {
@@ -191,6 +202,42 @@ class LedgerController extends ChangeNotifier {
     }
   }
 
+  Future<void> loadRangeStats() async {
+    final generation = ++_rangeStatsGeneration;
+    rangeStatsLoading = true;
+    rangeStatsError = null;
+    notifyListeners();
+    try {
+      final result = await _api.getRangeStats(statsQuery);
+      if (generation != _rangeStatsGeneration) return;
+      rangeStats = result;
+    } on ApiException catch (error) {
+      if (generation != _rangeStatsGeneration) return;
+      if (error.isUnauthorized) {
+        await _expire();
+        return;
+      }
+      rangeStatsError = error.message;
+    } catch (_) {
+      if (generation != _rangeStatsGeneration) return;
+      rangeStatsError = '加载统计失败';
+    } finally {
+      if (generation == _rangeStatsGeneration) {
+        rangeStatsLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> setStatsQuery(StatsQuery next) async {
+    if (statsQuery == next) return;
+    statsQuery = next;
+    rangeStats = null;
+    rangeStatsError = null;
+    notifyListeners();
+    await loadRangeStats();
+  }
+
   Future<void> setFilter(TransactionFilter next) async {
     if (filter == next) return;
     filter = next;
@@ -223,7 +270,7 @@ class LedgerController extends ChangeNotifier {
   }
 
   Future<void> refreshAfterTransactionChange() async {
-    await Future.wait([loadTransactions(), loadStats()]);
+    await Future.wait([loadTransactions(), loadStats(), loadRangeStats()]);
   }
 
   Future<Category> createCategory(String name, CategoryType type) async {
@@ -263,7 +310,7 @@ class LedgerController extends ChangeNotifier {
         excludeFromStats: excluded,
       ),
     );
-    await Future.wait([loadConfig(), loadStats()]);
+    await Future.wait([loadConfig(), loadStats(), loadRangeStats()]);
   }
 
   Future<void> moveCategory(Category category, int direction) async {
@@ -390,25 +437,60 @@ class LedgerController extends ChangeNotifier {
   }
 
   Future<void> refreshAfterChannelChange() async {
-    await Future.wait([loadConfig(), loadStats()]);
+    await Future.wait([loadConfig(), loadStats(), loadRangeStats()]);
   }
 
   void clear() {
     _configGeneration++;
     _transactionsGeneration++;
     _statsGeneration++;
+    _rangeStatsGeneration++;
     categories = [];
     channels = [];
     transactions = [];
     stats = null;
+    rangeStats = null;
+    statsQuery = StatsQuery.currentMonth(DateTime.now());
     filter = TransactionFilter.all;
     configLoading = false;
     transactionsLoading = false;
     statsLoading = false;
+    rangeStatsLoading = false;
     configError = null;
     transactionsError = null;
     statsError = null;
+    rangeStatsError = null;
     notifyListeners();
+  }
+
+  Future<void> _pruneStatsQuery() async {
+    var categoryId = statsQuery.categoryId;
+    var tagId = statsQuery.tagId;
+    if (categoryId != null) {
+      final matches = categories.where((item) => item.id == categoryId);
+      if (matches.isEmpty) {
+        categoryId = null;
+        tagId = null;
+      } else if (tagId != null &&
+          !matches.first.tags.any((item) => item.id == tagId)) {
+        tagId = null;
+      }
+    } else {
+      tagId = null;
+    }
+    if (categoryId == statsQuery.categoryId && tagId == statsQuery.tagId) {
+      return;
+    }
+    statsQuery = StatsQuery(
+      start: statsQuery.start,
+      end: statsQuery.end,
+      categoryId: categoryId,
+      tagId: tagId,
+    );
+    rangeStats = null;
+    rangeStatsError = null;
+    notifyListeners();
+    await loadRangeStats();
   }
 
   Future<void> _expire() async {

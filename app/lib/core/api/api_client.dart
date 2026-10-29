@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../format/dates.dart';
 import 'api_exception.dart';
 import 'models.dart';
 
@@ -304,6 +305,20 @@ class ApiClient {
   Future<StatsSummary> getStatsSummary() async {
     final decoded = await _expectOk('GET', '/api/stats/summary');
     return _one(decoded, StatsSummary.fromJson);
+  }
+
+  Future<RangeStats> getRangeStats(StatsQuery query) async {
+    final decoded = await _expectOk(
+      'GET',
+      '/api/stats/range',
+      query: {
+        'start': formatDateParam(query.start),
+        'end': formatDateParam(query.end),
+        if (query.categoryId != null) 'category_id': '${query.categoryId}',
+        if (query.tagId != null) 'tag_id': '${query.tagId}',
+      },
+    );
+    return _one(decoded, RangeStats.fromJson);
   }
 
   List<T> _list<T>(Object? decoded, T Function(Map<String, dynamic>) parse) {
