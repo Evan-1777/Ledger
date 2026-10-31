@@ -69,6 +69,7 @@ class ApiException implements Exception {
       'category already exists' => '分类名称已存在',
       'tag already exists in this category' => '该分类下已存在同名标签',
       'duplicate tag name or invalid update' => '标签名称已存在或更新无效',
+      'subscription group already exists' => '分组名称已存在',
       _ => message,
     };
   }

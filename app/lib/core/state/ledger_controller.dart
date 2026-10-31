@@ -60,11 +60,16 @@ class LedgerController extends ChangeNotifier {
   String? transactionsError;
   String? statsError;
   String? rangeStatsError;
+  List<SubscriptionGroup> subscriptionGroups = [];
+  List<Subscription> subscriptions = [];
+  bool subscriptionsLoading = false;
+  String? subscriptionsError;
 
   int _configGeneration = 0;
   int _transactionsGeneration = 0;
   int _statsGeneration = 0;
   int _rangeStatsGeneration = 0;
+  int _subscriptionsGeneration = 0;
   bool _expiring = false;
   final Set<int> _deletingTransactions = {};
 
@@ -90,6 +95,7 @@ class LedgerController extends ChangeNotifier {
       loadTransactions(),
       loadStats(),
       loadRangeStats(),
+      loadSubscriptions(),
     ]);
   }
 
@@ -224,6 +230,37 @@ class LedgerController extends ChangeNotifier {
     } finally {
       if (generation == _rangeStatsGeneration) {
         rangeStatsLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> loadSubscriptions() async {
+    final generation = ++_subscriptionsGeneration;
+    subscriptionsLoading = true;
+    subscriptionsError = null;
+    notifyListeners();
+    try {
+      final results = await Future.wait([
+        _api.getSubscriptionGroups(),
+        _api.getSubscriptions(),
+      ]);
+      if (generation != _subscriptionsGeneration) return;
+      subscriptionGroups = results[0] as List<SubscriptionGroup>;
+      subscriptions = results[1] as List<Subscription>;
+    } on ApiException catch (error) {
+      if (generation != _subscriptionsGeneration) return;
+      if (error.isUnauthorized) {
+        await _expire();
+        return;
+      }
+      subscriptionsError = error.message;
+    } catch (_) {
+      if (generation != _subscriptionsGeneration) return;
+      subscriptionsError = '加载订阅失败';
+    } finally {
+      if (generation == _subscriptionsGeneration) {
+        subscriptionsLoading = false;
         notifyListeners();
       }
     }
@@ -440,26 +477,129 @@ class LedgerController extends ChangeNotifier {
     await Future.wait([loadConfig(), loadStats(), loadRangeStats()]);
   }
 
+  Future<SubscriptionGroup> createSubscriptionGroup(String name) async {
+    final sortOrder = _nextSortOrder(
+      subscriptionGroups.map((item) => item.sortOrder),
+    );
+    final created = await _guard(
+      () => _api.createSubscriptionGroup(name: name, sortOrder: sortOrder),
+    );
+    await loadSubscriptions();
+    return created;
+  }
+
+  Future<void> renameSubscriptionGroup(
+    SubscriptionGroup group,
+    String name,
+  ) async {
+    await _guard(
+      () => _api.updateSubscriptionGroup(
+        group.id,
+        name: name,
+        sortOrder: group.sortOrder,
+      ),
+    );
+    await loadSubscriptions();
+  }
+
+  Future<void> moveSubscriptionGroup(
+    SubscriptionGroup group,
+    int direction,
+  ) async {
+    final ordered = [...subscriptionGroups]
+      ..sort((a, b) {
+        final byOrder = a.sortOrder.compareTo(b.sortOrder);
+        return byOrder != 0 ? byOrder : a.id.compareTo(b.id);
+      });
+    final index = ordered.indexWhere((item) => item.id == group.id);
+    final target = index + direction;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
+    ordered.insert(target, ordered.removeAt(index));
+    try {
+      for (var position = 0; position < ordered.length; position++) {
+        final item = ordered[position];
+        if (item.sortOrder == position + 1) continue;
+        await _guard(
+          () => _api.updateSubscriptionGroup(
+            item.id,
+            name: item.name,
+            sortOrder: position + 1,
+          ),
+        );
+      }
+    } finally {
+      await loadSubscriptions();
+    }
+  }
+
+  Future<void> deleteSubscriptionGroup(SubscriptionGroup group) async {
+    await _guard(() => _api.deleteSubscriptionGroup(group.id));
+    await loadSubscriptions();
+  }
+
+  Future<Subscription> createSubscription(SubscriptionInput input) async {
+    final created = await _guard(() => _api.createSubscription(input));
+    await loadSubscriptions();
+    return created;
+  }
+
+  Future<Subscription> updateSubscription(
+    Subscription subscription,
+    SubscriptionInput input,
+  ) async {
+    final updated = await _guard(
+      () => _api.updateSubscription(subscription.id, input),
+    );
+    await loadSubscriptions();
+    return updated;
+  }
+
+  Future<void> setSubscriptionStatus(
+    Subscription subscription,
+    SubscriptionStatus status,
+  ) async {
+    await updateSubscription(
+      subscription,
+      SubscriptionInput(
+        name: subscription.name,
+        groupId: subscription.groupId,
+        amount: subscription.amount,
+        billingDay: subscription.billingDay,
+        status: status,
+      ),
+    );
+  }
+
+  Future<void> deleteSubscription(Subscription subscription) async {
+    await _guard(() => _api.deleteSubscription(subscription.id));
+    await loadSubscriptions();
+  }
+
   void clear() {
     _configGeneration++;
     _transactionsGeneration++;
     _statsGeneration++;
     _rangeStatsGeneration++;
+    _subscriptionsGeneration++;
     categories = [];
     channels = [];
     transactions = [];
     stats = null;
     rangeStats = null;
+    subscriptionGroups = [];
+    subscriptions = [];
     statsQuery = StatsQuery.currentMonth(DateTime.now());
     filter = TransactionFilter.all;
     configLoading = false;
     transactionsLoading = false;
     statsLoading = false;
     rangeStatsLoading = false;
+    subscriptionsLoading = false;
     configError = null;
     transactionsError = null;
     statsError = null;
     rangeStatsError = null;
+    subscriptionsError = null;
     notifyListeners();
   }
 

@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账应用，Go + React + Vite + Tailwind + SQLite 单二进制 Web 端，另配 Flutter + Material 3 Android 客户端，复用同一 HTTP API。
-- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收、0.1.0 发布与 0.1.1 启动修复发布，Web 端作为开发与自检面并已扩为五段导航（流水/统计/订阅/资产/设置）；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留、Android 客户端冷启动缓存优先渲染与会话乐观恢复已交付，2026-10-29 完成记账分类/标签双字段选择面板、流水筛选面板与统计区间/维度筛选，支持单二进制独立运行与 Docker 部署；2026-10-31 完成 Web 订阅固定开支管理页（分组与订阅 CRUD、月度/年度/未来 7 天汇总、暂停续费、五段导航），订阅仅表示预期固定开支，不写入流水与统计。
+- **阶段**：Flutter Android 客户端（MD3 五段导航、记账/编辑/删除、统计图表、资产负债、订阅固定开支、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收、0.1.0 发布与 0.1.1 启动修复发布，Web 端作为开发与自检面并已扩为五段导航（流水/统计/订阅/资产/设置）；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留、Android 客户端冷启动缓存优先渲染与会话乐观恢复已交付，2026-10-29 完成记账分类/标签双字段选择面板、流水筛选面板与统计区间/维度筛选，支持单二进制独立运行与 Docker 部署；2026-10-31 完成 Web 订阅固定开支管理页（分组与订阅 CRUD、月度/年度/未来 7 天汇总、暂停续费、五段导航）与 Android 客户端订阅页（五段导航、分组分区、暂停续费与分组管理），订阅仅表示预期固定开支，不写入流水与统计。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -104,18 +104,19 @@ Ledger/
 │  │  │  ├─ state/           # 账本与偏好控制器
 │  │  │  ├─ storage/         # 安全 Token、会话地址、偏好与冷启动快照存储
 │  │  │  ├─ theme/           # MD3 主题与金融语义色 ThemeExtension
-│  │  │  └─ widgets/         # 共享卡片、金额、类型图标、空/错/骨架/确认框、四页共用紧凑顶栏 LedgerSliverAppBar、选择面板与 48dp 选项行
+│  │  │  └─ widgets/         # 共享卡片、金额、类型图标、空/错/骨架/确认框、五页共用紧凑顶栏 LedgerSliverAppBar、选择面板与 48dp 选项行
 │  │  ├─ features/
 │  │  │  ├─ auth/            # 登录门与会话控制器
-│  │  │  ├─ shell/           # 四段导航 Shell 与返回键仲裁
+│  │  │  ├─ shell/           # 五段导航 Shell 与返回键仲裁
 │  │  │  ├─ stream/          # 流水页、月份与筛选合并的列表头（筛选选择面板）、日分组纯函数（日小计按分类统计口径过滤）
 │  │  │  ├─ record/          # 记账底部弹层（分类/标签双字段与各自选择面板）与类型/渠道规则
 │  │  │  ├─ stats/           # 统计页（区间口径摘要与草稿筛选面板、支出/收入双视角、四卡等高指标网格、内容自适应图表卡）、自绘环图（可参数化中心与语义文案）/趋势图与范围派生
 │  │  │  ├─ assets/          # 资产页、右对齐金额列与资产派生
-│  │  │  └─ settings/        # 设置页（紧凑顶栏，内容不变）、分类/标签、渠道管理
+│  │  │  ├─ settings/        # 设置页（紧凑顶栏，内容不变）、分类/标签、渠道管理
+│  │  │  └─ subscriptions/   # 订阅页（月度 Hero、状态筛选、分组分区与行/分组菜单）、订阅与分组表单、续费日/汇总/分区纯函数
 │  │  ├─ app.dart            # 会话门、主题与 Provider 装配
 │  │  └─ main.dart           # 入口、本地化与存储初始化
-│  ├─ test/                  # API/控制器/纯函数/Widget 测试（含布局矩形与滚动行为断言）
+│  ├─ test/                  # API/控制器/纯函数/Widget 测试（含订阅派生与订阅页、布局矩形与滚动行为断言）
 │  ├─ android/               # 包名 com.evan1777.ledger、minSdk 24、签名与自适应图标
 │  ├─ web/                   # Web 自检构建入口
 │  └─ README.md              # 本地运行、Web 自检、CI 与签名说明
@@ -144,7 +145,7 @@ Ledger/
 
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;font-size:13px;line-height:1.6;margin:12px 0">
   <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
-    <strong>界面</strong><br>四段导航 + 底部弹层<br><span style="color:#5b6472">Stream / Stats / Assets / Settings</span>
+    <strong>界面</strong><br>五段导航 + 底部弹层<br><span style="color:#5b6472">Stream / Stats / Subscriptions / Assets / Settings</span>
   </div>
   <div style="flex:1;min-width:160px;border:1px solid #d6dbe4;border-radius:10px;padding:10px 12px">
     <strong>状态</strong><br>Session / Ledger / Preferences<br><span style="color:#5b6472">provider + ChangeNotifier，单一数据源</span>
@@ -158,20 +159,21 @@ Ledger/
 </div>
 
 - **结构**：`core/` 提供 API 模型与客户端、状态控制器、存储、主题和共享构件；`features/` 按业务域拆分页面与弹层。页面只消费控制器状态，HTTP 请求集中在 `ApiClient`，401 统一映射为会话过期。
-- **会话**：启动读取服务器地址与 Token，本地有 Token 即乐观进入 Shell 并在后台校验 `/api/auth/check`；401 清 Token 回登录页，网络/超时保留会话并继续展示快照。登录成功后水合缓存并加载配置、流水与统计，且只加载一次；应用回到前台时重新校验，网络失败保持会话、401 回登录；会话代际号确保旧校验结果不影响新会话。
+- **会话**：启动读取服务器地址与 Token，本地有 Token 即乐观进入 Shell 并在后台校验 `/api/auth/check`；401 清 Token 回登录页，网络/超时保留会话并继续展示快照。登录成功后水合缓存并加载配置、流水、统计与订阅，且只加载一次；应用回到前台时重新校验，网络失败保持会话、401 回登录；会话代际号确保旧校验结果不影响新会话。
 - **数据**：流水金额以带符号分显示，提交时支出为负、收入为正；分类/标签/渠道变更后按域刷新（流水+统计、配置+统计、配置）；切换筛选使用请求代际，旧响应不覆盖新结果。配置、流水、统计三个域每次加载成功后写回本地只读快照（按服务器地址隔离，流水仅在「全部」筛选时写入），首帧前水合；失败路径不覆盖快照。区间统计使用独立 `StatsQuery` 与请求代际，记账/渠道/分类口径变更后重新请求；配置刷新会剪枝已删除的分类或标签筛选，但不写冷启动快照，统计页首帧显示骨架。
+- **订阅**：订阅分组与订阅随登录后的全量加载拉取，变更后统一重新拉取（不做乐观更新），页面下拉刷新单独拉订阅；首次加载失败只由订阅页错误态呈现，已有订阅数据时的刷新失败保留内容并由 Shell 统一提示。下次续费日、月度/年度/未来 7 天汇总与分组分区由客户端纯函数推导，金额只读 `amount_cents` 并仅统计使用中项；订阅不写冷启动快照。
 - **主题**：`ColorScheme.fromSeed(#0078D4)` 生成角色，金融语义色通过 `FinanceColors` ThemeExtension 提供；禁用动态取色，保证 Web/Android 色板一致。金额使用等宽数字，资产页金额隐藏偏好持久化。
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
-- **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。2026-10-20 新增资产/负债金额右缘、四张指标卡等高、图表卡无内部滚动、流水筛选菜单与月份位置、四个一级页顶栏 64 高/非 pinned/滚动滚出断言；同日复审补充顶栏 2x 用例（标题不越出 64 高、未回退到 1x），全量 93 项通过。2026-10-21 新增模型 JSON 往返、三域快照读写（换服务器/损坏/畸形/无地址/版本失效）、控制器水合与写穿、筛选态不覆盖缓存、会话乐观恢复与后台 401 纠正、回到前台复检并 401 回登录，以及冷启动首帧（有缓存/无缓存/断网/401）Widget 用例，全量 114 项通过。2026-10-28 新增收入汇总/构成/渠道与分类统计排除的模型往返、控制器刷新、统计双视角、流水日小计口径、五处菜单裁剪与分类统计开关用例，全量 122 项通过。2026-10-29 新增区间统计端点（本地日界、上期夹取、分类/标签过滤与非法参数）、客户端区间查询/代际/筛选剪枝、记账分类/标签双字段与选择面板、流水筛选面板、统计草稿筛选/视角切换/失败重试/空态/四卡等高/320dp 2x 用例，全量 141 项通过。
+- **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。2026-10-20 新增资产/负债金额右缘、四张指标卡等高、图表卡无内部滚动、流水筛选菜单与月份位置、四个一级页顶栏 64 高/非 pinned/滚动滚出断言；同日复审补充顶栏 2x 用例（标题不越出 64 高、未回退到 1x），全量 93 项通过。2026-10-21 新增模型 JSON 往返、三域快照读写（换服务器/损坏/畸形/无地址/版本失效）、控制器水合与写穿、筛选态不覆盖缓存、会话乐观恢复与后台 401 纠正、回到前台复检并 401 回登录，以及冷启动首帧（有缓存/无缓存/断网/401）Widget 用例，全量 114 项通过。2026-10-28 新增收入汇总/构成/渠道与分类统计排除的模型往返、控制器刷新、统计双视角、流水日小计口径、五处菜单裁剪与分类统计开关用例，全量 122 项通过。2026-10-29 新增区间统计端点（本地日界、上期夹取、分类/标签过滤与非法参数）、客户端区间查询/代际/筛选剪枝、记账分类/标签双字段与选择面板、流水筛选面板、统计草稿筛选/视角切换/失败重试/空态/四卡等高/320dp 2x 用例，全量 141 项通过。2026-10-31 新增订阅端点契约、控制器加载/401/代际/首次失败、分组 CRUD 与调序、订阅表单校验/预填、暂停恢复、删组转未分组、首次/刷新错误口径与订阅页 320dp 2x 用例，全量 177 项通过。
 - **发布**：当前 Android 版本 `0.1.6+5`（2026-10-28 起，versionCode 在 0.1.5+4 之后递增）。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）。同日一次性工作流 run 39268947628 生成签名密钥并把四个 Secrets 落库，发布 [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0)：`ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；签名材料 artifact 已删除；同日常规 `android.yml` run 39270836546 检测到 Secrets，成功构建签名 release artifact `ledger-release`。同日修复 release 启动画面停留：`app/android/app/proguard-rules.pro` 保留 Pigeon JNI 依赖的 Kotlin 运行时类，CI run 39280755463 产出的 `ledger-release` 在 Android 12（API 32，x86_64）模拟器两次冷启动均进入登录页，logcat 无 `NoSuchMethodError`；Android 16 由用户安装同一 APK 复核。2026-10-20 推送 `v0.1.1` tag，`android.yml` 的 tag 任务校验版本后用同次构建的 `ledger-release` artifact 创建 [v0.1.1](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.1)（`ledger-release.apk`，56,418,154 bytes，run 39285071393）。同日版本升至 `0.1.2+3` 并推送 `v0.1.2` tag，run 39366147515 创建 [v0.1.2](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.2)（`ledger-release.apk`，56,401,846 bytes），包含布局修复与复审收敛。2026-10-21 版本定为 `0.1.5+4`（versionCode 在 0.1.2+3 后递增）并推送 `v0.1.5` tag，run 39539093266 的 build 与 release 均成功，创建 [v0.1.5](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.5)（`ledger-release.apk`，56,483,766 bytes），包含冷启动缓存优先渲染与会话乐观恢复。2026-10-28 版本定为 `0.1.6+5`（versionCode 在 0.1.5+4 后递增）并推送 `v0.1.6` tag，触发 [run 40689122592](https://github.com/Evan-1777/Ledger/actions/runs/40689122592) 构建签名 APK 与创建 Release，内容包含收入统计视角、分类级统计排除、系统分类默认排除与弹出菜单圆角裁剪；构建结果以该 run 为准。
-- **已知限制**：订阅固定开支页当前仅在 Web 交付，Flutter 客户端未接入同一接口；流水沿用 100 条窗口、冷启动只读快照缓存（无离线写入/后台同步/推送）、区间统计不写快照（冷启动统计页先显示骨架）、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
+- **已知限制**：订阅不写冷启动快照；流水沿用 100 条窗口、冷启动只读快照缓存（无离线写入/后台同步/推送）、区间统计不写快照（冷启动统计页先显示骨架）、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互（含订阅页）由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定
 
 - **命名**：Go 包与文件 snake_case，导出的类型与函数 PascalCase；TypeScript 组件 PascalCase，工具函数 camelCase；Dart 文件 snake_case，类 PascalCase，私有成员以 `_` 前缀
 - **语言**：用户可见文本用中文；代码注释、提交前缀遵循英文约定
 - **错误处理**：后端内部错误统一包装，对外返回对应 HTTP 状态码与结构化 JSON（引用删除严格返回 409 Conflict，非法参数返回 400 Bad Request）；前端统一捕获并展示 Toast
-- **订阅数据**：`subscription_groups` 与 `subscriptions` 经 `/api/subscription-groups`、`/api/subscriptions` 八个 RequireAuth 端点读写；金额以整数分存储并同时返回 `amount_cents` 与 `amount`；删除分组依靠 `ON DELETE SET NULL` 把组内订阅转为未分组而不删除订阅；下次续费日、月度/年度/未来 7 天汇总均由客户端从扣款日推导，不落库，订阅不写入流水与统计
+- **订阅数据**：`subscription_groups` 与 `subscriptions` 经 `/api/subscription-groups`、`/api/subscriptions` 八个 RequireAuth 端点读写；金额以整数分存储并同时返回 `amount_cents` 与 `amount`；删除分组依靠 `ON DELETE SET NULL` 把组内订阅转为未分组而不删除订阅；下次续费日、月度/年度/未来 7 天汇总均由 Web 与 Android 客户端从扣款日推导，不落库，订阅不写入流水与统计
 - **日志**：Go 标准库 `log`，输出清晰的时间戳与结构化上下文信息
 
 ## 约束与决策
@@ -246,6 +248,7 @@ Ledger/
 
 - 2026-10-29 统计区间筛选与记账分类层级（Main-hybrid 交付）——后端在 `stats.go` 引入单一 `statsFilter` 值对象（分类/标签）供汇总、构成含标签下钻、渠道分布与趋势共用，新增 `GET /api/stats/range`：起止日期按服务端本地日界含首含尾，返回已过天数、区间收支/结余、笔数、上期收支、两组分类/渠道构成与截至区间末月的 6 个月趋势；上期按起止日期各前移一个日历月并夹取月末，非法日期、单边日期、反向区间与非正整数 ID 返回 400。客户端新增 `RangeStats`/`StatsQuery` 与请求代际，区间统计接入全量加载、记账/渠道/分类口径变更，配置刷新剪枝已删除的分类或标签并按需重载；区间结果不写冷启动快照。共享 `showLedgerPicker`/`LedgerPickerOption` 统一底部选择面板与 48dp 选项行，记账拆为分类/标签双字段（分类面板限当前类型、显示标签摘要、选分类自动带入首标签），流水筛选替换为同一面板。统计页以「口径摘要 + 筛选」单入口打开草稿面板，范围预设/自定义日期、分类与联动标签统一应用，未点应用不请求；Hero 在维度筛选时以笔数徽标替代储蓄率，指标/构成/渠道/趋势全部改读区间结果。门禁：`gofmt -l .` 无输出、`go vet ./...` 0、`go test -count=1 ./...` 全包通过（新增区间用例 2 项；移除过滤拼装时 `TestStatsRangeFilters` 失败已回验）、`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 141 项通过、Web lint 与 38 项测试通过。
 - 2026-10-31 订阅固定开支管理页（Main-hybrid 交付）——新增 `subscription_groups` / `subscriptions` 两表（分组名 COLLATE NOCASE 唯一、订阅金额整数分与 1–31 扣款日/状态检查、`group_id` 可空外键 ON DELETE SET NULL 与索引），既有库经 `CREATE TABLE IF NOT EXISTS` 幂等升级；新增八个 RequireAuth 端点（分组/订阅各四），金额 0.01–1,000,000 元按分四舍五入、负分组与非存在分组 400、删除分组仅把组内订阅转为未分组。Web 新增第五个一级「订阅」页与循环图标导航（640px 以下仅图标、420px 以下 Tab 横向 padding 收紧至 7px），页面按分组展示使用中月合计与暂停项，Hero 汇总月合计/年度预估/未来 7 天与分组分布条；新增/编辑/暂停恢复/删除订阅与分组新建/重命名/上移/下移/删除全链，删除均有确认，变更后统一刷新（刷新失败保留数据并显示「数据未同步」重试提示），首次加载失败清空数据并给错误面板；派生逻辑收敛至 `subscriptionsUtils.ts`（本地日界、短月夹取、跨年、7 天窗口 0–6、仅 amount_cents 汇总）。门禁：`gofmt -l .` 无输出、`go vet ./...` 0、`go test -count=1 ./...` 全包通过（db + server 29 项）、Web `tsc -b --noEmit` 0、`node:test` 52 项通过（新增 14 项）、`vite build` 成功；浏览器复核 320/360/400/420/640/1440 视口无横向滚动与 Tab 遮挡，明暗主题、筛选、菜单、弹层、确认与删组转未分组均通过，控制台无 error。
+- 2026-10-31 Android 订阅页（Main-hybrid 交付）——客户端新增订阅状态/分组/订阅/提交输入模型与八个端点方法，订阅分组与订阅进入统一 `LedgerController`（代际、401、清空与全量加载复用），变更后统一重新拉取、不做乐观更新；导航扩为五段（流水/统计/订阅/资产/设置），订阅页 Hero 汇总月度/年度/未来 7 天与分组分布条，全部/使用中/已暂停用可换行 ChoiceChip 筛选，分组按 `sort_order` 分区、未分组固定末尾，空组保留添加入口；订阅新增/编辑底部表单与分组新建/重命名对话框沿用既有弹层交互（提交期间禁止下滑/遮罩/返回关闭），暂停恢复/删除订阅/删组/分组调序均走确认或统一 SnackBar。派生逻辑收敛至 `subscriptions_utils.dart`（本地日界、短月夹取、跨年、7 天窗口 0–6、整数分汇总）；首次订阅加载失败只显示页面错误态，已有数据时的刷新失败由 Shell 提示，避免双提示；订阅不写冷启动快照。门禁：`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 177 项通过（新增 36 项）、`flutter build web` 成功；变异校验移除短月夹取与把 7 天窗口改为 0..7 均触发对应用例失败，恢复后全绿。未改后端、Web、依赖与版本号（`0.1.6+5`）；Android APK 安装、真机尺寸与字体、明文 HTTP 仍列为待验证项。
 
 ## 术语
 
@@ -256,7 +259,7 @@ Ledger/
 - **双向账户核算 (Bilateral Account Accounting)** = 还款时目标负债渠道冲销欠款、转出资产渠道扣减结余，资产与负债同步变动并维持净资产物理守恒
 - **双向资产转账 (Bilateral Asset Transfer)** = 资金在两个资产渠道之间的内部划转，转出方扣减余额（含可选转账手续费），转入方增加本金余额，无手续费时总资产与净资产保持绝对守恒，产生手续费时总资产与净资产精确变动 -fee，不计入收支损益
 - **系统级不可变分类 (Immutable System Category)** = 预置于系统内由 `system_meta` 持久化 ID 的特殊分类，具有专用业务逻辑且禁止任何修改或删除操作
-- **会话门 (Session Gate)** = 客户端启动与登录状态的唯一分流点：本地有 Token 即进入四段 Shell 并在后台校验，无 Token 进入登录页；启动恢复期间仅显示最小进度指示
+- **会话门 (Session Gate)** = 客户端启动与登录状态的唯一分流点：本地有 Token 即进入五段 Shell 并在后台校验，无 Token 进入登录页；启动恢复期间仅显示最小进度指示
 - **请求代际 (Request Generation)** = 每次流水/统计请求递增的序号，响应返回时仅最新代际可写入状态，避免快速切换筛选时旧响应覆盖新结果
 - **统计区间 (Stats Range)** = 服务端按本地日界解析的含首含尾日期范围，区间收支、构成、渠道、趋势与笔数共享同一分类/标签过滤条件
 - **上期区间 (Previous Range)** = 将统计区间起止日期各向前移动一个日历月，目标月天数不足时夹取到月末，用于区间环比

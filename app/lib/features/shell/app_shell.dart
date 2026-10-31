@@ -8,6 +8,7 @@ import '../record/record_sheet.dart';
 import '../settings/settings_screen.dart';
 import '../stats/stats_screen.dart';
 import '../stream/stream_screen.dart';
+import '../subscriptions/subscriptions_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -17,6 +18,8 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  static const settingsIndex = 4;
+
   int _index = 0;
   SettingsSection _settingsSection = SettingsSection.categories;
   LedgerController? _ledger;
@@ -38,8 +41,16 @@ class _AppShellState extends State<AppShell> {
   void _onLedgerChanged() {
     final ledger = _ledger;
     if (ledger == null || !mounted) return;
+    final hasSubscriptionData =
+        ledger.subscriptionGroups.isNotEmpty || ledger.subscriptions.isNotEmpty;
+    final subscriptionError = hasSubscriptionData
+        ? ledger.subscriptionsError
+        : null;
     final error =
-        ledger.configError ?? ledger.transactionsError ?? ledger.statsError;
+        ledger.configError ??
+        ledger.transactionsError ??
+        ledger.statsError ??
+        subscriptionError;
     if (error == null) {
       _lastError = null;
       return;
@@ -50,7 +61,8 @@ class _AppShellState extends State<AppShell> {
         ledger.transactions.isNotEmpty ||
         ledger.stats != null ||
         ledger.categories.isNotEmpty ||
-        ledger.channels.isNotEmpty;
+        ledger.channels.isNotEmpty ||
+        hasSubscriptionData;
     if (!hasCachedData) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -60,14 +72,14 @@ class _AppShellState extends State<AppShell> {
 
   void _selectTab(int index) {
     if (index == _index) {
-      if (index == 3) {
+      if (index == settingsIndex) {
         setState(() => _settingsSection = SettingsSection.categories);
       }
       return;
     }
     setState(() {
       _index = index;
-      if (index == 3) {
+      if (index == settingsIndex) {
         _settingsSection = SettingsSection.categories;
       }
     });
@@ -75,7 +87,7 @@ class _AppShellState extends State<AppShell> {
 
   void _openChannelSettings() {
     setState(() {
-      _index = 3;
+      _index = settingsIndex;
       _settingsSection = SettingsSection.channels;
     });
   }
@@ -95,6 +107,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             StreamScreen(onOpenSettings: _openChannelSettings),
             const StatsScreen(),
+            const SubscriptionsScreen(),
             AssetsScreen(onManage: _openChannelSettings),
             SettingsScreen(
               section: _settingsSection,
@@ -122,6 +135,11 @@ class _AppShellState extends State<AppShell> {
               icon: Icon(Icons.insert_chart_outlined),
               selectedIcon: Icon(Icons.insert_chart_rounded),
               label: '统计',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.autorenew_outlined),
+              selectedIcon: Icon(Icons.autorenew_rounded),
+              label: '订阅',
             ),
             NavigationDestination(
               icon: Icon(Icons.account_balance_wallet_outlined),

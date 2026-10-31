@@ -679,6 +679,93 @@ class StatsSummary {
   };
 }
 
+enum SubscriptionStatus {
+  active,
+  paused;
+
+  static SubscriptionStatus fromApi(String? value) =>
+      value == 'paused' ? SubscriptionStatus.paused : SubscriptionStatus.active;
+
+  String get api => name;
+
+  String get label => switch (this) {
+    SubscriptionStatus.active => '使用中',
+    SubscriptionStatus.paused => '已暂停',
+  };
+}
+
+class SubscriptionGroup {
+  const SubscriptionGroup({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+  });
+
+  final int id;
+  final String name;
+  final int sortOrder;
+
+  factory SubscriptionGroup.fromJson(Map<String, dynamic> json) =>
+      SubscriptionGroup(
+        id: _asInt(json['id']),
+        name: _asString(json['name']),
+        sortOrder: _asInt(json['sort_order']),
+      );
+}
+
+class Subscription {
+  const Subscription({
+    required this.id,
+    required this.groupId,
+    required this.name,
+    required this.amountCents,
+    required this.billingDay,
+    required this.status,
+  });
+
+  final int id;
+  final int? groupId;
+  final String name;
+  final int amountCents;
+  final int billingDay;
+  final SubscriptionStatus status;
+
+  double get amount => amountCents / 100;
+
+  factory Subscription.fromJson(Map<String, dynamic> json) => Subscription(
+    id: _asInt(json['id']),
+    groupId: json['group_id'] == null ? null : _asInt(json['group_id']),
+    name: _asString(json['name']),
+    amountCents: _asInt(json['amount_cents']),
+    billingDay: _asInt(json['billing_day']),
+    status: SubscriptionStatus.fromApi(json['status'] as String?),
+  );
+}
+
+class SubscriptionInput {
+  const SubscriptionInput({
+    required this.name,
+    required this.groupId,
+    required this.amount,
+    required this.billingDay,
+    required this.status,
+  });
+
+  final String name;
+  final int? groupId;
+  final double amount;
+  final int billingDay;
+  final SubscriptionStatus status;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'group_id': groupId,
+    'amount': amount,
+    'billing_day': billingDay,
+    'status': status.api,
+  };
+}
+
 int _asInt(Object? value) => switch (value) {
   int v => v,
   num v => v.round(),

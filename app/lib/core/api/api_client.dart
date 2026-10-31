@@ -321,6 +321,70 @@ class ApiClient {
     return _one(decoded, RangeStats.fromJson);
   }
 
+  Future<List<SubscriptionGroup>> getSubscriptionGroups() async {
+    final decoded = await _expectOk('GET', '/api/subscription-groups');
+    return _list(decoded, SubscriptionGroup.fromJson);
+  }
+
+  Future<SubscriptionGroup> createSubscriptionGroup({
+    required String name,
+    required int sortOrder,
+  }) async {
+    final decoded = await _expectOk(
+      'POST',
+      '/api/subscription-groups',
+      body: {'name': name, 'sort_order': sortOrder},
+    );
+    return _one(decoded, SubscriptionGroup.fromJson);
+  }
+
+  Future<SubscriptionGroup> updateSubscriptionGroup(
+    int id, {
+    required String name,
+    required int sortOrder,
+  }) async {
+    final decoded = await _expectOk(
+      'PUT',
+      '/api/subscription-groups/$id',
+      body: {'name': name, 'sort_order': sortOrder},
+    );
+    return _one(decoded, SubscriptionGroup.fromJson);
+  }
+
+  Future<void> deleteSubscriptionGroup(int id) async {
+    await _expectOk('DELETE', '/api/subscription-groups/$id');
+  }
+
+  Future<List<Subscription>> getSubscriptions() async {
+    final decoded = await _expectOk('GET', '/api/subscriptions');
+    return _list(decoded, Subscription.fromJson);
+  }
+
+  Future<Subscription> createSubscription(SubscriptionInput input) async {
+    final decoded = await _expectOk(
+      'POST',
+      '/api/subscriptions',
+      body: input.toJson(),
+    );
+    return _one(decoded, Subscription.fromJson);
+  }
+
+  Future<Subscription> updateSubscription(
+    int id,
+    SubscriptionInput input,
+  ) async {
+    final decoded = await _expectOk(
+      'PUT',
+      '/api/subscriptions/$id',
+      body: input.toJson(),
+    );
+    return _one(decoded, Subscription.fromJson);
+  }
+
+  Future<void> deleteSubscription(int id) async {
+    await _expectOk('DELETE', '/api/subscriptions/$id');
+  }
+
   List<T> _list<T>(Object? decoded, T Function(Map<String, dynamic>) parse) {
     if (decoded is! List) throw ApiException.invalidResponse;
     try {

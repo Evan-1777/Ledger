@@ -40,10 +40,96 @@ class TestControllers {
   final ApiClient api;
 }
 
+Map<String, Object?> subscriptionGroupJson({
+  int id = 1,
+  String name = '影音娱乐',
+  int sortOrder = 1,
+}) => {'id': id, 'name': name, 'sort_order': sortOrder, 'created_at': ''};
+
+Map<String, Object?> subscriptionJson({
+  int id = 1,
+  int? groupId = 1,
+  String name = 'Netflix',
+  int amountCents = 7500,
+  int billingDay = 5,
+  String status = 'active',
+}) => {
+  'id': id,
+  'group_id': groupId,
+  'name': name,
+  'amount_cents': amountCents,
+  'amount': amountCents / 100,
+  'billing_day': billingDay,
+  'status': status,
+  'created_at': '',
+};
+
+/// 订阅端点的共享假服务：按方法与路径返回列表、单对象或成功体。
+Future<http.Response> subscriptionApiResponse(http.Request request) async {
+  final path = request.url.path;
+  if (request.method == 'GET' && path == '/api/subscription-groups') {
+    return jsonResponse([
+      subscriptionGroupJson(id: 1, name: '影音娱乐', sortOrder: 1),
+      subscriptionGroupJson(id: 2, name: '工具软件', sortOrder: 2),
+    ]);
+  }
+  if (request.method == 'GET' && path == '/api/subscriptions') {
+    return jsonResponse([
+      subscriptionJson(id: 1, groupId: 1, name: 'Netflix', billingDay: 5),
+      subscriptionJson(
+        id: 2,
+        groupId: 1,
+        name: 'iCloud',
+        amountCents: 600,
+        billingDay: 30,
+        status: 'paused',
+      ),
+      subscriptionJson(
+        id: 3,
+        groupId: null,
+        name: 'Spotify',
+        amountCents: 1200,
+        billingDay: 12,
+      ),
+    ]);
+  }
+  if (path.startsWith('/api/subscription-groups')) {
+    if (request.method == 'DELETE') return jsonResponse({'success': true});
+    final body = jsonDecode(request.body) as Map<String, dynamic>;
+    final id = int.tryParse(request.url.pathSegments.last) ?? 3;
+    return jsonResponse(
+      subscriptionGroupJson(
+        id: id,
+        name: body['name'] as String,
+        sortOrder: body['sort_order'] as int,
+      ),
+    );
+  }
+  if (path.startsWith('/api/subscriptions')) {
+    if (request.method == 'DELETE') return jsonResponse({'success': true});
+    final body = jsonDecode(request.body) as Map<String, dynamic>;
+    final id = int.tryParse(request.url.pathSegments.last) ?? 3;
+    return jsonResponse(
+      subscriptionJson(
+        id: id,
+        groupId: body['group_id'] as int?,
+        name: body['name'] as String,
+        amountCents: ((body['amount'] as num) * 100).round(),
+        billingDay: body['billing_day'] as int,
+        status: body['status'] as String,
+      ),
+    );
+  }
+  return jsonResponse({});
+}
+
 Future<http.Response> defaultApi(
   http.Request request, {
   List<Object?>? transactions,
 }) async {
+  if (request.url.path.startsWith('/api/subscription')) {
+    return subscriptionApiResponse(request);
+  }
   switch (request.url.path) {
     case '/api/categories':
       return jsonResponse([

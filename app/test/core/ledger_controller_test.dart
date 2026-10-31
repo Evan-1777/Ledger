@@ -12,6 +12,9 @@ import '../support/harness.dart';
 
 void main() {
   Future<http.Response> standardHandler(http.Request request) async {
+    if (request.url.path.startsWith('/api/subscription')) {
+      return subscriptionApiResponse(request);
+    }
     switch (request.url.path) {
       case '/api/categories':
         return jsonResponse([
@@ -639,5 +642,214 @@ void main() {
       rangeRequests.last.url.queryParameters.keys,
       isNot(contains('tag_id')),
     );
+  });
+
+  test('loadAll fills subscription groups and subscriptions', () async {
+    final controllers = await testControllersWithHandler(standardHandler);
+
+    await controllers.ledger.loadAll();
+
+    expect(controllers.ledger.subscriptionGroups.length, 2);
+    expect(controllers.ledger.subscriptions.length, 3);
+    expect(
+      controllers.ledger.subscriptions
+          .where((item) => item.status == SubscriptionStatus.paused)
+          .single
+          .name,
+      'iCloud',
+    );
+    expect(controllers.ledger.subscriptionsError, isNull);
+  });
+
+  test('a subscription 401 expires the session and clears data', () async {
+    var expired = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path.startsWith('/api/subscription')) {
+        return jsonResponse({'error': 'unauthorized'}, status: 401);
+      }
+      return standardHandler(request);
+    });
+    final ledger = LedgerController(
+      api: controllers.api,
+      onSessionExpired: () async => expired++,
+    );
+    ledger.categories = [category()];
+    ledger.subscriptionGroups = [
+      const SubscriptionGroup(id: 1, name: '影音', sortOrder: 1),
+    ];
+
+    await ledger.loadSubscriptions();
+
+    expect(expired, 1);
+    expect(ledger.categories, isEmpty);
+    expect(ledger.subscriptionGroups, isEmpty);
+    expect(ledger.subscriptions, isEmpty);
+    expect(ledger.subscriptionsError, isNull);
+  });
+
+  test('a stale subscription response cannot overwrite newer data', () async {
+    var calls = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/subscriptions') {
+        calls++;
+        if (calls == 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+          return jsonResponse([subscriptionJson(id: 9, name: '旧结果')]);
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        return jsonResponse([subscriptionJson(id: 8, name: '新结果')]);
+      }
+      return standardHandler(request);
+    });
+
+    final stale = controllers.ledger.loadSubscriptions();
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    await controllers.ledger.loadSubscriptions();
+    await stale;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    expect(controllers.ledger.subscriptions.single.name, '新结果');
+  });
+
+  test('a first subscription failure only records the error', () async {
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path.startsWith('/api/subscription')) {
+        return jsonResponse({'error': 'offline'}, status: 500);
+      }
+      return standardHandler(request);
+    });
+
+    await controllers.ledger.loadSubscriptions();
+
+    expect(controllers.ledger.subscriptionsError, 'offline');
+    expect(controllers.ledger.subscriptionGroups, isEmpty);
+    expect(controllers.ledger.subscriptions, isEmpty);
+    expect(controllers.ledger.subscriptionsLoading, isFalse);
+  });
+
+  test('creating a subscription group uses the next sort order', () async {
+    final posts = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'POST' &&
+          request.url.path == '/api/subscription-groups') {
+        posts.add(request);
+        return subscriptionApiResponse(request);
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadSubscriptions();
+
+    final created = await controllers.ledger.createSubscriptionGroup('生活');
+
+    expect(created.name, '生活');
+    expect(jsonDecode(posts.single.body), {'name': '生活', 'sort_order': 3});
+  });
+
+  test('moving a group rewrites changed sort orders from one', () async {
+    final puts = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'PUT' &&
+          request.url.path.startsWith('/api/subscription-groups/')) {
+        puts.add(request);
+        return subscriptionApiResponse(request);
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadSubscriptions();
+    final second = controllers.ledger.subscriptionGroups.firstWhere(
+      (group) => group.id == 2,
+    );
+
+    await controllers.ledger.moveSubscriptionGroup(second, -1);
+
+    expect(puts.map((request) => request.url.pathSegments.last).toList(), [
+      '2',
+      '1',
+    ]);
+    expect(
+      puts.map((request) => jsonDecode(request.body)['sort_order']).toList(),
+      [1, 2],
+    );
+  });
+
+  test('a failed group move still reloads subscriptions', () async {
+    var groupGets = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/subscription-groups' &&
+          request.method == 'GET') {
+        groupGets++;
+      }
+      if (request.method == 'PUT' &&
+          request.url.path.startsWith('/api/subscription-groups/')) {
+        return jsonResponse({'error': 'server error'}, status: 500);
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadSubscriptions();
+    final before = groupGets;
+    final second = controllers.ledger.subscriptionGroups.firstWhere(
+      (group) => group.id == 2,
+    );
+
+    await expectLater(
+      controllers.ledger.moveSubscriptionGroup(second, -1),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(groupGets, before + 1);
+  });
+
+  test('pausing a subscription submits the full payload', () async {
+    final puts = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'PUT' &&
+          request.url.path == '/api/subscriptions/1') {
+        puts.add(request);
+        return subscriptionApiResponse(request);
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadSubscriptions();
+    final netflix = controllers.ledger.subscriptions.firstWhere(
+      (item) => item.id == 1,
+    );
+
+    await controllers.ledger.setSubscriptionStatus(
+      netflix,
+      SubscriptionStatus.paused,
+    );
+
+    expect(jsonDecode(puts.single.body), {
+      'name': 'Netflix',
+      'group_id': 1,
+      'amount': 75.0,
+      'billing_day': 5,
+      'status': 'paused',
+    });
+  });
+
+  test('deleting a subscription reloads the list once', () async {
+    var deletes = 0;
+    var subscriptionGets = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE' &&
+          request.url.path == '/api/subscriptions/1') {
+        deletes++;
+        return jsonResponse({'success': true});
+      }
+      if (request.method == 'GET' && request.url.path == '/api/subscriptions') {
+        subscriptionGets++;
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadSubscriptions();
+    final before = subscriptionGets;
+
+    await controllers.ledger.deleteSubscription(
+      controllers.ledger.subscriptions.first,
+    );
+
+    expect(deletes, 1);
+    expect(subscriptionGets, before + 1);
   });
 }

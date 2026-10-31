@@ -302,4 +302,177 @@ void main() {
 
     expect(jsonDecode(captured.body), {'name': '晚餐', 'sort_order': 3});
   });
+
+  group('subscription endpoints', () {
+    test('lists and mutates subscription groups', () async {
+      final requests = <http.Request>[];
+      final api = ApiClient(
+        client: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'DELETE') {
+            return jsonResponse({'success': true});
+          }
+          if (request.method == 'GET') {
+            return jsonResponse([
+              {'id': 1, 'name': '影音', 'sort_order': 1, 'created_at': ''},
+              {'id': 2, 'name': '工具', 'sort_order': 2, 'created_at': ''},
+            ]);
+          }
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return jsonResponse({
+            'id': 3,
+            'name': body['name'],
+            'sort_order': body['sort_order'],
+            'created_at': '',
+          });
+        }),
+        baseUrl: () => 'https://ledger.test',
+        tokenProvider: () async => 'token',
+      );
+
+      final groups = await api.getSubscriptionGroups();
+      expect(groups.map((item) => item.name), ['影音', '工具']);
+      expect(groups.last.sortOrder, 2);
+
+      await api.createSubscriptionGroup(name: '生活', sortOrder: 3);
+      await api.updateSubscriptionGroup(3, name: '生活服务', sortOrder: 3);
+      await api.deleteSubscriptionGroup(3);
+
+      expect(requests[0].method, 'GET');
+      expect(requests[0].url.path, '/api/subscription-groups');
+      expect(jsonDecode(requests[1].body), {'name': '生活', 'sort_order': 3});
+      expect(requests[2].method, 'PUT');
+      expect(requests[2].url.path, '/api/subscription-groups/3');
+      expect(jsonDecode(requests[2].body), {'name': '生活服务', 'sort_order': 3});
+      expect(requests[3].method, 'DELETE');
+      expect(requests[3].url.path, '/api/subscription-groups/3');
+    });
+
+    test('lists subscriptions with nullable group and paused status', () async {
+      late http.Request captured;
+      final api = ApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return jsonResponse([
+            {
+              'id': 1,
+              'group_id': null,
+              'name': 'iCloud',
+              'amount_cents': 600,
+              'amount': 6,
+              'billing_day': 30,
+              'status': 'paused',
+              'created_at': '',
+            },
+            {
+              'id': 2,
+              'group_id': 2,
+              'name': 'Netflix',
+              'amount_cents': 7500,
+              'amount': 75,
+              'billing_day': 5,
+              'status': 'active',
+              'created_at': '',
+            },
+          ]);
+        }),
+        baseUrl: () => 'https://ledger.test',
+        tokenProvider: () async => 'token',
+      );
+
+      final list = await api.getSubscriptions();
+
+      expect(captured.url.path, '/api/subscriptions');
+      expect(list.first.groupId, isNull);
+      expect(list.first.status, SubscriptionStatus.paused);
+      expect(list.first.amount, 6);
+      expect(list.last.groupId, 2);
+      expect(list.last.status, SubscriptionStatus.active);
+    });
+
+    test(
+      'create, update and delete subscriptions use the right bodies',
+      () async {
+        final requests = <http.Request>[];
+        final api = ApiClient(
+          client: MockClient((request) async {
+            requests.add(request);
+            if (request.method == 'DELETE') {
+              return jsonResponse({'success': true});
+            }
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            return jsonResponse({
+              'id': 7,
+              'group_id': body['group_id'],
+              'name': body['name'],
+              'amount_cents': ((body['amount'] as num) * 100).round(),
+              'billing_day': body['billing_day'],
+              'status': body['status'],
+              'created_at': '',
+            });
+          }),
+          baseUrl: () => 'https://ledger.test',
+          tokenProvider: () async => 'token',
+        );
+
+        await api.createSubscription(
+          const SubscriptionInput(
+            name: 'Netflix',
+            groupId: null,
+            amount: 75,
+            billingDay: 5,
+            status: SubscriptionStatus.active,
+          ),
+        );
+        await api.createSubscription(
+          const SubscriptionInput(
+            name: 'iCloud',
+            groupId: 2,
+            amount: 6,
+            billingDay: 30,
+            status: SubscriptionStatus.paused,
+          ),
+        );
+        await api.updateSubscription(
+          7,
+          const SubscriptionInput(
+            name: 'iCloud+',
+            groupId: 3,
+            amount: 18,
+            billingDay: 12,
+            status: SubscriptionStatus.paused,
+          ),
+        );
+        await api.deleteSubscription(7);
+
+        expect(requests[0].method, 'POST');
+        expect(requests[0].url.path, '/api/subscriptions');
+        expect(jsonDecode(requests[0].body), {
+          'name': 'Netflix',
+          'group_id': null,
+          'amount': 75,
+          'billing_day': 5,
+          'status': 'active',
+        });
+        expect(jsonDecode(requests[1].body), {
+          'name': 'iCloud',
+          'group_id': 2,
+          'amount': 6,
+          'billing_day': 30,
+          'status': 'paused',
+        });
+        expect(requests[2].method, 'PUT');
+        expect(requests[2].url.path, '/api/subscriptions/7');
+        expect(jsonDecode(requests[2].body), {
+          'name': 'iCloud+',
+          'group_id': 3,
+          'amount': 18,
+          'billing_day': 12,
+          'status': 'paused',
+        });
+        expect(requests[3].method, 'DELETE');
+        expect(requests[3].url.path, '/api/subscriptions/7');
+      },
+    );
+  });
 }

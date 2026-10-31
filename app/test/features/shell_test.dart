@@ -7,7 +7,7 @@ import '../support/harness.dart';
 void main() {
   setUpAll(initTestLocale);
 
-  testWidgets('shell navigates between four sections and opens recording', (
+  testWidgets('shell navigates between five sections and opens recording', (
     tester,
   ) async {
     final controllers = await testControllersWithHandler(defaultApi);
@@ -21,8 +21,17 @@ void main() {
 
     expect(find.text('流水'), findsWidgets);
     expect(find.text('统计'), findsWidgets);
+    expect(find.text('订阅'), findsWidgets);
     expect(find.text('资产'), findsWidgets);
     expect(find.text('设置'), findsWidgets);
+
+    await tester.tap(find.text('订阅').last);
+    await tester.pumpAndSettle();
+    expect(find.text('每月固定开支'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('本月结余'), findsOneWidget);
 
     await tester.tap(find.text('资产').last);
     await tester.pumpAndSettle();
@@ -35,6 +44,14 @@ void main() {
     await tester.tap(find.text('设置').last);
     await tester.pumpAndSettle();
     expect(find.text('偏好与服务'), findsOneWidget);
+    expect(find.text('支出分类'), findsOneWidget);
+
+    await tester.tap(find.text('资产').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('管理').first);
+    await tester.pumpAndSettle();
+    expect(find.text('渠道与账户'), findsOneWidget);
+    expect(find.text('招商银行卡'), findsOneWidget);
 
     await tester.tap(find.text('流水').last);
     await tester.pumpAndSettle();
