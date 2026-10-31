@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#f4f5f7" />
+<title>Ledger · 订阅</title>
+<style>
+  :root {
+    color-scheme: light;
+    --canvas: #f4f5f7;
+    --canvas-glow: radial-gradient(1100px 520px at 50% -10%, rgba(0, 120, 212, .075), transparent 62%);
+    --surface: #fff;
+    --surface-sunken: #f0f1f4;
+    --surface-hover: #f2f3f6;
+    --glass: rgba(255,255,255,.72);
+    --overlay: rgba(8,12,20,.44);
+    --line: rgba(15,23,42,.075);
+    --line-strong: rgba(15,23,42,.14);
+    --highlight-top: transparent;
+    --fg: #101828;
+    --fg-2: #475467;
+    --fg-3: #6b7684;
+    --fg-muted: #98a2b3;
+    --brand: #0078d4;
+    --brand-hover: #106ebe;
+    --brand-pressed: #005a9e;
+    --brand-text: #0063b1;
+    --brand-soft: #e9f3fc;
+    --brand-line: #b9dcf7;
+    --brand-glow: rgba(0,120,212,.34);
+    --expense-text: #c22f3d;
+    --income-text: #1f8a55;
+    --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-pill: 999px;
+    --e1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.06);
+    --e3: 0 8px 14px -4px rgba(16,24,40,.07), 0 2px 6px -2px rgba(16,24,40,.04);
+    --e4: 0 24px 48px -12px rgba(16,24,40,.22);
+    --ease-out: cubic-bezier(.22,1,.36,1);
+    --ease-spring: cubic-bezier(.16,1,.3,1);
+    --d1: 120ms; --d2: 180ms; --d3: 260ms;
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  }
+  .dark-mode {
+    color-scheme: dark;
+    --canvas: #0b0f17;
+    --canvas-glow: radial-gradient(1100px 520px at 50% -10%, rgba(71,158,245,.1), transparent 62%);
+    --surface: #151a24;
+    --surface-sunken: #10151f;
+    --surface-hover: #1f2632;
+    --glass: rgba(21,26,36,.72);
+    --overlay: rgba(4,7,12,.56);
+    --line: rgba(255,255,255,.08);
+    --line-strong: rgba(255,255,255,.15);
+    --highlight-top: rgba(255,255,255,.06);
+    --fg: #f4f6fa; --fg-2: #c3cad6; --fg-3: #8f9aab; --fg-muted: #6b7686;
+    --brand: #479ef5; --brand-hover: #62abf7; --brand-pressed: #2f8ce6;
+    --brand-text: #79b7f8; --brand-soft: rgba(71,158,245,.15); --brand-line: rgba(71,158,245,.36); --brand-glow: rgba(71,158,245,.4);
+    --e1: 0 1px 2px rgba(0,0,0,.45); --e3: 0 10px 22px rgba(0,0,0,.55); --e4: 0 24px 48px rgba(0,0,0,.72);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--canvas); color: var(--fg);
+    font-family: var(--font); font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    transition: background-color var(--d2), color var(--d2);
+  }
+  button, input, select { font: inherit; }
+  button { color: inherit; }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--brand); outline-offset: 2px;
+  }
+  .num { font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .topbar {
+    position: sticky; top: 0; z-index: 50; height: 60px;
+    display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px;
+    padding: 0 12px; background: var(--glass); backdrop-filter: blur(18px) saturate(150%);
+    border-bottom: 1px solid var(--line); box-shadow: inset 0 -1px 0 var(--highlight-top);
+  }
+  @media (min-width: 640px) { .topbar { padding: 0 24px; } }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: var(--r-sm); flex: 0 0 auto;
+    display: grid; place-items: center; color: #fff;
+    background: linear-gradient(160deg, var(--brand), var(--brand-pressed));
+    box-shadow: 0 2px 6px var(--brand-glow), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .brand-text { font-size: 16px; font-weight: 650; letter-spacing: -.015em; white-space: nowrap; display: none; }
+  @media (min-width: 400px) { .brand-text { display: inline; } }
+  .tabs {
+    position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    gap: 2px; padding: 3px; justify-self: center; width: max-content; max-width: 100%;
+    background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--r-pill);
+  }
+  .tabs-indicator {
+    position: absolute; top: 3px; bottom: 3px; left: 3px; border-radius: var(--r-pill);
+    background: var(--surface); box-shadow: var(--e1);
+    width: calc((100% - 16px) / 5);
+    transition: transform var(--d2) var(--ease-out);
+  }
+  .tab {
+    position: relative; z-index: 1; min-height: 32px; padding: 0 7px; border: 0; border-radius: var(--r-pill);
+    background: transparent; display: flex; align-items: center; justify-content: center; gap: 6px;
+    color: var(--fg-3); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer;
+    transition: color var(--d1);
+  }
+  @media (min-width: 420px) { .tab { padding: 0 10px; } }
+  .tab:hover { color: var(--fg); }
+  .tab[aria-selected="true"] { color: var(--fg); font-weight: 650; }
+  .tab-label { display: none; }
+  @media (min-width: 640px) { .tab-label { display: inline; } .tab { padding: 0 12px; } }
+  .actions { display: flex; align-items: center; gap: 4px; }
+  .admin-pill {
+    display: none; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; margin-right: 2px;
+    background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--r-pill);
+    font-size: 12.5px; color: var(--fg-2); user-select: none;
+  }
+  @media (min-width: 900px) { .admin-pill { display: flex; } }
+  .avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+  .icon-btn {
+    width: 34px; height: 34px; border: 0; border-radius: var(--r-sm); background: transparent;
+    color: var(--fg-3); display: grid; place-items: center; cursor: pointer;
+    transition: background var(--d1), color var(--d1), transform var(--d1);
+  }
+  .icon-btn:hover { color: var(--fg); background: var(--surface-hover); }
+  .icon-btn:active { transform: scale(.94); }
+
+  main { position: relative; width: 100%; max-width: 900px; margin: 0 auto; padding: 24px 16px 120px; }
+  @media (min-width: 640px) { main { padding: 24px 28px 120px; } }
+  main::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: var(--canvas-glow) no-repeat;
+  }
+  .content { position: relative; z-index: 1; animation: rise var(--d3) var(--ease-out) both; }
+  .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 680; letter-spacing: -.018em; }
+  .page-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .btn {
+    min-height: 34px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid transparent;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+    transition: background var(--d1), color var(--d1), border-color var(--d1), transform var(--d1);
+  }
+  .btn:active { transform: scale(.97); }
+  .btn.primary { color: #fff; background: var(--brand); box-shadow: 0 2px 8px var(--brand-glow); }
+  .btn.primary:hover { background: var(--brand-hover); }
+  .btn.subtle { color: var(--fg-2); background: var(--surface-sunken); border-color: var(--line); }
+  .btn.subtle:hover { color: var(--fg); background: var(--surface-hover); }
+  .btn.ghost { color: var(--fg-2); background: transparent; border-color: transparent; }
+  .btn.ghost:hover { color: var(--fg); background: var(--surface-hover); }
+  .btn.danger { color: #fff; background: var(--expense-text); }
+  .btn-label { display: inline; }
+
+  .hero {
+    position: relative; overflow: hidden; padding: 22px; border-radius: var(--r-xl);
+    background: var(--surface); border: 1px solid var(--brand-line);
+    box-shadow: var(--e3), inset 0 1px 0 var(--highlight-top);
+  }
+  @media (min-width: 720px) { .hero { padding: 22px 26px 20px; } }
+  .hero-top { display: grid; grid-template-columns: minmax(0,1fr); gap: 18px; align-items: end; }
+  @media (min-width: 640px) { .hero-top { grid-template-columns: minmax(0,1fr) auto; gap: 24px; } }
+  .eyebrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--fg-3); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--r-pill);
+    background: var(--brand-soft); border: 1px solid var(--brand-line); color: var(--brand-text);
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .hero-amount { display: flex; align-items: baseline; gap: 4px; margin-top: 5px; line-height: 1.05; }
+  .currency { font-size: 24px; font-weight: 500; color: var(--fg-2); }
+  .amount-main { font-size: 40px; font-weight: 680; letter-spacing: -.03em; }
+  @media (min-width: 720px) { .amount-main { font-size: 44px; } }
+  .per { margin-left: 3px; font-size: 13px; font-weight: 500; color: var(--fg-3); }
+  .hero-meta { display: grid; grid-template-columns: repeat(2, minmax(96px, 1fr)); gap: 8px 24px; min-width: 230px; }
+  .meta-item { display: flex; flex-direction: column; gap: 1px; }
+  .meta-item span { color: var(--fg-3); font-size: 11.5px; }
+  .meta-item b { font-size: 14px; font-weight: 650; white-space: nowrap; }
+  .meta-item small { font-size: 11px; font-weight: 500; color: var(--fg-3); margin-left: 3px; }
+  .distribution {
+    display: flex; gap: 2px; height: 7px; margin-top: 18px; overflow: hidden;
+    background: var(--surface-sunken); border-radius: var(--r-pill);
+  }
+  .distribution i { display: block; height: 100%; transition: flex var(--d3) var(--ease-out); }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 18px 0 12px; }
+  .filters { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--r-pill); }
+  .filter {
+    min-height: 30px; padding: 0 12px; border: 0; border-radius: var(--r-pill); background: transparent;
+    color: var(--fg-3); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: all var(--d1);
+  }
+  .filter:hover { color: var(--fg); }
+  .filter[aria-pressed="true"] { color: var(--fg); font-weight: 650; background: var(--surface); box-shadow: var(--e1); }
+  .count { color: var(--fg-3); font-size: 12px; }
+
+  .groups { display: flex; flex-direction: column; gap: 14px; }
+  .group {
+    position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+    box-shadow: var(--e1), inset 0 1px 0 var(--highlight-top); overflow: visible;
+  }
+  .group-head {
+    display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 7px 10px 7px 14px;
+    background: var(--surface-sunken); border-bottom: 1px solid var(--line);
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  .group-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .group-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
+  .group-name b { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group-count { color: var(--fg-3); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+  .group-tail { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .group-total { font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+  .group-total small { font-size: 11px; font-weight: 500; color: var(--fg-3); }
+  .group-total.is-muted { color: var(--fg-muted); font-weight: 500; }
+  .row {
+    display: flex; align-items: center; gap: 11px; min-height: 62px; padding: 9px 10px 9px 14px;
+    border-top: 1px solid var(--line); transition: background var(--d1), opacity var(--d1);
+  }
+  .row:first-of-type { border-top: 0; }
+  .row:hover { background: var(--surface-hover); }
+  .row:last-child { border-radius: 0 0 var(--r-lg) var(--r-lg); }
+  .row.is-paused { background: var(--surface-sunken); }
+  .tile {
+    width: 34px; height: 34px; border-radius: var(--r-sm); flex: 0 0 auto; display: grid; place-items: center;
+    background: var(--brand-soft); border: 1px solid var(--brand-line); color: var(--brand-text);
+    font-size: 14px; font-weight: 700; letter-spacing: -.02em;
+  }
+  .row.is-paused .tile { background: var(--surface-sunken); border-color: var(--line); color: var(--fg-3); }
+  .row-main { flex: 1 1 auto; min-width: 0; }
+  .row-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .row-title b { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .status-chip {
+    flex: 0 0 auto; padding: 1px 6px; border-radius: var(--r-pill); background: var(--surface-sunken);
+    border: 1px solid var(--line); color: var(--fg-3); font-size: 10.5px; font-weight: 600;
+  }
+  .row-meta { margin-top: 1px; color: var(--fg-3); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-meta span + span::before { content: " · "; }
+  @media (max-width: 380px) {
+    .row-meta { white-space: normal; line-height: 1.35; }
+    .row-meta span { display: block; }
+    .row-meta span + span::before { content: ""; }
+  }
+  .row-amount { flex: 0 0 auto; text-align: right; white-space: nowrap; }
+  .row-amount b { font-size: 14px; font-weight: 650; }
+  .row-amount small { margin-left: 2px; font-size: 11px; font-weight: 500; color: var(--fg-3); }
+  .row.is-paused .row-amount b { color: var(--fg-3); font-weight: 550; }
+  .row-menu { position: relative; flex: 0 0 auto; }
+
+  .menu {
+    position: absolute; z-index: 60; top: calc(100% + 5px); right: 0; min-width: 158px; padding: 4px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+    box-shadow: var(--e4); animation: pop var(--d3) var(--ease-spring) both;
+  }
+  .menu.group-menu { top: 42px; right: 8px; }
+  .menu-item {
+    width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0;
+    border-radius: var(--r-sm); background: transparent; color: var(--fg); text-align: left;
+    font-size: 13px; cursor: pointer; transition: background var(--d1), color var(--d1);
+  }
+  .menu-item:hover { background: var(--surface-hover); }
+  .menu-item.danger { color: var(--expense-text); }
+  .menu-item.danger:hover { background: rgba(229,72,77,.09); }
+  .menu-sep { height: 1px; margin: 4px 2px; border: 0; background: var(--line); }
+
+  .empty-filter { display: none; padding: 40px 16px; text-align: center; color: var(--fg-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--e1); }
+  .empty-filter b { display: block; color: var(--fg); font-size: 13.5px; margin-bottom: 2px; }
+  .empty-filter .btn { margin-top: 8px; }
+  .scrim { overscroll-behavior: contain; }
+
+  .scrim {
+    position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 12px;
+    background: var(--overlay); backdrop-filter: blur(4px); animation: fade var(--d2) var(--ease-out) both;
+  }
+  .scrim[hidden] { display: none; }
+  .dialog {
+    width: 100%; max-width: 460px; max-height: calc(100dvh - 24px); overflow: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-xl);
+    box-shadow: var(--e4), inset 0 1px 0 var(--highlight-top); animation: pop var(--d3) var(--ease-spring) both;
+  }
+  .dialog.small { max-width: 390px; }
+  .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .dialog-head b { font-size: 15px; font-weight: 650; }
+  .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+  .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { color: var(--fg-2); font-size: 12px; font-weight: 600; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .input, .select {
+    width: 100%; height: 38px; padding: 0 11px; border-radius: var(--r-sm);
+    border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg);
+    font-size: 16px; outline: none; transition: border-color var(--d1), box-shadow var(--d1);
+  }
+  @media (min-width: 640px) { .input, .select { font-size: 13px; } }
+  .input::placeholder { color: var(--fg-muted); }
+  .input:focus, .select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .input-wrap { position: relative; }
+  .input-wrap .input { padding-left: 30px; }
+  .input-affix { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--fg-3); font-size: 13px; }
+  .input-wrap.suffix .input { padding-left: 11px; padding-right: 30px; }
+  .input-wrap.suffix .input-affix { left: auto; right: 11px; }
+  .dialog-note { color: var(--fg-3); font-size: 12px; line-height: 1.55; }
+  .confirm-detail { padding: 9px 11px; background: var(--surface-sunken); border: 1px solid var(--line); border-radius: var(--r-sm); color: var(--fg-2); font-size: 12.5px; }
+
+  .toast-host { position: fixed; z-index: 200; right: 18px; top: 76px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  @media (max-width: 639px) { .toast-host { top: auto; bottom: 24px; left: 16px; right: 16px; align-items: center; } }
+  .toast {
+    display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: var(--r-pill);
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--e4);
+    color: var(--fg); font-size: 12.5px; font-weight: 550; animation: toast-in var(--d3) var(--ease-spring) both;
+  }
+  .toast i { width: 7px; height: 7px; border-radius: 50%; background: var(--income-text); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes pop { from { opacity: 0; transform: scale(.955) translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    </div>
+    <span class="brand-text">Ledger</span>
+  </div>
+
+  <nav class="tabs" role="tablist" aria-label="主导航">
+    <span class="tabs-indicator" aria-hidden="true" style="transform: translateX(calc(2 * (100% + 2px)))"></span>
+    <button class="tab" role="tab" aria-selected="false" aria-label="流水">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span class="tab-label">流水</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" aria-label="统计">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span class="tab-label">统计</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="true" aria-label="订阅">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16"/><path d="M3 21v-5h5"/></svg>
+      <span class="tab-label">订阅</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" aria-label="资产">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M4 5v13a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1"/><path d="M15 13h.01" stroke-linecap="round"/></svg>
+      <span class="tab-label">资产</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" aria-label="设置">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.6.67 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="tab-label">设置</span>
+    </button>
+  </nav>
+
+  <div class="actions">
+    <button class="icon-btn" id="themeBtn" aria-label="切换暗黑模式" title="切换暗黑模式">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <div class="admin-pill"><div class="avatar">A</div><span>admin</span></div>
+    <button class="icon-btn" aria-label="退出登录" title="退出登录">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="content">
+    <div class="page-head">
+      <h1>订阅</h1>
+      <div class="page-actions">
+        <button class="btn ghost" id="openGroup" aria-label="新建分组">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+          <span class="btn-label">新建分组</span>
+        </button>
+        <button class="btn primary" id="openAdd">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          添加订阅
+        </button>
+      </div>
+    </div>
+
+    <section class="hero" aria-label="月度固定开支概览">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow">
+            <span>每月固定开支</span>
+            <span class="chip">8 项使用中</span>
+          </div>
+          <div class="hero-amount">
+            <span class="currency num">¥</span>
+            <span class="amount-main num" id="monthlyTotal">354.00</span>
+            <span class="per">/ 月</span>
+          </div>
+        </div>
+        <div class="hero-meta">
+          <div class="meta-item"><span>年度预估</span><b class="num" id="annualTotal">¥4,248.00</b></div>
+          <div class="meta-item"><span>未来 7 天</span><b class="num">¥108.00 <small>3 项</small></b></div>
+        </div>
+      </div>
+      <div class="distribution" role="img" aria-label="按分组划分的每月固定开支">
+        <i style="flex:98;background:#0f6cbd"></i><i style="flex:175;background:#2f88dc"></i><i style="flex:81;background:#57a6ee"></i>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <div class="filters" role="group" aria-label="订阅状态筛选">
+        <button class="filter" type="button" aria-pressed="true" data-filter="all">全部</button>
+        <button class="filter" type="button" aria-pressed="false" data-filter="active">使用中</button>
+        <button class="filter" type="button" aria-pressed="false" data-filter="paused">已暂停</button>
+      </div>
+      <span class="count" id="visibleCount">共 9 项</span>
+    </div>
+
+    <div class="groups" id="groups">
+      <section class="group" data-group="media" data-color="#0f6cbd">
+        <header class="group-head">
+          <div class="group-name"><i class="group-dot" style="background:#0f6cbd"></i><b>影音娱乐</b><span class="group-count">3 项使用中</span></div>
+          <div class="group-tail">
+            <span class="group-total"><span class="num">¥98.00</span> <small>/ 月</small></span>
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="影音娱乐分组操作" aria-haspopup="menu" data-menu="group-media">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="menu group-menu" data-menu-panel="group-media" hidden>
+          <button class="menu-item" data-action="add-here" data-group-name="影音娱乐">在此分组添加订阅</button>
+          <button class="menu-item" data-action="rename-group">重命名分组</button>
+          <button class="menu-item" data-action="move-up">上移</button>
+          <button class="menu-item" data-action="move-down">下移</button>
+          <hr class="menu-sep" />
+          <button class="menu-item danger" data-action="delete-group" data-group-name="影音娱乐">删除分组</button>
+        </div>
+
+        <div class="row" data-status="active" data-name="Netflix" data-group="影音娱乐" data-amount="68" data-day="15">
+          <div class="tile" aria-hidden="true">N</div>
+          <div class="row-main">
+            <div class="row-title"><b>Netflix</b></div>
+            <div class="row-meta"><span>每月 15 日</span><span>下次 11 月 15 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥68.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="Netflix 更多操作" aria-haspopup="menu" data-menu="row-netflix">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-netflix" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="Netflix">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-status="active" data-name="Spotify" data-group="影音娱乐" data-amount="15" data-day="5">
+          <div class="tile" aria-hidden="true">S</div>
+          <div class="row-main">
+            <div class="row-title"><b>Spotify</b></div>
+            <div class="row-meta"><span>每月 5 日</span><span>下次 11 月 5 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥15.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="Spotify 更多操作" aria-haspopup="menu" data-menu="row-spotify">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-spotify" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="Spotify">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-status="active" data-name="哔哩哔哩大会员" data-group="影音娱乐" data-amount="15" data-day="20">
+          <div class="tile" aria-hidden="true">B</div>
+          <div class="row-main">
+            <div class="row-title"><b>哔哩哔哩大会员</b></div>
+            <div class="row-meta"><span>每月 20 日</span><span>下次 11 月 20 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥15.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="哔哩哔哩大会员 更多操作" aria-haspopup="menu" data-menu="row-bili">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-bili" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="哔哩哔哩大会员">删除</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" data-group="software" data-color="#2f88dc">
+        <header class="group-head">
+          <div class="group-name"><i class="group-dot" style="background:#2f88dc"></i><b>软件工具</b><span class="group-count">3 项使用中</span></div>
+          <div class="group-tail">
+            <span class="group-total"><span class="num">¥175.00</span> <small>/ 月</small></span>
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="软件工具分组操作" aria-haspopup="menu" data-menu="group-software">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="menu group-menu" data-menu-panel="group-software" hidden>
+          <button class="menu-item" data-action="add-here" data-group-name="软件工具">在此分组添加订阅</button>
+          <button class="menu-item" data-action="rename-group">重命名分组</button>
+          <button class="menu-item" data-action="move-up">上移</button>
+          <button class="menu-item" data-action="move-down">下移</button>
+          <hr class="menu-sep" />
+          <button class="menu-item danger" data-action="delete-group" data-group-name="软件工具">删除分组</button>
+        </div>
+
+        <div class="row" data-status="active" data-name="Notion" data-group="软件工具" data-amount="72" data-day="1">
+          <div class="tile" aria-hidden="true">N</div>
+          <div class="row-main">
+            <div class="row-title"><b>Notion</b></div>
+            <div class="row-meta"><span>每月 1 日</span><span>下次 11 月 1 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥72.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="Notion 更多操作" aria-haspopup="menu" data-menu="row-notion">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-notion" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="Notion">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-status="active" data-name="Adobe Photography" data-group="软件工具" data-amount="78" data-day="8">
+          <div class="tile" aria-hidden="true">A</div>
+          <div class="row-main">
+            <div class="row-title"><b>Adobe Photography</b></div>
+            <div class="row-meta"><span>每月 8 日</span><span>下次 11 月 8 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥78.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="Adobe Photography 更多操作" aria-haspopup="menu" data-menu="row-adobe">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-adobe" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="Adobe Photography">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-status="active" data-name="1Password" data-group="软件工具" data-amount="25" data-day="12">
+          <div class="tile" aria-hidden="true">1</div>
+          <div class="row-main">
+            <div class="row-title"><b>1Password</b></div>
+            <div class="row-meta"><span>每月 12 日</span><span>下次 11 月 12 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥25.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="1Password 更多操作" aria-haspopup="menu" data-menu="row-1p">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-1p" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="1Password">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row is-paused" data-status="paused" data-name="Medium" data-group="软件工具" data-amount="35" data-day="28">
+          <div class="tile" aria-hidden="true">M</div>
+          <div class="row-main">
+            <div class="row-title"><b>Medium</b><span class="status-chip">已暂停</span></div>
+            <div class="row-meta"><span>原扣款日 28 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥35.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="Medium 更多操作" aria-haspopup="menu" data-menu="row-medium">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-medium" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="resume">恢复续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="Medium">删除</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" data-group="cloud" data-color="#57a6ee">
+        <header class="group-head">
+          <div class="group-name"><i class="group-dot" style="background:#57a6ee"></i><b>云服务</b><span class="group-count">2 项使用中</span></div>
+          <div class="group-tail">
+            <span class="group-total"><span class="num">¥81.00</span> <small>/ 月</small></span>
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="云服务分组操作" aria-haspopup="menu" data-menu="group-cloud">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="menu group-menu" data-menu-panel="group-cloud" hidden>
+          <button class="menu-item" data-action="add-here" data-group-name="云服务">在此分组添加订阅</button>
+          <button class="menu-item" data-action="rename-group">重命名分组</button>
+          <button class="menu-item" data-action="move-up">上移</button>
+          <button class="menu-item" data-action="move-down">下移</button>
+          <hr class="menu-sep" />
+          <button class="menu-item danger" data-action="delete-group" data-group-name="云服务">删除分组</button>
+        </div>
+
+        <div class="row" data-status="active" data-name="iCloud+" data-group="云服务" data-amount="21" data-day="3">
+          <div class="tile" aria-hidden="true">i</div>
+          <div class="row-main">
+            <div class="row-title"><b>iCloud+</b></div>
+            <div class="row-meta"><span>每月 3 日</span><span>下次 11 月 3 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥21.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="iCloud+ 更多操作" aria-haspopup="menu" data-menu="row-icloud">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-icloud" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="iCloud+">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-status="active" data-name="阿里云 ECS" data-group="云服务" data-amount="60" data-day="25">
+          <div class="tile" aria-hidden="true">云</div>
+          <div class="row-main">
+            <div class="row-title"><b>阿里云 ECS</b></div>
+            <div class="row-meta"><span>每月 25 日</span><span>下次 11 月 25 日</span></div>
+          </div>
+          <div class="row-amount"><b class="num">¥60.00</b><small>/ 月</small></div>
+          <div class="row-menu">
+            <button class="icon-btn" style="width:30px;height:30px" aria-label="阿里云 ECS 更多操作" aria-haspopup="menu" data-menu="row-aliyun">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+            </button>
+            <div class="menu" data-menu-panel="row-aliyun" hidden>
+              <button class="menu-item" data-action="edit">编辑</button>
+              <button class="menu-item" data-action="pause">暂停续费</button>
+              <hr class="menu-sep" />
+              <button class="menu-item danger" data-action="delete-sub" data-name="阿里云 ECS">删除</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="empty-filter" id="emptyFilter">
+      <b>没有已暂停的订阅</b>
+      <button class="btn ghost" type="button" onclick="document.querySelector('[data-filter=all]').click()">查看全部</button>
+    </div>
+  </div>
+</main>
+
+<div class="scrim" id="subscriptionDialog" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="subDialogTitle">
+    <div class="dialog-head">
+      <b id="subDialogTitle">添加订阅</b>
+      <button class="icon-btn" data-close="subscriptionDialog" aria-label="关闭">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form id="subscriptionForm">
+      <div class="dialog-body">
+        <div class="field">
+          <label for="subName">服务名称</label>
+          <input class="input" id="subName" name="name" placeholder="Netflix" required maxlength="60" />
+        </div>
+        <div class="field">
+          <label for="subGroup">分组</label>
+          <select class="select" id="subGroup" name="group">
+            <option>影音娱乐</option>
+            <option>软件工具</option>
+            <option>云服务</option>
+            <option>未分组</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="subAmount">每月金额</label>
+            <div class="input-wrap"><span class="input-affix">¥</span><input class="input" id="subAmount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" required /></div>
+          </div>
+          <div class="field">
+            <label for="subDay">扣款日</label>
+            <div class="input-wrap suffix"><input class="input" id="subDay" name="day" type="number" min="1" max="31" step="1" inputmode="numeric" placeholder="15" required /><span class="input-affix">日</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" class="btn ghost" data-close="subscriptionDialog">取消</button>
+        <button type="submit" class="btn primary" id="subSubmit">添加订阅</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="scrim" id="groupDialog" hidden>
+  <div class="dialog small" role="dialog" aria-modal="true" aria-labelledby="groupDialogTitle">
+    <div class="dialog-head">
+      <b id="groupDialogTitle">新建分组</b>
+      <button class="icon-btn" data-close="groupDialog" aria-label="关闭">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <form id="groupForm">
+      <div class="dialog-body">
+        <div class="field">
+          <label for="groupName">分组名称</label>
+          <input class="input" id="groupName" name="groupName" placeholder="影音娱乐" required maxlength="30" />
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" class="btn ghost" data-close="groupDialog">取消</button>
+        <button type="submit" class="btn primary" id="groupSubmit">创建分组</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="scrim" id="confirmDialog" hidden>
+  <div class="dialog small" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="dialog-head"><b id="confirmTitle">删除订阅</b></div>
+    <div class="dialog-body">
+      <div class="dialog-note" id="confirmText">删除后不可恢复。</div>
+      <div class="confirm-detail" id="confirmDetail"></div>
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="btn ghost" data-close="confirmDialog">取消</button>
+      <button type="button" class="btn danger" id="confirmDelete">删除</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+<script>
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+  // Theme
+  const themeBtn = $('#themeBtn');
+  themeBtn.addEventListener('click', () => {
+    const dark = document.documentElement.classList.toggle('dark-mode');
+    themeBtn.setAttribute('aria-label', dark ? '切换浅色模式' : '切换暗黑模式');
+    themeBtn.innerHTML = dark
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  });
+
+  // Tab indicator (visual only in this prototype)
+  const indicator = $('.tabs-indicator');
+  $$('.tab').forEach((tab, i) => {
+    tab.addEventListener('click', () => {
+      $$('.tab').forEach((t) => t.setAttribute('aria-selected', 'false'));
+      tab.setAttribute('aria-selected', 'true');
+      indicator.style.transform = 'translateX(calc(' + i + ' * (100% + 2px)))';
+    });
+  });
+
+  // Status filter: hide rows and empty groups, recompute visible counts and subtotals.
+  const money = (n) => '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const applyFilter = (filter) => {
+    let visible = 0;
+    $$('.group').forEach((group) => {
+      const rows = $$('.row', group);
+      let groupVisible = 0;
+      let activeCount = 0;
+      let activeTotal = 0;
+      rows.forEach((row) => {
+        const show = filter === 'all' || row.dataset.status === filter;
+        row.hidden = !show;
+        if (show) {
+          groupVisible += 1;
+          visible += 1;
+          if (row.dataset.status === 'active') {
+            activeCount += 1;
+            activeTotal += Number(row.dataset.amount);
+          }
+        }
+      });
+      group.hidden = groupVisible === 0;
+      const count = $('.group-count', group);
+      count.textContent = filter === 'paused' ? groupVisible + ' 项已暂停' : activeCount + ' 项使用中';
+      const total = $('.group-total', group);
+      if (activeTotal > 0) {
+        total.innerHTML = '<span class="num">' + money(activeTotal) + '</span> <small>/ 月</small>';
+        total.classList.remove('is-muted');
+      } else {
+        total.textContent = '—';
+        total.classList.add('is-muted');
+      }
+    });
+    $('#visibleCount').textContent = filter === 'paused' ? visible + ' 项已暂停' : '共 ' + visible + ' 项';
+    $('#emptyFilter').style.display = visible === 0 ? 'block' : 'none';
+  };
+
+  $$('.filter').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      $$('.filter').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      btn.setAttribute('aria-pressed', 'true');
+      applyFilter(btn.dataset.filter);
+    });
+  });
+
+  // Menus
+  const closeMenus = () => $$('[data-menu-panel]').forEach((panel) => { panel.hidden = true; });
+  $$('[data-menu]').forEach((trigger) => {
+    trigger.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const panel = $('[data-menu-panel="' + trigger.dataset.menu + '"]');
+      const wasOpen = !panel.hidden;
+      closeMenus();
+      panel.hidden = wasOpen;
+    });
+  });
+  document.addEventListener('click', closeMenus);
+  $$('[data-menu-panel]').forEach((panel) => panel.addEventListener('click', (e) => e.stopPropagation()));
+
+  // Dialog helpers
+  let lastFocus = null;
+  const openDialog = (id, focusEl) => {
+    lastFocus = document.activeElement;
+    const scrim = $('#' + id);
+    scrim.hidden = false;
+    document.body.style.overflow = 'hidden';
+    requestAnimationFrame(() => (focusEl ? $(focusEl) : scrim.querySelector('input,button'))?.focus());
+  };
+  const closeDialog = (id) => {
+    $('#' + id).hidden = true;
+    if ($$('.scrim:not([hidden])').length === 0) document.body.style.overflow = '';
+    if (lastFocus && lastFocus.isConnected) lastFocus.focus();
+  };
+  $$('[data-close]').forEach((btn) => btn.addEventListener('click', () => closeDialog(btn.dataset.close)));
+  $$('.scrim').forEach((scrim) => scrim.addEventListener('click', (e) => {
+    if (e.target === scrim) closeDialog(scrim.id);
+  }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = $$('.scrim:not([hidden])').at(-1);
+    if (open) closeDialog(open.id);
+    else closeMenus();
+  });
+
+  const showToast = (message) => {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = '<i aria-hidden="true"></i><span></span>';
+    $('span', toast).textContent = message;
+    $('#toastHost').appendChild(toast);
+    setTimeout(() => toast.remove(), 2800);
+  };
+
+  const openSubscription = (mode, row) => {
+    $('#subDialogTitle').textContent = mode === 'edit' ? '编辑订阅' : '添加订阅';
+    $('#subSubmit').textContent = mode === 'edit' ? '保存修改' : '添加订阅';
+    if (row) {
+      $('#subName').value = row.dataset.name;
+      $('#subGroup').value = row.dataset.group || '未分组';
+      $('#subAmount').value = row.dataset.amount;
+      $('#subDay').value = row.dataset.day;
+    } else {
+      $('#subscriptionForm').reset();
+    }
+    openDialog('subscriptionDialog', '#subName');
+  };
+
+  $('#openAdd').addEventListener('click', () => openSubscription('create'));
+  $('#openGroup').addEventListener('click', () => {
+    $('#groupDialogTitle').textContent = '新建分组';
+    $('#groupSubmit').textContent = '创建分组';
+    $('#groupForm').reset();
+    openDialog('groupDialog', '#groupName');
+  });
+
+  $('#subscriptionForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const editing = $('#subDialogTitle').textContent === '编辑订阅';
+    closeDialog('subscriptionDialog');
+    showToast(editing ? '订阅已更新' : '订阅已添加');
+  });
+  $('#groupForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const editing = $('#groupDialogTitle').textContent === '重命名分组';
+    closeDialog('groupDialog');
+    showToast(editing ? '分组已重命名' : '分组已创建');
+  });
+
+  let pendingDelete = null;
+  const openConfirm = (kind, label) => {
+    pendingDelete = { kind, label };
+    $('#confirmTitle').textContent = kind === 'group' ? '删除分组' : '删除订阅';
+    $('#confirmText').textContent = kind === 'group' ? '组内订阅会移至未分组，订阅本身不会被删除。' : '删除后不可恢复。';
+    $('#confirmDetail').textContent = label;
+    openDialog('confirmDialog', '#confirmDelete');
+  };
+  $('#confirmDelete').addEventListener('click', () => {
+    const text = pendingDelete?.kind === 'group' ? '分组已删除，订阅已移至未分组' : '订阅已删除';
+    closeDialog('confirmDialog');
+    showToast(text);
+  });
+
+  // Menu actions
+  document.addEventListener('click', (e) => {
+    const item = e.target.closest('.menu-item');
+    if (!item) return;
+    const menuPanel = item.closest('[data-menu-panel]');
+    const row = item.closest('.row');
+    const group = item.closest('.group');
+    const action = item.dataset.action;
+
+    if (action === 'add-here') {
+      closeMenus();
+      openSubscription('create');
+      $('#subGroup').value = item.dataset.groupName;
+    } else if (action === 'rename-group') {
+      closeMenus();
+      $('#groupDialogTitle').textContent = '重命名分组';
+      $('#groupSubmit').textContent = '保存名称';
+      $('#groupName').value = $('.group-name b', group).textContent;
+      openDialog('groupDialog', '#groupName');
+    } else if (action === 'delete-group') {
+      closeMenus();
+      openConfirm('group', item.dataset.groupName);
+    } else if (action === 'edit') {
+      closeMenus();
+      openSubscription('edit', row);
+    } else if (action === 'delete-sub') {
+      closeMenus();
+      openConfirm('sub', item.dataset.name);
+    } else if (action === 'pause' || action === 'resume') {
+      closeMenus();
+      showToast(action === 'pause' ? '已暂停续费' : '已恢复续费');
+    } else if (action === 'move-up' || action === 'move-down') {
+      closeMenus();
+      showToast('分组顺序已更新');
+    }
+    menuPanel.hidden = true;
+  });
+</script>
+</body>
+</html>

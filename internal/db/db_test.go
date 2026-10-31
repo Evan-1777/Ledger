@@ -758,3 +758,181 @@ func TestOldDatabaseWithCustomTransferCategoryUpgrade(t *testing.T) {
 		t.Errorf("expected legacy transaction preserved, got %d", totalLegacy)
 	}
 }
+
+func TestSubscriptionTables(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ledger-subscription-db-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "subscriptions.db")
+	database, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed: %v", err)
+	}
+
+	for _, table := range []string{"subscription_groups", "subscriptions"} {
+		var count int
+		if err := database.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count); err != nil {
+			t.Fatalf("failed to inspect %s: %v", table, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected table %s to exist", table)
+		}
+	}
+
+	res, err := database.Exec("INSERT INTO subscription_groups (name, sort_order) VALUES ('影音娱乐', 1)")
+	if err != nil {
+		t.Fatalf("failed to insert group: %v", err)
+	}
+	groupID, _ := res.LastInsertId()
+
+	res, err = database.Exec("INSERT INTO subscriptions (group_id, name, amount_cents, billing_day) VALUES (?, 'Netflix', 6800, 15)", groupID)
+	if err != nil {
+		t.Fatalf("failed to insert subscription: %v", err)
+	}
+	subID, _ := res.LastInsertId()
+
+	// Group deletion detaches its subscriptions instead of cascading.
+	if _, err := database.Exec("DELETE FROM subscription_groups WHERE id = ?", groupID); err != nil {
+		t.Fatalf("failed to delete group: %v", err)
+	}
+	var remainingGroup sql.NullInt64
+	if err := database.QueryRow("SELECT group_id FROM subscriptions WHERE id = ?", subID).Scan(&remainingGroup); err != nil {
+		t.Fatalf("expected subscription to survive group deletion: %v", err)
+	}
+	if remainingGroup.Valid {
+		t.Errorf("expected group_id NULL after group deletion, got %d", remainingGroup.Int64)
+	}
+
+	// Constraints reject invalid billing days and statuses.
+	for _, stmt := range []string{
+		"INSERT INTO subscriptions (name, amount_cents, billing_day) VALUES ('bad day 0', 100, 0)",
+		"INSERT INTO subscriptions (name, amount_cents, billing_day) VALUES ('bad day 32', 100, 32)",
+		"INSERT INTO subscriptions (name, amount_cents, billing_day, status) VALUES ('bad status', 100, 1, 'archived')",
+		"INSERT INTO subscriptions (name, amount_cents, billing_day) VALUES ('bad amount', 0, 1)",
+	} {
+		if _, err := database.Exec(stmt); err == nil {
+			t.Errorf("expected constraint rejection for %q", stmt)
+		}
+	}
+
+	// Group names are unique case-insensitively.
+	if _, err := database.Exec("INSERT INTO subscription_groups (name) VALUES ('Apple')"); err != nil {
+		t.Fatalf("failed to insert Apple group: %v", err)
+	}
+	if _, err := database.Exec("INSERT INTO subscription_groups (name) VALUES ('apple')"); err == nil {
+		t.Error("expected case-insensitive unique rejection for group name")
+	}
+	database.Close()
+
+	// Re-running InitDB keeps tables and data idempotent.
+	rebootDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("second InitDB failed: %v", err)
+	}
+	defer rebootDB.Close()
+
+	var groupCount, subCount int
+	if err := rebootDB.QueryRow("SELECT COUNT(*) FROM subscription_groups").Scan(&groupCount); err != nil {
+		t.Fatalf("failed to count groups: %v", err)
+	}
+	if groupCount != 1 {
+		t.Errorf("expected 1 group after re-init, got %d", groupCount)
+	}
+	if err := rebootDB.QueryRow("SELECT COUNT(*) FROM subscriptions").Scan(&subCount); err != nil {
+		t.Fatalf("failed to count subscriptions: %v", err)
+	}
+	if subCount != 1 {
+		t.Errorf("expected 1 subscription after re-init, got %d", subCount)
+	}
+}
+
+func TestSubscriptionTablesUpgrade(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "ledger-subscription-upgrade-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	dbPath := filepath.Join(tempDir, "old_ledger.db")
+
+	// Database created before subscriptions existed, with live records.
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open raw sqlite: %v", err)
+	}
+	oldSchema := `
+	CREATE TABLE categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE tags (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		name TEXT NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE payment_methods (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE transactions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		amount_cents INTEGER NOT NULL,
+		description TEXT NOT NULL,
+		payment_method_id INTEGER NOT NULL REFERENCES payment_methods(id) ON DELETE RESTRICT,
+		category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+		tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE RESTRICT,
+		transacted_at TEXT NOT NULL,
+		type TEXT NOT NULL DEFAULT 'expense',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	INSERT INTO categories (name, sort_order) VALUES ('餐饮美食', 1);
+	INSERT INTO tags (category_id, name, sort_order) VALUES (1, '午餐', 1);
+	INSERT INTO payment_methods (name, sort_order) VALUES ('旧银行卡', 1);
+	INSERT INTO transactions (amount_cents, description, payment_method_id, category_id, tag_id, transacted_at)
+	VALUES (-2500, '旧账单', 1, 1, 1, '2026-09-01T12:00:00Z');
+	`
+	if _, err := rawDB.Exec(oldSchema); err != nil {
+		rawDB.Close()
+		t.Fatalf("failed to create old schema: %v", err)
+	}
+	rawDB.Close()
+
+	upgradedDB, err := InitDB(dbPath)
+	if err != nil {
+		t.Fatalf("InitDB failed to upgrade: %v", err)
+	}
+	defer upgradedDB.Close()
+
+	for _, table := range []string{"subscription_groups", "subscriptions"} {
+		var count int
+		if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count); err != nil {
+			t.Fatalf("failed to inspect %s: %v", table, err)
+		}
+		if count != 1 {
+			t.Fatalf("expected table %s after upgrade", table)
+		}
+	}
+
+	var txCount, pmCount int
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM transactions").Scan(&txCount); err != nil {
+		t.Fatalf("failed to count transactions: %v", err)
+	}
+	if txCount != 1 {
+		t.Errorf("expected legacy transaction preserved, got %d", txCount)
+	}
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM payment_methods").Scan(&pmCount); err != nil {
+		t.Fatalf("failed to count payment methods: %v", err)
+	}
+	if pmCount != 1 {
+		t.Errorf("expected legacy payment method preserved, got %d", pmCount)
+	}
+}

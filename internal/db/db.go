@@ -96,6 +96,25 @@ func migrateAndSeed(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_transactions_category_id ON transactions(category_id);
 	CREATE INDEX IF NOT EXISTS idx_transactions_payment_method_id ON transactions(payment_method_id);
 
+	CREATE TABLE IF NOT EXISTS subscription_groups (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+		sort_order INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS subscriptions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		group_id INTEGER DEFAULT NULL REFERENCES subscription_groups(id) ON DELETE SET NULL,
+		name TEXT NOT NULL,
+		amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+		billing_day INTEGER NOT NULL CHECK(billing_day BETWEEN 1 AND 31),
+		status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','paused')),
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_subscriptions_group_id ON subscriptions(group_id);
+
 	CREATE TABLE IF NOT EXISTS system_meta (
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL

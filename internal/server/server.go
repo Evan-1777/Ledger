@@ -71,6 +71,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/transactions/{id}", s.requireAuth(s.handleUpdateTransaction))
 	s.mux.HandleFunc("DELETE /api/transactions/{id}", s.requireAuth(s.handleDeleteTransaction))
 
+	// Subscription routes
+	s.mux.HandleFunc("GET /api/subscription-groups", s.requireAuth(s.handleListSubscriptionGroups))
+	s.mux.HandleFunc("POST /api/subscription-groups", s.requireAuth(s.handleCreateSubscriptionGroup))
+	s.mux.HandleFunc("PUT /api/subscription-groups/{id}", s.requireAuth(s.handleUpdateSubscriptionGroup))
+	s.mux.HandleFunc("DELETE /api/subscription-groups/{id}", s.requireAuth(s.handleDeleteSubscriptionGroup))
+
+	s.mux.HandleFunc("GET /api/subscriptions", s.requireAuth(s.handleListSubscriptions))
+	s.mux.HandleFunc("POST /api/subscriptions", s.requireAuth(s.handleCreateSubscription))
+	s.mux.HandleFunc("PUT /api/subscriptions/{id}", s.requireAuth(s.handleUpdateSubscription))
+	s.mux.HandleFunc("DELETE /api/subscriptions/{id}", s.requireAuth(s.handleDeleteSubscription))
+
 	// Stats routes
 	s.mux.HandleFunc("GET /api/stats/summary", s.requireAuth(s.handleStatsSummary))
 	s.mux.HandleFunc("GET /api/stats/range", s.requireAuth(s.handleStatsRange))

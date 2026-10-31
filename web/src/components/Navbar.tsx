@@ -3,6 +3,7 @@ import {
   BrandIcon,
   StreamIcon,
   StatsIcon,
+  SubscriptionIcon,
   WalletIcon,
   SettingsIcon,
   MoonIcon,
@@ -12,13 +13,14 @@ import {
 import { SegmentedControl, IconButton } from './primitives';
 import type { SegmentedItem } from './primitives';
 
-export type TabType = 'stream' | 'stats' | 'assets' | 'settings';
+export type TabType = 'stream' | 'stats' | 'subscriptions' | 'assets' | 'settings';
 
 const TAB_ITEMS: SegmentedItem[] = [
-  { key: 'stream', label: '账目流水', icon: <StreamIcon size={15} /> },
-  { key: 'stats', label: '收支统计', icon: <StatsIcon size={15} /> },
-  { key: 'assets', label: '资产概览', icon: <WalletIcon size={15} /> },
-  { key: 'settings', label: '基础设置', icon: <SettingsIcon size={15} /> },
+  { key: 'stream', label: '流水', icon: <StreamIcon size={15} /> },
+  { key: 'stats', label: '统计', icon: <StatsIcon size={15} /> },
+  { key: 'subscriptions', label: '订阅', icon: <SubscriptionIcon size={15} /> },
+  { key: 'assets', label: '资产', icon: <WalletIcon size={15} /> },
+  { key: 'settings', label: '设置', icon: <SettingsIcon size={15} /> },
 ];
 
 interface NavbarProps {
@@ -63,6 +65,7 @@ export const Navbar: FC<NavbarProps> = ({
         onChange={(key) => onTabChange(key as TabType)}
         ariaLabel="主导航"
         compact
+        className="[&>button]:px-[7px] min-[420px]:[&>button]:px-2.5"
       />
     </nav>
 

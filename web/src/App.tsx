@@ -9,6 +9,7 @@ import { StreamPage } from './pages/StreamPage';
 import { StatsPage } from './pages/StatsPage';
 import { AssetsPage } from './pages/AssetsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SubscriptionsPage } from './pages/SubscriptionsPage';
 import {
   api,
   Category,
@@ -424,6 +425,10 @@ export default function App() {
                 setCurrentTab('settings');
               }}
             />
+          )}
+
+          {currentTab === 'subscriptions' && (
+            <SubscriptionsPage authenticated={isAuthenticated} onToast={addToast} />
           )}
 
           {currentTab === 'settings' && (

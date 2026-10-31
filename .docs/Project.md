@@ -5,7 +5,7 @@
 ## 概述
 
 - **定位**：轻量高颜值个性化记账应用，Go + React + Vite + Tailwind + SQLite 单二进制 Web 端，另配 Flutter + Material 3 Android 客户端，复用同一 HTTP API。
-- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收、0.1.0 发布与 0.1.1 启动修复发布，Web 端保留为开发与自检面；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留、Android 客户端冷启动缓存优先渲染与会话乐观恢复已交付，2026-10-29 完成记账分类/标签双字段选择面板、流水筛选面板与统计区间/维度筛选，支持单二进制独立运行与 Docker 部署。
+- **阶段**：Flutter Android 客户端（MD3 四段导航、记账/编辑/删除、统计图表、资产负债、分类标签与渠道管理、主题与服务设置）已交付并完成复审吸收、0.1.0 发布与 0.1.1 启动修复发布，Web 端作为开发与自检面并已扩为五段导航（流水/统计/订阅/资产/设置）；此前阶段包含核心记账业务闭环、基础设置（资产与负债渠道双列工作台及细分标签专属抽屉）、Fluent 2 宏观资产负债/收支统计看板、负债还款全链路闭环、移动端 100dvh 动态视口重塑、收支分类严格分流与双向账户转账全链路闭环、移动端通知提示 (Toast) 视口自适应修复、转账手续费可选纯资产调整闭环、Fluent 2 成品级 UI/UX 全站重构（四层材质令牌体系、共享原子构件层、自绘 SVG 图表、应用内确认对话框）、复审修复轮，以及金额双重焦点归位（@layer base 键盘轮廓可被 outline-none 覆盖）、细分标签抽屉与删除确认视口级 Portal 挂载（桌面贴右、遮罩全屏、移动端底部面板）、抽屉生命周期分层键盘仲裁与新增失败草稿保留、Android 客户端冷启动缓存优先渲染与会话乐观恢复已交付，2026-10-29 完成记账分类/标签双字段选择面板、流水筛选面板与统计区间/维度筛选，支持单二进制独立运行与 Docker 部署；2026-10-31 完成 Web 订阅固定开支管理页（分组与订阅 CRUD、月度/年度/未来 7 天汇总、暂停续费、五段导航），订阅仅表示预期固定开支，不写入流水与统计。
 - **非目标**：多租户账号管理体系、复杂云财务集成、重型商业账务核算
 
 ## 环境与运行
@@ -29,7 +29,7 @@
   - 单独运行前端开发服务：`make dev-web` 或 `cd web && npm run dev`
   - 启动二进制：`bin/ledger`（默认监听 `http://localhost:8080`）
 - **测试**：
-  - 全量测试：`make test`（涵盖后端 `go test -v ./...` 与前端 `tsc -b --noEmit`）
+  - 全量测试：`make test`（涵盖后端 `go test -v ./...` 与前端 `tsc -b --noEmit`、`node:test`）
   - Flutter 格式检查：`make app-format`（`dart format --output=none --set-exit-if-changed lib test`）
   - Flutter 静态检查：`make app-analyze`（`flutter pub get && flutter analyze`）
   - Flutter 测试：`make app-test`（`flutter test`）
@@ -49,8 +49,8 @@ Ledger/
 │  ├─ config/
 │  │  └─ config.go           # 环境变量配置加载（PORT, DB_PATH, ADMIN_PASSWORD, TOKEN_SECRET）
 │  ├─ db/
-│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、5张数据表含 system_meta 迁移、payment_methods/transactions/categories 探针热迁移含 fee_cents 与分类统计排除列、系统还款与转账分类/标签智能注入与默认统计排除）
-│  │  └─ db_test.go          # 数据层初始化、老库平滑升级（含系统分类历史流水统计排除）、防复活幂等性、外键约束与探针热迁移测试
+│  │  ├─ db.go               # SQLite 连接初始化（WAL、PRAGMA、7张数据表含 system_meta 迁移、subscription_groups/subscriptions 订阅表、payment_methods/transactions/categories 探针热迁移含 fee_cents 与分类统计排除列、系统还款与转账分类/标签智能注入与默认统计排除）
+│  │  └─ db_test.go          # 数据层初始化、老库平滑升级（含系统分类历史流水统计排除）、防复活幂等性、外键约束、探针热迁移与订阅表约束/删组转未分组测试
 │  └─ server/
 │     ├─ server.go           # HTTP 路由注册分发、健康检查与 SPA 静态文件回退服务
 │     ├─ auth.go             # 管理员密码登录、防爆破时延、HMAC Token 签发与 RequireAuth 访问守卫
@@ -58,17 +58,19 @@ Ledger/
 │     ├─ settings.go         # 资产/负债渠道（payment_methods）、类型（categories 支持 type 与 exclude_from_stats 统计口径）与标签 CRUD API、409 账单引用删除拦截与系统分类/标签 ID 级不可变保护
 │     ├─ transactions.go     # 单笔账单录入/更新/删除/列表查询，金额带符号分位转换、还款与转账双渠道校验、转账手续费原子存取与负数拦截、收支隔离筛选
 │     ├─ stats.go            # 多维收支与宏观资产负债统计汇总：支出/收入共用按类型聚合（汇总、分类构成含标签下钻、渠道分布、6 个月趋势）、统计过滤值对象（分类/标签）统一拼装、区间端点 /api/stats/range（本地日界、已过天数、上期日历月夹取、笔数与 6 个月趋势）、分类统计排除与绝对值降序、还款与转账双边核算、转账手续费纯资产扣减与净资产守恒、渠道明细与信用使用率
-│     └─ server_test.go      # 全业务端点集成测试（鉴权、设置 CRUD 含统计口径往返、409/400 拦截、账单 CRUD、还款与转账全链路及守恒核算、多维收支/收入统计与上月收入排除过滤、区间统计与分类/标签过滤/非法参数）
+│     ├─ subscriptions.go    # 订阅分组与订阅 CRUD API：分组名 COLLATE NOCASE 唯一、删除分组经外键 ON DELETE SET NULL 转未分组、金额分/元双写与 0.01–1,000,000 元校验、扣款日 1–31、active/paused 状态与分组存在性校验
+│     ├─ server_test.go      # 全业务端点集成测试（鉴权、设置 CRUD 含统计口径往返、409/400 拦截、账单 CRUD、还款与转账全链路及守恒核算、多维收支/收入统计与上月收入排除过滤、区间统计与分类/标签过滤/非法参数）
+│     └─ subscriptions_test.go # 订阅端点集成测试（分组排序/重名/401、订阅金额与日期校验、更新/删除、删组后订阅转未分组）
 ├─ web/                      # 前端 React + Vite + Tailwind + TypeScript 工程
 │  ├─ src/
 │  │  ├─ components/
 │  │  │  ├─ primitives.tsx   # 共享原子构件层：Panel/IconButton(可选 pressed 透传 aria-pressed)/Button/SegmentedControl(共享位置指示器)/Chip/Amount/TypeTile/Rail/Skeleton/EmptyState/ConfirmDialog/OverflowMenu（受控溢出菜单、首项自聚焦、方向键与 Home/End 项间导航、外边界 pointerdown 监听、无视口翻转）
 │  │  │  ├─ Charts.tsx       # 纯 SVG 图表：DonutChart（品牌单色阶环形 + 图例点选下钻，导出 donutColor 供资产分布条共享色阶）与 TrendChart（响应式 viewBox 双线收支趋势），零第三方图表依赖
-│  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、四段 SegmentedControl 主导航（滑动指示器，流水/统计/资产/设置）、主题切换、768px admin 胶囊与登出；品牌文字 400px 以下隐藏以防窄屏挤压
+│  │  │  ├─ Navbar.tsx       # 玻璃材质悬浮顶栏（backdrop-blur + 顶部内高光）、五段 SegmentedControl 主导航（滑动指示器，流水/统计/订阅/资产/设置）、640px 以下仅图标、420px 以下收紧 Tab 横向 padding、主题切换、768px admin 胶囊与登出；品牌文字 400px 以下隐藏以防窄屏挤压
 │  │  │  ├─ BottomBar.tsx    # 玻璃材质底部筛选胶囊（5 档 aria-selected）与品牌色 FAB（顶部内高光投影、hover/active 缩放）
 │  │  │  ├─ RecordModal.tsx  # 金额唯一主角：四段类型滑块、初始化与自动聚焦收敛至打开转换（防输入法中文打断）、配置晚到自动补全（含类型化目标渠道默认）、移动端 16px 视口防缩放、转账手续费内联展开、双渠道互斥
 │  │  │  ├─ AuthModal.tsx    # 管理员安全解锁浮层（pop 弹性入场、内联错误提示条、品牌淡底锁形牌）
-│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标、EyeIcon/EyeOffIcon/CreditCardIcon、MoreHorizontalIcon 三点与基础图标，圆头线帽 2–2.4 描边约定）
+│  │  │  ├─ Icons.tsx        # Fluent 语义纯 SVG 图标库（四类交易语义图标、SubscriptionIcon 循环续费、EyeIcon/EyeOffIcon/CreditCardIcon、MoreHorizontalIcon 三点与基础图标，圆头线帽 2–2.4 描边约定）
 │  │  │  └─ Toast.tsx        # 弹簧入场胶囊通知（success/error/info 语义图标、移动端底部居中避开作业条、桌面右上锚定、aria-live）
 │  │  ├─ pages/
 │  │  │  ├─ StreamPage.tsx   # 账目流水：当月概览头条（自然月聚合、不受筛选影响、除零保护、收支比例导轨）+ 日表层组（sunken 表头 + 发丝行分隔）+ TypeTile 语义瓦片 + 金额对齐契约 + 骨架/空态
@@ -76,16 +78,19 @@ Ledger/
 │  │  │  ├─ StatsPage.tsx    # 收支看板：当月结余 Hero（带符号主数值、收入/支出两列、收支比例导轨、储蓄率 Chip）+ 发丝分节四格指标行（本周花费/当月花费含较上月注脚/上月花费/日均花费）+ 当月支出构成（DonutChart）+ 近 6 个月收支（TrendChart）+ 当月支付途径分布
 │  │  │  ├─ AssetsPage.tsx   # 资产概览：净资产 Hero（40px 带符号数值、金额隐藏偏好持久化、右列资产/负债总计与资产负债率、底部 10px 堆叠分布条）+ 资产/负债双列账户看板（统一 WalletIcon/CreditCardIcon 瓦片、资产分布点与悬浮联动（仅正余额账户驱动分布条高亮）、负债额度导轨与使用率、直达设置页渠道管理入口）+ 骨架与空态
 │  │  │  ├─ assetsUtils.ts  # 资产派生纯函数：deriveAssets 负责降序排序、基于正余额和的 share 计算（杜绝负余额渠道导致占比失真）、资产负债率与总授信额度汇总
+│  │  │  ├─ SubscriptionsPage.tsx # 订阅固定开支：月度 Hero（月合计/年度预估/未来 7 天/分组分布条）+ 全部/使用中/已暂停筛选 + 分组分区（空组与未分组）+ 行与分组菜单 + 订阅/分组对话框（Portal、焦点归位、滚动锁定）+ 删组确认；首次加载与变更后刷新失败分口径处理
+│  │  │  ├─ subscriptionsUtils.ts # 订阅派生纯函数：本地下次续费日（短月夹取、跨年）、7 天窗口、按月/年汇总（仅 amount_cents 与 active）、状态筛选与分组分区排序
 │  │  │  └─ SettingsPage.tsx # 基础设置：双分区工作台（分类与标签 / 渠道与账户，支持 initialSection 预选）；分类行整行点击打开抽屉 + 行尾受控 OverflowMenu（调序/重命名/删除）；系统分类独立面板；资产与负债双列面板 + 渠道对话框（ChannelDialog，Portal 视口挂载、decimal 输入）；细分标签抽屉去噪（移除横幅与完成按钮）；配置加载骨架屏；Esc 分层仲裁链（删除确认 → 渠道对话框 → 溢出菜单 → 抽屉编辑 → 抽屉 → 分类编辑 → 新增输入）
 │  │  ├─ lib/
 │  │  │  ├─ api.ts           # 前端统一 Fetch 客户端、Token 本地持久化、401 拦截与资产负债/分类类型/转账扩展模型定义
 │  │  │  └─ format.ts        # 唯一格式化模块：formatAmount/formatMoney/formatPercent/resolveTone/本地时间输入互转工具
-│  │  ├─ App.tsx             # 应用主容器，协调主题（documentElement 同步 + 防闪脚本）、视图 rise 转场（key 重挂载）、四段导航路由分流、stats 拉取（统计与资产页共享）、设置分区精确直达（settingsSection 三入口显式重置）、账单删除单一 ConfirmDialog 确认宿主、全局快捷键（N 键基于 [aria-modal="true"] 真状态自动互斥）、细分标签添加失败错误穿透与提示
+│  │  ├─ App.tsx             # 应用主容器，协调主题（documentElement 同步 + 防闪脚本）、视图 rise 转场（key 重挂载）、五段导航路由分流（含 SubscriptionsPage 挂载与鉴权/Toast 透传）、stats 拉取（统计与资产页共享）、设置分区精确直达（settingsSection 三入口显式重置）、账单删除单一 ConfirmDialog 确认宿主、全局快捷键（N 键基于 [aria-modal="true"] 真状态自动互斥）、细分标签添加失败错误穿透与提示
 │  │  ├─ index.css           # Fluent 2 四层材质令牌体系（分层面/发丝线/品牌/四组语义色/半径/深度/动效/排版，深浅成对）、@layer base 键盘焦点轮廓定义（确保 outline-none 正常覆盖）、全局关键帧与 prefers-reduced-motion 退化
 │  │  └─ main.tsx            # React 挂载入口
 │  ├─ test/                  # 前端自动化自检（基于 Node 24 原生 node:test 与 --experimental-strip-types）
 │  │  ├─ stream.test.ts      # 流水纯函数核心业务契约自检测试套件
 │  │  ├─ assets.test.ts      # 资产派生纯函数业务契约自检测试套件（排序、占比、零分母、额度过滤）
+│  │  ├─ subscriptions.test.ts # 订阅派生纯函数测试（短月/跨年续费日、7 天边界、暂停排除、分组排序与筛选）
 │  │  └─ format.test.ts      # 格式化模块测试（formatMoney/formatPercent/resolveTone/日期往返）
 │  ├─ embed.go               # Go embed 静态资源绑定（暴露 DistFS）
 │  ├─ embed_test.go          # embed 资源可读性验证
@@ -159,13 +164,14 @@ Ledger/
 - **安全**：Token 只写入 `flutter_secure_storage`；正式构建拒绝非 HTTPS 服务器地址；debug 构建通过 debug manifest 放开明文 HTTP，release 显式关闭。日志不输出 Token、密码或密钥。
 - **测试**：`flutter analyze`、`dart format --set-exit-if-changed lib test`、`flutter test`；覆盖 API 契约、会话恢复/登录、请求代际与 401、四类记账规则、统计/资产派生、登录/流水/统计/资产/设置/Shell/记账弹层 Widget，以及 320dp + 2 倍字体无溢出。2026-10-20 新增资产/负债金额右缘、四张指标卡等高、图表卡无内部滚动、流水筛选菜单与月份位置、四个一级页顶栏 64 高/非 pinned/滚动滚出断言；同日复审补充顶栏 2x 用例（标题不越出 64 高、未回退到 1x），全量 93 项通过。2026-10-21 新增模型 JSON 往返、三域快照读写（换服务器/损坏/畸形/无地址/版本失效）、控制器水合与写穿、筛选态不覆盖缓存、会话乐观恢复与后台 401 纠正、回到前台复检并 401 回登录，以及冷启动首帧（有缓存/无缓存/断网/401）Widget 用例，全量 114 项通过。2026-10-28 新增收入汇总/构成/渠道与分类统计排除的模型往返、控制器刷新、统计双视角、流水日小计口径、五处菜单裁剪与分类统计开关用例，全量 122 项通过。2026-10-29 新增区间统计端点（本地日界、上期夹取、分类/标签过滤与非法参数）、客户端区间查询/代际/筛选剪枝、记账分类/标签双字段与选择面板、流水筛选面板、统计草稿筛选/视角切换/失败重试/空态/四卡等高/320dp 2x 用例，全量 141 项通过。
 - **发布**：当前 Android 版本 `0.1.6+5`（2026-10-28 起，versionCode 在 0.1.5+4 之后递增）。`.github/workflows/android.yml` 在 `app/**` 变更时运行检查并构建 APK；配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 时产出签名 release，未配置时产出 debug 验收包。`.github/workflows/android-release-0.1.0.yml` 为仅手动触发的一次性工作流：生成首套签名密钥、构建 `ledger-0.1.0.apk`、创建 `v0.1.0` Release，并把签名材料放入保留 1 天的 artifact；`v0.1.0` Release 或 tag 已存在时拒绝重跑。GitHub 不允许工作流用 `GITHUB_TOKEN` 写入仓库 Secrets，仓库所有者需下载 artifact 后执行四条 `gh secret set`。密钥与 `key.properties` 只在 CI 临时目录存在。2026-10-19 首次 Android CI（run 39260066449）成功产出 `ledger-debug`（159,049,275 bytes，含 arm64-v8a、armeabi-v7a、x86_64）。同日一次性工作流 run 39268947628 生成签名密钥并把四个 Secrets 落库，发布 [v0.1.0](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.0)：`ledger-0.1.0.apk`（56,418,150 bytes，APK V2 签名证书 SHA-256 `46881101aed6f17e5cc98e2879b8d0475d22394cba082309d7f39cc8c372c6ba`）；签名材料 artifact 已删除；同日常规 `android.yml` run 39270836546 检测到 Secrets，成功构建签名 release artifact `ledger-release`。同日修复 release 启动画面停留：`app/android/app/proguard-rules.pro` 保留 Pigeon JNI 依赖的 Kotlin 运行时类，CI run 39280755463 产出的 `ledger-release` 在 Android 12（API 32，x86_64）模拟器两次冷启动均进入登录页，logcat 无 `NoSuchMethodError`；Android 16 由用户安装同一 APK 复核。2026-10-20 推送 `v0.1.1` tag，`android.yml` 的 tag 任务校验版本后用同次构建的 `ledger-release` artifact 创建 [v0.1.1](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.1)（`ledger-release.apk`，56,418,154 bytes，run 39285071393）。同日版本升至 `0.1.2+3` 并推送 `v0.1.2` tag，run 39366147515 创建 [v0.1.2](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.2)（`ledger-release.apk`，56,401,846 bytes），包含布局修复与复审收敛。2026-10-21 版本定为 `0.1.5+4`（versionCode 在 0.1.2+3 后递增）并推送 `v0.1.5` tag，run 39539093266 的 build 与 release 均成功，创建 [v0.1.5](https://github.com/Evan-1777/Ledger/releases/tag/v0.1.5)（`ledger-release.apk`，56,483,766 bytes），包含冷启动缓存优先渲染与会话乐观恢复。2026-10-28 版本定为 `0.1.6+5`（versionCode 在 0.1.5+4 后递增）并推送 `v0.1.6` tag，触发 [run 40689122592](https://github.com/Evan-1777/Ledger/actions/runs/40689122592) 构建签名 APK 与创建 Release，内容包含收入统计视角、分类级统计排除、系统分类默认排除与弹出菜单圆角裁剪；构建结果以该 run 为准。
-- **已知限制**：流水沿用 100 条窗口、冷启动只读快照缓存（无离线写入/后台同步/推送）、区间统计不写快照（冷启动统计页先显示骨架）、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
+- **已知限制**：订阅固定开支页当前仅在 Web 交付，Flutter 客户端未接入同一接口；流水沿用 100 条窗口、冷启动只读快照缓存（无离线写入/后台同步/推送）、区间统计不写快照（冷启动统计页先显示骨架）、单用户单账本、无 iOS/桌面端；本机不构建 Android 产物，不连接设备，APK 的安装、明文 HTTP（debug）、edge-to-edge、字体缩放与真机交互由用户在 Windows x86_64 模拟器或真机验收。
 
 ## 约定
 
 - **命名**：Go 包与文件 snake_case，导出的类型与函数 PascalCase；TypeScript 组件 PascalCase，工具函数 camelCase；Dart 文件 snake_case，类 PascalCase，私有成员以 `_` 前缀
 - **语言**：用户可见文本用中文；代码注释、提交前缀遵循英文约定
 - **错误处理**：后端内部错误统一包装，对外返回对应 HTTP 状态码与结构化 JSON（引用删除严格返回 409 Conflict，非法参数返回 400 Bad Request）；前端统一捕获并展示 Toast
+- **订阅数据**：`subscription_groups` 与 `subscriptions` 经 `/api/subscription-groups`、`/api/subscriptions` 八个 RequireAuth 端点读写；金额以整数分存储并同时返回 `amount_cents` 与 `amount`；删除分组依靠 `ON DELETE SET NULL` 把组内订阅转为未分组而不删除订阅；下次续费日、月度/年度/未来 7 天汇总均由客户端从扣款日推导，不落库，订阅不写入流水与统计
 - **日志**：Go 标准库 `log`，输出清晰的时间戳与结构化上下文信息
 
 ## 约束与决策
@@ -239,6 +245,7 @@ Ledger/
 - 2026-10-28 收入统计补全、分类统计排除与弹出菜单圆角收敛——分类表新增 `exclude_from_stats`（全新建库默认 0，老库经 `PRAGMA table_info` 探针补列），分类 CRUD 支持读写该字段且更新未传时保留原值；统计聚合抽出 `sumByType`、`categoryDistribution`、`paymentDistribution`，支出与收入共用并统一 JOIN categories 排除标记，分布按 `ABS(SUM(amount_cents)) DESC` 排序、百分比以同类型过滤后总额为分母，新增 `week_income`、`last_month_income`、`income_category_distribution`、`income_payment_distribution`，资产负债口径保持不变；客户端新增统计页支出/收入视角（结余头条与指标卡之间的全宽分段控件，切换不重置构成/趋势，环图中心与语义文案参数化），流水日小计复用分类标记，分类行溢出菜单提供统计口径切换并在副标题显示「不计入统计」，五处 `PopupMenuButton` 统一 `Clip.antiAlias`；320dp + 2x 门禁暴露收入长金额与环图中心溢出，分别以渠道金额 `Flexible + FittedBox`、环心留白 + `FittedBox` 收敛。门禁：`go vet ./...` 0、`go test -v ./...` 24 项通过、`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 122 项通过。
 
 - 2026-10-29 统计区间筛选与记账分类层级（Main-hybrid 交付）——后端在 `stats.go` 引入单一 `statsFilter` 值对象（分类/标签）供汇总、构成含标签下钻、渠道分布与趋势共用，新增 `GET /api/stats/range`：起止日期按服务端本地日界含首含尾，返回已过天数、区间收支/结余、笔数、上期收支、两组分类/渠道构成与截至区间末月的 6 个月趋势；上期按起止日期各前移一个日历月并夹取月末，非法日期、单边日期、反向区间与非正整数 ID 返回 400。客户端新增 `RangeStats`/`StatsQuery` 与请求代际，区间统计接入全量加载、记账/渠道/分类口径变更，配置刷新剪枝已删除的分类或标签并按需重载；区间结果不写冷启动快照。共享 `showLedgerPicker`/`LedgerPickerOption` 统一底部选择面板与 48dp 选项行，记账拆为分类/标签双字段（分类面板限当前类型、显示标签摘要、选分类自动带入首标签），流水筛选替换为同一面板。统计页以「口径摘要 + 筛选」单入口打开草稿面板，范围预设/自定义日期、分类与联动标签统一应用，未点应用不请求；Hero 在维度筛选时以笔数徽标替代储蓄率，指标/构成/渠道/趋势全部改读区间结果。门禁：`gofmt -l .` 无输出、`go vet ./...` 0、`go test -count=1 ./...` 全包通过（新增区间用例 2 项；移除过滤拼装时 `TestStatsRangeFilters` 失败已回验）、`dart format` 0 变更、`flutter analyze` No issues、`flutter test` 141 项通过、Web lint 与 38 项测试通过。
+- 2026-10-31 订阅固定开支管理页（Main-hybrid 交付）——新增 `subscription_groups` / `subscriptions` 两表（分组名 COLLATE NOCASE 唯一、订阅金额整数分与 1–31 扣款日/状态检查、`group_id` 可空外键 ON DELETE SET NULL 与索引），既有库经 `CREATE TABLE IF NOT EXISTS` 幂等升级；新增八个 RequireAuth 端点（分组/订阅各四），金额 0.01–1,000,000 元按分四舍五入、负分组与非存在分组 400、删除分组仅把组内订阅转为未分组。Web 新增第五个一级「订阅」页与循环图标导航（640px 以下仅图标、420px 以下 Tab 横向 padding 收紧至 7px），页面按分组展示使用中月合计与暂停项，Hero 汇总月合计/年度预估/未来 7 天与分组分布条；新增/编辑/暂停恢复/删除订阅与分组新建/重命名/上移/下移/删除全链，删除均有确认，变更后统一刷新（刷新失败保留数据并显示「数据未同步」重试提示），首次加载失败清空数据并给错误面板；派生逻辑收敛至 `subscriptionsUtils.ts`（本地日界、短月夹取、跨年、7 天窗口 0–6、仅 amount_cents 汇总）。门禁：`gofmt -l .` 无输出、`go vet ./...` 0、`go test -count=1 ./...` 全包通过（db + server 29 项）、Web `tsc -b --noEmit` 0、`node:test` 52 项通过（新增 14 项）、`vite build` 成功；浏览器复核 320/360/400/420/640/1440 视口无横向滚动与 Tab 遮挡，明暗主题、筛选、菜单、弹层、确认与删组转未分组均通过，控制台无 error。
 
 ## 术语
 
@@ -253,5 +260,6 @@ Ledger/
 - **请求代际 (Request Generation)** = 每次流水/统计请求递增的序号，响应返回时仅最新代际可写入状态，避免快速切换筛选时旧响应覆盖新结果
 - **统计区间 (Stats Range)** = 服务端按本地日界解析的含首含尾日期范围，区间收支、构成、渠道、趋势与笔数共享同一分类/标签过滤条件
 - **上期区间 (Previous Range)** = 将统计区间起止日期各向前移动一个日历月，目标月天数不足时夹取到月末，用于区间环比
+- **订阅固定开支 (Subscription Fixed Cost)** = 按月续费服务的预期支出定义，只维护服务名/分组/月金额/扣款日/启停状态，不计入真实流水与统计
 - **金融语义色 (Finance Colors)** = 支出、收入、转账、还款四组语义色及其容器色，以 ThemeExtension 同时提供浅色与深色值，组件不硬编码色值
 

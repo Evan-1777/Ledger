@@ -93,6 +93,32 @@ export interface LiabilityChannelStat {
   usage_rate: number;
 }
 
+export interface SubscriptionGroup {
+  id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: number;
+  group_id: number | null;
+  name: string;
+  amount_cents: number;
+  amount: number;
+  billing_day: number;
+  status: 'active' | 'paused';
+  created_at: string;
+}
+
+export interface SubscriptionInput {
+  name: string;
+  group_id: number | null;
+  amount: number;
+  billing_day: number;
+  status: 'active' | 'paused';
+}
+
 export interface AssetSummary {
   total_assets: number;
   total_liabilities: number;
@@ -333,6 +359,56 @@ export const api = {
 
   deleteTransaction(id: number): Promise<{ success: boolean }> {
     return request<{ success: boolean }>(`/api/transactions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Subscription groups
+  getSubscriptionGroups(): Promise<SubscriptionGroup[]> {
+    return request<SubscriptionGroup[]>('/api/subscription-groups');
+  },
+
+  createSubscriptionGroup(name: string, sort_order: number): Promise<SubscriptionGroup> {
+    return request<SubscriptionGroup>('/api/subscription-groups', {
+      method: 'POST',
+      body: JSON.stringify({ name, sort_order }),
+    });
+  },
+
+  updateSubscriptionGroup(id: number, name: string, sort_order: number): Promise<SubscriptionGroup> {
+    return request<SubscriptionGroup>(`/api/subscription-groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, sort_order }),
+    });
+  },
+
+  deleteSubscriptionGroup(id: number): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>(`/api/subscription-groups/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Subscriptions
+  getSubscriptions(): Promise<Subscription[]> {
+    return request<Subscription[]>('/api/subscriptions');
+  },
+
+  createSubscription(data: SubscriptionInput): Promise<Subscription> {
+    return request<Subscription>('/api/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateSubscription(id: number, data: SubscriptionInput): Promise<Subscription> {
+    return request<Subscription>(`/api/subscriptions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteSubscription(id: number): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>(`/api/subscriptions/${id}`, {
       method: 'DELETE',
     });
   },
