@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ledger_app/core/api/models.dart';
 import 'package:ledger_app/features/subscriptions/subscriptions_utils.dart';
 
+import '../support/harness.dart';
+
 Subscription subscription({
   int id = 1,
   int? groupId,
@@ -25,6 +27,8 @@ SubscriptionGroup subscriptionGroup({
 }) => SubscriptionGroup(id: id, name: name, sortOrder: sortOrder);
 
 void main() {
+  setUpAll(initTestLocale);
+
   group('nextRenewalDate', () {
     final today = DateTime(2026, 10, 31);
 
@@ -210,6 +214,41 @@ void main() {
       );
 
       expect(sections, isEmpty);
+    });
+  });
+
+  group('formatRenewalMeta', () {
+    final now = DateTime(2026, 11, 1);
+
+    test('active rows keep the billing day and the next renewal', () {
+      expect(
+        formatRenewalMeta(subscription(billingDay: 15), now),
+        '每月 15 日 · 下次 11\u2060月15\u2060日',
+      );
+    });
+
+    test('paused rows state the original billing day only', () {
+      expect(
+        formatRenewalMeta(
+          subscription(billingDay: 30, status: SubscriptionStatus.paused),
+          now,
+        ),
+        '已暂停 · 原扣款日 30 日',
+      );
+    });
+
+    test('short months clamp and keep the date unbroken', () {
+      expect(
+        formatRenewalMeta(subscription(billingDay: 31), DateTime(2027, 2, 10)),
+        '每月 31 日 · 下次 2\u2060月28\u2060日',
+      );
+    });
+
+    test('the next renewal can cross the year boundary', () {
+      expect(
+        formatRenewalMeta(subscription(billingDay: 1), DateTime(2026, 12, 31)),
+        '每月 1 日 · 下次 1\u2060月1\u2060日',
+      );
     });
   });
 }

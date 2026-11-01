@@ -10,12 +10,16 @@ class GroupSheet extends StatefulWidget {
 
   final SubscriptionGroup? initial;
 
-  static Future<void> show(BuildContext context, {SubscriptionGroup? initial}) {
-    return showDialog<void>(
+  static Future<bool> show(
+    BuildContext context, {
+    SubscriptionGroup? initial,
+  }) async {
+    final created = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (_) => GroupSheet(initial: initial),
     );
+    return created ?? false;
   }
 
   @override
@@ -72,7 +76,7 @@ class _GroupSheetState extends State<GroupSheet> {
         await ledger.createSubscriptionGroup(name);
       }
       if (!mounted) return;
-      navigator.pop();
+      navigator.pop(!_editing);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(_editing ? '分组已重命名' : '分组已创建')));

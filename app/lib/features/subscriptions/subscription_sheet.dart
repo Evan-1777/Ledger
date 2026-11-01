@@ -14,12 +14,12 @@ class SubscriptionSheet extends StatefulWidget {
   final Subscription? initial;
   final int? defaultGroupId;
 
-  static Future<void> show(
+  static Future<bool> show(
     BuildContext context, {
     Subscription? initial,
     int? defaultGroupId,
-  }) {
-    return showModalBottomSheet<void>(
+  }) async {
+    final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -28,6 +28,7 @@ class SubscriptionSheet extends StatefulWidget {
       builder: (_) =>
           SubscriptionSheet(initial: initial, defaultGroupId: defaultGroupId),
     );
+    return saved ?? false;
   }
 
   @override
@@ -38,9 +39,15 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _amountController;
   late final TextEditingController _dayController;
+  final _nameFocus = FocusNode();
+  final _amountFocus = FocusNode();
+  final _dayFocus = FocusNode();
   late int _groupId;
   bool _busy = false;
   String? _error;
+  String? _nameError;
+  String? _amountError;
+  String? _dayError;
 
   bool get _editing => widget.initial != null;
 
@@ -63,6 +70,9 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
     _nameController.dispose();
     _amountController.dispose();
     _dayController.dispose();
+    _nameFocus.dispose();
+    _amountFocus.dispose();
+    _dayFocus.dispose();
     super.dispose();
   }
 
@@ -79,17 +89,20 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
     if (_busy) return;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      _fail('请输入服务名称');
+      setState(() => _nameError = '请输入服务名称');
+      _nameFocus.requestFocus();
       return;
     }
     final amount = parseAmountInput(_amountController.text);
     if (amount == null || amount < 0.01 || amount > 1000000) {
-      _fail('金额需在 ¥0.01–¥1,000,000.00 之间');
+      setState(() => _amountError = '金额需在 ¥0.01–¥1,000,000.00 之间');
+      _amountFocus.requestFocus();
       return;
     }
     final billingDay = int.tryParse(_dayController.text.trim());
     if (billingDay == null || billingDay < 1 || billingDay > 31) {
-      _fail('扣款日需为 1–31 的整数');
+      setState(() => _dayError = '扣款日需为 1–31 的整数');
+      _dayFocus.requestFocus();
       return;
     }
     if (_groupId != 0 && !groups.any((group) => group.id == _groupId)) {
@@ -118,7 +131,7 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
         await ledger.createSubscription(input);
       }
       if (!mounted) return;
-      navigator.pop();
+      navigator.pop(true);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(_editing ? '订阅已更新' : '订阅已添加')));
@@ -146,7 +159,6 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
     );
     final insets = MediaQuery.viewInsetsOf(context);
     final size = MediaQuery.sizeOf(context);
-    final height = (size.height - insets.bottom) * 0.86;
     final groupMissing =
         _groupId != 0 && !groups.any((group) => group.id == _groupId);
 
@@ -154,9 +166,13 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
       canPop: !_busy,
       child: Padding(
         padding: EdgeInsets.only(bottom: insets.bottom),
-        child: SizedBox(
-          height: height,
+        child: ConstrainedBox(
+          key: const ValueKey('subscription-sheet'),
+          constraints: BoxConstraints(
+            maxHeight: (size.height - insets.bottom) * 0.86,
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
@@ -181,7 +197,7 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
                   ],
                 ),
               ),
-              Expanded(
+              Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                   child: Column(
@@ -222,13 +238,20 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
                       TextField(
                         key: const ValueKey('subscription-name'),
                         controller: _nameController,
+                        focusNode: _nameFocus,
                         textInputAction: TextInputAction.next,
                         maxLength: 60,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: '服务名称',
                           hintText: '例如：Netflix',
                           counterText: '',
+                          errorText: _nameError,
                         ),
+                        onChanged: (_) {
+                          if (_nameError != null) {
+                            setState(() => _nameError = null);
+                          }
+                        },
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<int>(
@@ -261,16 +284,23 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
                             child: TextField(
                               key: const ValueKey('subscription-amount'),
                               controller: _amountController,
+                              focusNode: _amountFocus,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
                               inputFormatters: [decimalInputFormatter()],
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: '每月金额',
                                 prefixText: '¥ ',
                                 hintText: '0.00',
+                                errorText: _amountError,
                               ),
+                              onChanged: (_) {
+                                if (_amountError != null) {
+                                  setState(() => _amountError = null);
+                                }
+                              },
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -278,17 +308,24 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
                             child: TextField(
                               key: const ValueKey('subscription-day'),
                               controller: _dayController,
+                              focusNode: _dayFocus,
                               keyboardType: TextInputType.number,
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly,
                               ],
                               maxLength: 2,
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 labelText: '扣款日',
                                 suffixText: '日',
                                 hintText: '15',
                                 counterText: '',
+                                errorText: _dayError,
                               ),
+                              onChanged: (_) {
+                                if (_dayError != null) {
+                                  setState(() => _dayError = null);
+                                }
+                              },
                             ),
                           ),
                         ],
@@ -314,7 +351,7 @@ class _SubscriptionSheetState extends State<SubscriptionSheet> {
                                 strokeWidth: 2.4,
                               ),
                             )
-                          : const Text('保存'),
+                          : Text(_editing ? '保存' : '添加订阅'),
                     ),
                   ),
                 ),

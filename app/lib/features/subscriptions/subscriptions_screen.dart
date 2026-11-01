@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/api/models.dart';
-import '../../core/format/dates.dart';
 import '../../core/format/money.dart';
 import '../../core/state/ledger_controller.dart';
 import '../../core/theme/finance_colors.dart';
@@ -40,9 +39,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       now,
     );
     final summary = summarizeSubscriptions(ledger.subscriptions, now);
-    final pausedCount = ledger.subscriptions
-        .where((item) => item.status == SubscriptionStatus.paused)
-        .length;
     final isEmpty =
         ledger.subscriptionGroups.isEmpty && ledger.subscriptions.isEmpty;
     final firstLoading =
@@ -62,71 +58,77 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         slivers: [
           const LedgerSliverAppBar(title: '订阅'),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                if (!firstLoading && !firstFailed) ...[
+                if (firstLoading)
+                  const SkeletonList(rows: 5)
+                else if (firstFailed)
+                  SizedBox(
+                    height: 320,
+                    child: ErrorState(
+                      message: ledger.subscriptionsError ?? '加载订阅失败',
+                      onRetry: ledger.loadSubscriptions,
+                    ),
+                  )
+                else ...[
+                  if (!isEmpty) ...[
+                    _SummaryHero(
+                      summary: summary,
+                      sections: allSections,
+                      groups: orderedGroups,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   _ActionRow(
                     onAddGroup: _addGroup,
                     onAddSubscription: () => _addSubscription(null),
                   ),
-                  const SizedBox(height: 12),
-                ],
-                if (firstLoading)
-                  const SkeletonList(rows: 5)
-                else if (firstFailed)
-                  ErrorState(
-                    message: ledger.subscriptionsError ?? '加载订阅失败',
-                    onRetry: ledger.loadSubscriptions,
-                  )
-                else if (isEmpty)
-                  EmptyState(
-                    title: '还没有订阅',
-                    icon: Icons.autorenew_rounded,
-                    actionLabel: '添加第一个订阅',
-                    onAction: () => _addSubscription(null),
-                  )
-                else ...[
-                  _SummaryHero(
-                    summary: summary,
-                    sections: allSections,
-                    groups: orderedGroups,
-                  ),
-                  const SizedBox(height: 18),
-                  _FilterBar(
-                    filter: _filter,
-                    totalCount: ledger.subscriptions.length,
-                    pausedCount: pausedCount,
-                    onSelected: (filter) => setState(() => _filter = filter),
-                  ),
-                  const SizedBox(height: 12),
-                  if (sections.isEmpty)
-                    EmptyState(
-                      title: _filter == SubscriptionFilter.paused
-                          ? '暂无已暂停的订阅'
-                          : '暂无使用中的订阅',
-                      icon: Icons.filter_alt_off_outlined,
-                      actionLabel: '查看全部',
-                      onAction: () =>
-                          setState(() => _filter = SubscriptionFilter.all),
-                    )
-                  else
-                    for (var i = 0; i < sections.length; i++) ...[
-                      _SectionCard(
-                        section: sections[i],
-                        orderedGroups: orderedGroups,
-                        filter: _filter,
-                        now: now,
-                        onAddInGroup: _addSubscription,
-                        onRenameGroup: _renameGroup,
-                        onMoveGroup: _moveGroup,
-                        onDeleteGroup: _deleteGroup,
-                        onEditSubscription: _editSubscription,
-                        onToggleStatus: _toggleStatus,
-                        onDeleteSubscription: _deleteSubscription,
+                  const SizedBox(height: 16),
+                  if (isEmpty)
+                    LedgerCard(
+                      child: EmptyState(
+                        title: '还没有订阅',
+                        icon: Icons.autorenew_rounded,
                       ),
-                      if (i != sections.length - 1) const SizedBox(height: 12),
-                    ],
+                    )
+                  else ...[
+                    _FilterBar(
+                      filter: _filter,
+                      onSelected: (filter) => setState(() => _filter = filter),
+                    ),
+                    const SizedBox(height: 12),
+                    if (sections.isEmpty)
+                      LedgerCard(
+                        child: EmptyState(
+                          title: _filter == SubscriptionFilter.paused
+                              ? '暂无已暂停的订阅'
+                              : '暂无使用中的订阅',
+                          icon: Icons.filter_alt_off_outlined,
+                          actionLabel: '查看全部',
+                          onAction: () =>
+                              setState(() => _filter = SubscriptionFilter.all),
+                        ),
+                      )
+                    else
+                      for (var i = 0; i < sections.length; i++) ...[
+                        _SectionCard(
+                          section: sections[i],
+                          orderedGroups: orderedGroups,
+                          filter: _filter,
+                          now: now,
+                          onAddInGroup: _addSubscription,
+                          onRenameGroup: _renameGroup,
+                          onMoveGroup: _moveGroup,
+                          onDeleteGroup: _deleteGroup,
+                          onEditSubscription: _editSubscription,
+                          onToggleStatus: _toggleStatus,
+                          onDeleteSubscription: _deleteSubscription,
+                        ),
+                        if (i != sections.length - 1)
+                          const SizedBox(height: 12),
+                      ],
+                  ],
                 ],
               ]),
             ),
@@ -136,10 +138,26 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  Future<void> _addGroup() => GroupSheet.show(context);
+  Future<void> _addGroup() async {
+    final created = await GroupSheet.show(context);
+    if (!created || !mounted) return;
+    _showAllIfFiltered();
+  }
 
-  Future<void> _addSubscription(int? groupId) =>
-      SubscriptionSheet.show(context, defaultGroupId: groupId);
+  Future<void> _addSubscription(int? groupId) async {
+    final saved = await SubscriptionSheet.show(
+      context,
+      defaultGroupId: groupId,
+    );
+    if (!saved || !mounted) return;
+    _showAllIfFiltered();
+  }
+
+  /// 新建项在当前筛选下可能不可见，保存成功后回到「全部」。
+  void _showAllIfFiltered() {
+    if (_filter == SubscriptionFilter.all) return;
+    setState(() => _filter = SubscriptionFilter.all);
+  }
 
   Future<void> _editSubscription(Subscription subscription) =>
       SubscriptionSheet.show(context, initial: subscription);
@@ -168,14 +186,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final confirmed = await ConfirmDialog.show(
       context,
       title: '删除分组',
-      message: '「${group.name}」内的 $count 项订阅将移至未分组。',
+      message: count == 0 ? '删除后不可恢复。' : '「${group.name}」内的 $count 项订阅将移至未分组。',
     );
     if (!confirmed || !mounted) return;
     final ledger = context.read<LedgerController>();
     try {
       await ledger.deleteSubscriptionGroup(group);
       if (!mounted) return;
-      showLedgerSnackBar(context, '分组已删除，订阅已移至未分组');
+      showLedgerSnackBar(context, count == 0 ? '分组已删除' : '分组已删除，订阅已移至未分组');
     } on ApiException catch (error) {
       if (!mounted) return;
       showLedgerSnackBar(context, error.message, isError: true);
@@ -204,7 +222,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final confirmed = await ConfirmDialog.show(
       context,
       title: '删除订阅',
-      message: '删除后不可恢复。\n${subscription.name}',
+      message: '「${subscription.name}」删除后不可恢复。',
     );
     if (!confirmed || !mounted) return;
     final ledger = context.read<LedgerController>();
@@ -234,7 +252,7 @@ class _ActionRow extends StatelessWidget {
         runSpacing: 8,
         alignment: WrapAlignment.end,
         children: [
-          OutlinedButton.icon(
+          TextButton.icon(
             key: const ValueKey('subscriptions-add-group'),
             onPressed: onAddGroup,
             icon: const Icon(Icons.create_new_folder_outlined, size: 18),
@@ -306,36 +324,40 @@ class _SummaryHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '¥',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '¥',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    formatMoney(
+                      summary.monthlyCents / 100,
+                      withCurrency: false,
+                    ),
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  formatMoney(summary.monthlyCents / 100, withCurrency: false),
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '/ 月',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  '/ 月',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
@@ -365,20 +387,28 @@ class _SummaryHero extends StatelessWidget {
           ),
           if (segments.isNotEmpty) ...[
             const SizedBox(height: 18),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: SizedBox(
-                height: 7,
-                child: Row(
-                  children: [
-                    for (final section in segments)
-                      Expanded(
-                        flex: section.monthlyCents,
-                        child: ColoredBox(
-                          color: _sectionColor(section, groups, finance),
-                        ),
-                      ),
-                  ],
+            Semantics(
+              container: true,
+              label: '按分组划分的每月固定开支',
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  key: const ValueKey('subscriptions-distribution-bar'),
+                  height: 7,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final section in segments)
+                          Expanded(
+                            flex: section.monthlyCents,
+                            child: ColoredBox(
+                              color: _sectionColor(section, groups, finance),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -442,50 +472,25 @@ class _HeroStat extends StatelessWidget {
 }
 
 class _FilterBar extends StatelessWidget {
-  const _FilterBar({
-    required this.filter,
-    required this.totalCount,
-    required this.pausedCount,
-    required this.onSelected,
-  });
+  const _FilterBar({required this.filter, required this.onSelected});
 
   final SubscriptionFilter filter;
-  final int totalCount;
-  final int pausedCount;
   final ValueChanged<SubscriptionFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final item in SubscriptionFilter.values)
-              ChoiceChip(
-                key: ValueKey('subscriptions-filter-${item.name}'),
-                label: Text(item.label),
-                selected: filter == item,
-                onSelected: (_) => onSelected(item),
-              ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            filter == SubscriptionFilter.paused
-                ? '$pausedCount 项已暂停'
-                : '共 $totalCount 项',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+        for (final item in SubscriptionFilter.values)
+          ChoiceChip(
+            key: ValueKey('subscriptions-filter-${item.name}'),
+            label: Text(item.label),
+            selected: filter == item,
+            showCheckmark: false,
+            onSelected: (_) => onSelected(item),
           ),
-        ),
       ],
     );
   }
@@ -536,128 +541,157 @@ class _SectionCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final finance = financeColors(context);
     final group = section.group;
-    final isPausedView = filter == SubscriptionFilter.paused;
     final groupIndex = group == null
         ? -1
         : orderedGroups.indexWhere((item) => item.id == group.id);
-    final showDash = isPausedView && section.activeCount == 0;
-    final countLabel = isPausedView
-        ? '${section.totalCount - section.activeCount} 项已暂停'
-        : '${section.activeCount} 项使用中';
+    final pausedCount = section.totalCount - section.activeCount;
+    final countLabel = switch (filter) {
+      SubscriptionFilter.all => '共 ${section.totalCount} 项',
+      SubscriptionFilter.active => '${section.activeCount} 项使用中',
+      SubscriptionFilter.paused => '$pausedCount 项已暂停',
+    };
+    final showCount =
+        filter != SubscriptionFilter.all || section.totalCount > 0;
+    final showDash =
+        filter == SubscriptionFilter.paused || section.activeCount == 0;
+    final sectionColor = section.activeCount == 0
+        ? scheme.outlineVariant
+        : _sectionColor(section, orderedGroups, finance);
 
     return LedgerCard(
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
+          Container(
+            color: scheme.surfaceContainerHigh,
             padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final maxAmountWidth = constraints.maxWidth * 0.4;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (group != null) ...[
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(2),
-                          color: _sectionColor(section, orderedGroups, finance),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Text(
-                        section.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          showDash
-                              ? '—'
-                              : '${formatMoney(section.monthlyCents / 100, withCurrency: false)} / 月',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (group != null)
-                      PopupMenuButton<_GroupAction>(
-                        key: ValueKey('subscription-group-menu-${group.id}'),
-                        tooltip: '分组操作',
-                        iconSize: 20,
-                        onSelected: (action) {
-                          switch (action) {
-                            case _GroupAction.add:
-                              onAddInGroup(group.id);
-                            case _GroupAction.rename:
-                              onRenameGroup(group);
-                            case _GroupAction.moveUp:
-                              onMoveGroup(group, -1);
-                            case _GroupAction.moveDown:
-                              onMoveGroup(group, 1);
-                            case _GroupAction.delete:
-                              onDeleteGroup(group);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(
-                            value: _GroupAction.add,
-                            child: Text('在此分组添加订阅'),
-                          ),
-                          const PopupMenuItem(
-                            value: _GroupAction.rename,
-                            child: Text('重命名分组'),
-                          ),
-                          PopupMenuItem(
-                            value: _GroupAction.moveUp,
-                            enabled: groupIndex > 0,
-                            child: const Text('上移'),
-                          ),
-                          PopupMenuItem(
-                            value: _GroupAction.moveDown,
-                            enabled: groupIndex < orderedGroups.length - 1,
-                            child: const Text('下移'),
-                          ),
-                          const PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: _GroupAction.delete,
-                            child: Text(
-                              '删除分组',
-                              style: TextStyle(color: scheme.error),
+                    Row(
+                      children: [
+                        if (group != null) ...[
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(2),
+                              color: sectionColor,
                             ),
                           ),
-                        ],
-                      )
-                    else
-                      const SizedBox(width: 8),
-                  ],
-                ),
-                Padding(
-                  padding: EdgeInsets.only(left: group == null ? 0 : 16),
-                  child: Text(
-                    countLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+                          const SizedBox(width: 8),
+                        ] else
+                          const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            section.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxAmountWidth),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              showDash
+                                  ? '—'
+                                  : '${formatMoney(section.monthlyCents / 100, withCurrency: false)} / 月',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: showDash
+                                    ? scheme.onSurfaceVariant
+                                    : null,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (group != null)
+                          SizedBox(
+                            width: 48,
+                            child: PopupMenuButton<_GroupAction>(
+                              key: ValueKey(
+                                'subscription-group-menu-${group.id}',
+                              ),
+                              tooltip: '${group.name} 分组操作',
+                              iconSize: 20,
+                              onSelected: (action) {
+                                switch (action) {
+                                  case _GroupAction.add:
+                                    onAddInGroup(group.id);
+                                  case _GroupAction.rename:
+                                    onRenameGroup(group);
+                                  case _GroupAction.moveUp:
+                                    onMoveGroup(group, -1);
+                                  case _GroupAction.moveDown:
+                                    onMoveGroup(group, 1);
+                                  case _GroupAction.delete:
+                                    onDeleteGroup(group);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: _GroupAction.add,
+                                  child: Text('在此分组添加订阅'),
+                                ),
+                                const PopupMenuItem(
+                                  value: _GroupAction.rename,
+                                  child: Text('重命名分组'),
+                                ),
+                                PopupMenuItem(
+                                  value: _GroupAction.moveUp,
+                                  enabled: groupIndex > 0,
+                                  child: const Text('上移'),
+                                ),
+                                PopupMenuItem(
+                                  value: _GroupAction.moveDown,
+                                  enabled:
+                                      groupIndex < orderedGroups.length - 1,
+                                  child: const Text('下移'),
+                                ),
+                                const PopupMenuDivider(),
+                                PopupMenuItem(
+                                  value: _GroupAction.delete,
+                                  child: Text(
+                                    '删除分组',
+                                    style: TextStyle(color: scheme.error),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          const SizedBox(width: 48),
+                      ],
                     ),
-                  ),
-                ),
-              ],
+                    if (showCount) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        countLabel,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
           ),
+          const Divider(height: 1),
           if (section.items.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 6, 8, 10),
@@ -676,14 +710,13 @@ class _SectionCard extends StatelessWidget {
                       'subscriptions-empty-add-${group?.id ?? 'ungrouped'}',
                     ),
                     onPressed: () => onAddInGroup(group?.id),
-                    child: const Text('添加'),
+                    child: Text('添加', semanticsLabel: '添加订阅到${section.name}'),
                   ),
                 ],
               ),
             )
           else
             for (var i = 0; i < section.items.length; i++) ...[
-              if (i == 0) const Divider(height: 1),
               _SubscriptionRow(
                 subscription: section.items[i],
                 now: now,
@@ -724,131 +757,123 @@ class _SubscriptionRow extends StatelessWidget {
         : subscription.name.trim().characters.first.toUpperCase();
 
     return Container(
+      color: paused ? scheme.surfaceContainer : null,
       constraints: const BoxConstraints(minHeight: 62),
       padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: paused
-                  ? scheme.surfaceContainerHigh
-                  : scheme.secondaryContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              initial,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: paused
-                    ? scheme.onSurfaceVariant
-                    : scheme.onSecondaryContainer,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 2,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(subscription.name, style: theme.textTheme.bodyLarge),
-                    if (paused)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '已暂停',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                  ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxAmountWidth = constraints.maxWidth * 0.4;
+          return Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: paused
+                      ? scheme.surfaceContainerHigh
+                      : scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  paused
-                      ? '原扣款日 ${subscription.billingDay} 日'
-                      : '每月 ${subscription.billingDay} 日 · 下次 ${formatMonthDay(nextRenewalDate(subscription.billingDay, now))}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                child: Text(
+                  initial,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: paused
+                        ? scheme.onSurfaceVariant
+                        : scheme.onSecondaryContainer,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerRight,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                key: ValueKey('subscription-body-${subscription.id}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      formatMoney(subscription.amount, withCurrency: false),
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: paused ? FontWeight.w500 : FontWeight.w600,
-                        color: paused ? scheme.onSurfaceVariant : null,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                      subscription.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge,
                     ),
-                    const SizedBox(width: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      '/ 月',
-                      style: theme.textTheme.labelSmall?.copyWith(
+                      formatRenewalMeta(subscription, now),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-          PopupMenuButton<_RowAction>(
-            key: ValueKey('subscription-menu-${subscription.id}'),
-            tooltip: '订阅操作',
-            iconSize: 20,
-            onSelected: (action) {
-              switch (action) {
-                case _RowAction.edit:
-                  onEdit();
-                case _RowAction.toggle:
-                  onToggleStatus();
-                case _RowAction.delete:
-                  onDelete();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: _RowAction.edit, child: Text('编辑')),
-              PopupMenuItem(
-                value: _RowAction.toggle,
-                child: Text(paused ? '恢复续费' : '暂停续费'),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                key: ValueKey('subscription-amount-${subscription.id}'),
+                constraints: BoxConstraints(maxWidth: maxAmountWidth),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        formatMoney(subscription.amount, withCurrency: false),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: paused
+                              ? FontWeight.w500
+                              : FontWeight.w600,
+                          color: paused ? scheme.onSurfaceVariant : null,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '/ 月',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: _RowAction.delete,
-                child: Text('删除', style: TextStyle(color: scheme.error)),
+              PopupMenuButton<_RowAction>(
+                key: ValueKey('subscription-menu-${subscription.id}'),
+                tooltip: '${subscription.name} 操作',
+                iconSize: 20,
+                onSelected: (action) {
+                  switch (action) {
+                    case _RowAction.edit:
+                      onEdit();
+                    case _RowAction.toggle:
+                      onToggleStatus();
+                    case _RowAction.delete:
+                      onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: _RowAction.edit,
+                    child: Text('编辑'),
+                  ),
+                  PopupMenuItem(
+                    value: _RowAction.toggle,
+                    child: Text(paused ? '恢复续费' : '暂停续费'),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: _RowAction.delete,
+                    child: Text('删除', style: TextStyle(color: scheme.error)),
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }

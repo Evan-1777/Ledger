@@ -1,4 +1,5 @@
 import '../../core/api/models.dart';
+import '../../core/format/dates.dart';
 
 enum SubscriptionFilter {
   all,
@@ -69,6 +70,20 @@ DateTime _startOfDay(DateTime value) =>
 
 int _clampDay(int billingDay, int year, int month) =>
     billingDay.clamp(1, daysInMonth(year, month));
+
+/// 行内续费信息；日期内部插入 word joiner，窄屏只在「·」处换行。
+String formatRenewalMeta(Subscription sub, DateTime now) {
+  if (sub.status == SubscriptionStatus.paused) {
+    return '已暂停 · 原扣款日 ${sub.billingDay} 日';
+  }
+  final next = nextRenewalDate(sub.billingDay, now);
+  return '每月 ${sub.billingDay} 日 · 下次 ${_unbreakableDate(formatMonthDay(next))}';
+}
+
+String _unbreakableDate(String text) => text.replaceAllMapped(
+  RegExp(r'(\d)([月日])'),
+  (match) => '${match[1]}\u2060${match[2]}',
+);
 
 /// 下次扣款日（本地零点）；短月夹取到当月最后一天。
 DateTime nextRenewalDate(int billingDay, DateTime now) {

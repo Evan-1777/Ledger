@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:ledger_app/core/widgets/ledger_widgets.dart';
 import 'package:ledger_app/features/shell/app_shell.dart';
 import 'package:ledger_app/features/subscriptions/subscriptions_screen.dart';
 
@@ -183,7 +184,7 @@ void main() {
     expect(find.text('1 项'), findsOneWidget);
     expect(find.text('75.00 / 月'), findsOneWidget);
     expect(find.text('iCloud'), findsOneWidget);
-    expect(find.text('已暂停'), findsNWidgets(2));
+    expect(find.text('已暂停 · 原扣款日 30 日'), findsOneWidget);
     expect(find.text('Spotify'), findsOneWidget);
 
     final groupTop = tester.getTopLeft(find.text('影音娱乐')).dy;
@@ -202,13 +203,15 @@ void main() {
 
     expect(find.text('iCloud'), findsOneWidget);
     expect(find.text('Netflix'), findsNothing);
-    expect(find.text('1 项已暂停'), findsNWidgets(2));
+    expect(find.text('1 项已暂停'), findsOneWidget);
     expect(find.text('87.00'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('subscriptions-filter-all')));
     await tester.pumpAndSettle();
     expect(find.text('Netflix'), findsOneWidget);
-    expect(find.text('共 3 项'), findsOneWidget);
+    expect(find.text('共 2 项'), findsOneWidget);
+    expect(find.text('共 1 项'), findsOneWidget);
   });
 
   testWidgets('an empty group keeps its add entry and preselects the group', (
@@ -244,13 +247,34 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('subscriptions-add')));
     await tester.pumpAndSettle();
 
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('subscription-save')),
+        matching: find.text('添加订阅'),
+      ),
+      findsOneWidget,
+    );
+
     await tester.tap(find.byKey(const ValueKey('subscription-save')));
     await tester.pumpAndSettle();
     expect(find.text('请输入服务名称'), findsOneWidget);
+    final nameField = tester.widget<TextField>(
+      find.byKey(const ValueKey('subscription-name')),
+    );
+    expect(nameField.decoration!.errorText, '请输入服务名称');
+    expect(nameField.focusNode!.hasFocus, isTrue);
 
     await tester.enterText(
       find.byKey(const ValueKey('subscription-name')),
       'Netflix',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('subscription-name')))
+          .decoration!
+          .errorText,
+      isNull,
     );
     await tester.enterText(
       find.byKey(const ValueKey('subscription-amount')),
@@ -455,7 +479,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
-    expect(find.text('删除后不可恢复。\nNetflix'), findsOneWidget);
+    expect(find.text('「Netflix」删除后不可恢复。'), findsOneWidget);
     await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(server.requestsFor('DELETE', '/api/subscriptions/1'), isEmpty);
@@ -586,5 +610,353 @@ void main() {
       expect(rect.bottom, lessThanOrEqualTo(800));
     }
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'group headers follow the filter and pause subtotals go neutral',
+    (tester) async {
+      final server = _FakeSubscriptionServer(
+        groups: [
+          subscriptionGroupJson(id: 1, name: '影音娱乐', sortOrder: 1),
+          subscriptionGroupJson(id: 2, name: '空组', sortOrder: 2),
+          subscriptionGroupJson(id: 3, name: '纯暂停', sortOrder: 3),
+        ],
+        subscriptions: [
+          subscriptionJson(
+            id: 1,
+            groupId: 1,
+            name: 'Netflix',
+            amountCents: 7500,
+            billingDay: 5,
+          ),
+          subscriptionJson(
+            id: 2,
+            groupId: 1,
+            name: 'iCloud',
+            amountCents: 600,
+            billingDay: 30,
+            status: 'paused',
+          ),
+          subscriptionJson(
+            id: 3,
+            groupId: 3,
+            name: '旧服务',
+            amountCents: 3900,
+            billingDay: 20,
+            status: 'paused',
+          ),
+        ],
+      );
+      await _pumpSubscriptions(tester, server);
+
+      expect(find.text('共 2 项'), findsOneWidget);
+      expect(find.text('75.00 / 月'), findsOneWidget);
+      expect(find.text('0.00 / 月'), findsNothing);
+      expect(find.text('0 项使用中'), findsNothing);
+
+      await scrollTo(tester, find.text('纯暂停'));
+      expect(find.text('共 1 项'), findsOneWidget);
+      expect(find.text('—'), findsNWidgets(2));
+      expect(find.text('暂无订阅'), findsOneWidget);
+
+      final pausedChip = find.byKey(
+        const ValueKey('subscriptions-filter-paused'),
+      );
+      await scrollTo(tester, pausedChip);
+      await tester.tap(pausedChip);
+      await tester.pumpAndSettle();
+      expect(find.text('1 项已暂停'), findsWidgets);
+      expect(find.text('—'), findsWidgets);
+      expect(find.text('75.00 / 月'), findsNothing);
+      expect(find.text('空组'), findsNothing);
+
+      await scrollTo(tester, find.text('纯暂停'));
+      expect(find.text('1 项已暂停'), findsWidgets);
+      expect(find.text('—'), findsWidgets);
+    },
+  );
+
+  testWidgets('hero distribution bar is visible and labelled', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    final bar = find.byKey(const ValueKey('subscriptions-distribution-bar'));
+    expect(tester.getSize(bar).height, 7);
+    expect(find.bySemanticsLabel('按分组划分的每月固定开支'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('hero leads the page and filter chips keep their width', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    final heroTop = tester.getTopLeft(find.text('每月固定开支')).dy;
+    final addTop = tester
+        .getTopLeft(find.byKey(const ValueKey('subscriptions-add')))
+        .dy;
+    final filterTop = tester
+        .getTopLeft(find.byKey(const ValueKey('subscriptions-filter-all')))
+        .dy;
+    expect(addTop, greaterThan(heroTop));
+    expect(filterTop, greaterThan(addTop));
+
+    for (final name in ['all', 'active', 'paused']) {
+      expect(
+        tester
+            .widget<ChoiceChip>(
+              find.byKey(ValueKey('subscriptions-filter-$name')),
+            )
+            .showCheckmark,
+        isFalse,
+      );
+    }
+
+    final activeChip = find.byKey(
+      const ValueKey('subscriptions-filter-active'),
+    );
+    final before = tester.getRect(activeChip);
+    await tester.tap(activeChip);
+    await tester.pumpAndSettle();
+    final after = tester.getRect(activeChip);
+    expect(after.left, before.left);
+    expect(after.width, before.width);
+  });
+
+  testWidgets('empty state sits in a card with a single CTA', (tester) async {
+    final server = _FakeSubscriptionServer(groups: [], subscriptions: []);
+    await _pumpSubscriptions(tester, server);
+
+    expect(find.text('还没有订阅'), findsOneWidget);
+    expect(find.text('添加第一个订阅'), findsNothing);
+    expect(find.byKey(const ValueKey('subscriptions-add')), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(EmptyState),
+        matching: find.byType(LedgerCard),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('group and ungrouped headers align title, count and amount', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    expect(
+      tester.getTopLeft(find.text('影音娱乐')).dx,
+      tester.getTopLeft(find.text('未分组')).dx,
+    );
+    expect(
+      tester.getTopLeft(find.text('共 2 项')).dx,
+      tester.getTopLeft(find.text('共 1 项')).dx,
+    );
+    final grouped = tester.getRect(find.text('75.00 / 月'));
+    final ungrouped = tester.getRect(find.text('12.00 / 月'));
+    expect(grouped.right, moreOrLessEquals(ungrouped.right, epsilon: 0.5));
+  });
+
+  testWidgets('row copy uses the remaining width and keeps the date unbroken', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer(
+      subscriptions: [
+        subscriptionJson(
+          id: 1,
+          groupId: 1,
+          name: 'Netflix',
+          amountCents: 7500,
+          billingDay: 15,
+        ),
+        subscriptionJson(
+          id: 2,
+          groupId: 1,
+          name: 'iCloud',
+          amountCents: 600,
+          billingDay: 30,
+          status: 'paused',
+        ),
+      ],
+    );
+    await _pumpSubscriptions(tester, server);
+
+    final body = tester.getSize(
+      find.byKey(const ValueKey('subscription-body-1')),
+    );
+    final amount = tester.getSize(
+      find.byKey(const ValueKey('subscription-amount-1')),
+    );
+    expect(body.width, greaterThan(amount.width));
+
+    final meta = tester.widget<Text>(find.textContaining('下次').first);
+    expect(meta.data, contains('\u2060'));
+    expect(meta.maxLines, 2);
+    expect(find.text('已暂停 · 原扣款日 30 日'), findsOneWidget);
+  });
+
+  testWidgets('the subscription sheet sizes to its content', (tester) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    await tester.tap(find.byKey(const ValueKey('subscriptions-add')));
+    await tester.pumpAndSettle();
+
+    final sheet = tester.getSize(
+      find.byKey(const ValueKey('subscription-sheet')),
+    );
+    expect(sheet.height, lessThan(590));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('creating from a filtered view returns to all', (tester) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    final pausedChip = find.byKey(
+      const ValueKey('subscriptions-filter-paused'),
+    );
+    await tester.tap(pausedChip);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('subscriptions-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(pausedChip).selected, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('subscriptions-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('subscription-name')),
+      'Disney+',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('subscription-amount')),
+      '9',
+    );
+    await tester.enterText(find.byKey(const ValueKey('subscription-day')), '5');
+    await tester.tap(find.byKey(const ValueKey('subscription-save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('subscriptions-filter-all')),
+          )
+          .selected,
+      isTrue,
+    );
+    expect(find.text('Disney+'), findsOneWidget);
+  });
+
+  testWidgets('creating a group from a filtered view returns to all', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(tester, server);
+
+    await tester.tap(find.byKey(const ValueKey('subscriptions-filter-paused')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('subscriptions-add-group')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('group-name')), '新分组');
+    await tester.tap(find.byKey(const ValueKey('group-save')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('subscriptions-filter-all')),
+          )
+          .selected,
+      isTrue,
+    );
+    await scrollTo(tester, find.text('新分组'));
+    expect(find.text('新分组'), findsOneWidget);
+  });
+
+  testWidgets('deleting an empty group skips the migration copy', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer(
+      groups: [
+        subscriptionGroupJson(id: 1, name: '影音娱乐', sortOrder: 1),
+        subscriptionGroupJson(id: 3, name: '空组', sortOrder: 3),
+      ],
+    );
+    await _pumpSubscriptions(tester, server);
+
+    final menu = find.byKey(const ValueKey('subscription-group-menu-3'));
+    await scrollTo(tester, menu);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除分组'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除后不可恢复。'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+
+    expect(
+      server.requestsFor('DELETE', '/api/subscription-groups/3'),
+      hasLength(1),
+    );
+    expect(find.text('分组已删除'), findsOneWidget);
+    expect(find.text('空组'), findsNothing);
+  });
+
+  testWidgets('dark theme keeps the subscription page stable', (tester) async {
+    final server = _FakeSubscriptionServer();
+    final controllers = await testControllersWithHandler(server.handle);
+    await controllers.ledger.loadSubscriptions();
+    await pumpWithProviders(
+      tester,
+      home: const SubscriptionsScreen(),
+      controllers: controllers,
+      themeMode: ThemeMode.dark,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('每月固定开支'), findsOneWidget);
+    expect(find.text('已暂停 · 原扣款日 30 日'), findsOneWidget);
+  });
+
+  testWidgets('320dp with 2x text keeps rows and the form usable', (
+    tester,
+  ) async {
+    final server = _FakeSubscriptionServer();
+    await _pumpSubscriptions(
+      tester,
+      server,
+      size: const Size(320, 800),
+      textScaler: const TextScaler.linear(2),
+    );
+
+    await scrollTo(tester, find.byKey(const ValueKey('subscription-body-1')));
+    expect(tester.takeException(), isNull);
+    final amount = tester.getRect(
+      find.byKey(const ValueKey('subscription-amount-1')),
+    );
+    expect(amount.left, greaterThanOrEqualTo(0));
+    expect(amount.right, lessThanOrEqualTo(320));
+
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('subscriptions-add')),
+      -120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('subscriptions-add')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('subscription-sheet')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final save = tester.getRect(
+      find.byKey(const ValueKey('subscription-save')),
+    );
+    expect(save.bottom, lessThanOrEqualTo(800));
   });
 }

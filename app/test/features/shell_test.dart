@@ -28,6 +28,7 @@ void main() {
     await tester.tap(find.text('订阅').last);
     await tester.pumpAndSettle();
     expect(find.text('每月固定开支'), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsNothing);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -55,6 +56,7 @@ void main() {
 
     await tester.tap(find.text('流水').last);
     await tester.pumpAndSettle();
+    expect(find.widgetWithText(FloatingActionButton, '记一笔'), findsOneWidget);
     await tester.tap(find.widgetWithText(FloatingActionButton, '记一笔'));
     await tester.pumpAndSettle();
     expect(find.text('金额'), findsOneWidget);

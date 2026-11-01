@@ -18,6 +18,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  static const subscriptionsIndex = 2;
   static const settingsIndex = 4;
 
   int _index = 0;
@@ -116,12 +117,16 @@ class _AppShellState extends State<AppShell> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () =>
-              RecordSheet.show(context, onOpenSettings: _openChannelSettings),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('记一笔'),
-        ),
+        floatingActionButton: _index == subscriptionsIndex
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: () => RecordSheet.show(
+                  context,
+                  onOpenSettings: _openChannelSettings,
+                ),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('记一笔'),
+              ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: _selectTab,

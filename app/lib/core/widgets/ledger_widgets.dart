@@ -312,6 +312,7 @@ class ConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text(title),
       content: Text(message),
@@ -322,6 +323,10 @@ class ConfirmDialog extends StatelessWidget {
           child: const Text('取消'),
         ),
         FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: scheme.error,
+            foregroundColor: scheme.onError,
+          ),
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),
