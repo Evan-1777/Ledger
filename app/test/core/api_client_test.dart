@@ -93,7 +93,7 @@ void main() {
     );
 
     await expectLater(
-      api.getTransactions(),
+      api.getTransactions(const TransactionQuery()),
       throwsA(
         isA<ApiException>()
             .having((error) => error.kind, 'kind', ApiErrorKind.unauthorized)
@@ -181,7 +181,7 @@ void main() {
     );
   });
 
-  test('transaction list sends type and limit filters', () async {
+  test('transaction list sends only the active query dimensions', () async {
     late http.Request captured;
     final api = ApiClient(
       client: MockClient((request) async {
@@ -192,11 +192,63 @@ void main() {
       tokenProvider: () async => 'token',
     );
 
-    final list = await api.getTransactions(type: TransactionType.expense);
+    final list = await api.getTransactions(const TransactionQuery());
 
     expect(list.single.amountCents, -2800);
-    expect(captured.url.queryParameters, {'limit': '100', 'type': 'expense'});
+    expect(captured.url.queryParameters, {'limit': '100'});
+
+    await api.getTransactions(
+      const TransactionQuery(
+        type: TransactionType.expense,
+        categoryId: 2,
+        tagId: 3,
+        paymentMethodId: 4,
+        keyword: '  拼多多  ',
+      ),
+    );
+    expect(captured.url.queryParameters, {
+      'limit': '100',
+      'type': 'expense',
+      'category_id': '2',
+      'tag_id': '3',
+      'payment_method_id': '4',
+      'q': '拼多多',
+    });
+
+    await api.getTransactions(const TransactionQuery(keyword: '   '));
+    expect(captured.url.queryParameters, {'limit': '100'});
   });
+
+  test(
+    'TransactionQuery equality and activity flags follow every dimension',
+    () {
+      const base = TransactionQuery(
+        type: TransactionType.expense,
+        keyword: 'x',
+      );
+      expect(
+        base,
+        const TransactionQuery(type: TransactionType.expense, keyword: 'x'),
+      );
+      expect(
+        base ==
+            const TransactionQuery(type: TransactionType.expense, keyword: 'y'),
+        isFalse,
+      );
+      expect(
+        const TransactionQuery(type: TransactionType.income) ==
+            const TransactionQuery(type: TransactionType.expense),
+        isFalse,
+      );
+      expect(const TransactionQuery().hasDimensions, isFalse);
+      expect(const TransactionQuery().isActive, isFalse);
+      expect(const TransactionQuery(keyword: '   ').isActive, isFalse);
+      expect(const TransactionQuery(keyword: ' x ').isActive, isTrue);
+      expect(const TransactionQuery(categoryId: 1).hasDimensions, isTrue);
+      expect(const TransactionQuery(categoryId: 1).isActive, isTrue);
+      expect(const TransactionQuery().withKeyword('a').keyword, 'a');
+    },
+  );
 
   test('expense body omits fee and transfer body keeps both', () async {
     final bodies = <Map<String, dynamic>>[];

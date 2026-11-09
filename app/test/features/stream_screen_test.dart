@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:ledger_app/core/api/models.dart';
 import 'package:ledger_app/core/format/dates.dart';
 import 'package:ledger_app/core/widgets/ledger_widgets.dart';
 import 'package:ledger_app/features/stream/stream_screen.dart';
@@ -19,7 +20,28 @@ Clip popupClip(WidgetTester tester, Finder finder) {
 void main() {
   setUpAll(initTestLocale);
 
-  testWidgets('stream shows headline, day group and filters', (tester) async {
+  Future<void> openFilter(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('stream-filter-menu')));
+    await tester.pumpAndSettle();
+  }
+
+  Color filterButtonColor(WidgetTester tester) {
+    final container = tester.widget<Container>(
+      find.descendant(
+        of: find.byKey(const ValueKey('stream-filter-menu')),
+        matching: find.byType(Container),
+      ),
+    );
+    return (container.decoration as BoxDecoration).color!;
+  }
+
+  ColorScheme schemeOf(WidgetTester tester) => Theme.of(
+    tester.element(find.byKey(const ValueKey('stream-filter-menu'))),
+  ).colorScheme;
+
+  testWidgets('stream shows headline, day group and filter entry', (
+    tester,
+  ) async {
     final controllers = await testControllersWithHandler(defaultApi);
     await controllers.ledger.loadAll();
     await pumpWithProviders(
@@ -32,115 +54,109 @@ void main() {
     expect(find.text('本月结余'), findsOneWidget);
     expect(find.text('¥9,551.50'), findsOneWidget);
     expect(find.text('午餐 · 牛肉面'), findsOneWidget);
-    expect(find.text('全部'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stream-filter-menu')), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('stream-filter-menu'))).height,
+      greaterThanOrEqualTo(48),
+    );
+    expect(filterButtonColor(tester), schemeOf(tester).surfaceContainerHigh);
 
-    await tester.tap(find.byKey(const ValueKey('filter-menu')));
-    await tester.pumpAndSettle();
-    for (final filter in [
-      'all',
-      'expense',
-      'income',
-      'transfer',
-      'repayment',
-    ]) {
-      expect(find.byKey(ValueKey('filter-$filter')), findsOneWidget);
+    await openFilter(tester);
+    for (final type in ['all', 'expense', 'income', 'transfer', 'repayment']) {
+      expect(find.byKey(ValueKey('stream-filter-type-$type')), findsOneWidget);
     }
     expect(
       tester
-          .widget<LedgerPickerOption>(find.byKey(const ValueKey('filter-all')))
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('stream-filter-type-all')),
+          )
           .selected,
       isTrue,
     );
   });
 
-  testWidgets('filter tap requests the matching type', (tester) async {
-    final requests = <http.Request>[];
-    final controllers = await testControllersWithHandler((request) async {
-      requests.add(request);
-      return defaultApi(request);
-    });
-    await controllers.ledger.loadAll();
-    await pumpWithProviders(
-      tester,
-      home: const StreamScreen(),
-      controllers: controllers,
-    );
-
-    await tester.tap(find.byKey(const ValueKey('filter-menu')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('filter-expense')));
-    await tester.pumpAndSettle();
-
-    expect(
-      requests.any(
-        (request) =>
-            request.url.path == '/api/transactions' &&
-            request.url.queryParameters['type'] == 'expense',
-      ),
-      isTrue,
-    );
-  });
-
   testWidgets(
-    'filter sheet exposes options and keeps the current label visible',
+    'filter apply sends the matching query and highlights the entry',
     (tester) async {
-      final controllers = await testControllersWithHandler(defaultApi);
+      final requests = <http.Request>[];
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.url.path == '/api/transactions') requests.add(request);
+        return defaultApi(request);
+      });
       await controllers.ledger.loadAll();
       await pumpWithProviders(
         tester,
         home: const StreamScreen(),
         controllers: controllers,
       );
+      final baseline = requests.length;
 
-      final trigger = find.byKey(const ValueKey('filter-menu'));
-      expect(
-        find.descendant(of: trigger, matching: find.text('全部')),
-        findsOneWidget,
+      await openFilter(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('stream-filter-type-expense')),
       );
-      expect(tester.getSize(trigger).height, greaterThanOrEqualTo(48));
-
-      await tester.tap(trigger);
       await tester.pumpAndSettle();
-      for (final filter in [
-        'all',
-        'expense',
-        'income',
-        'transfer',
-        'repayment',
-      ]) {
-        expect(find.byKey(ValueKey('filter-$filter')), findsOneWidget);
-      }
-      await tester.tap(find.byKey(const ValueKey('filter-expense')));
+      await tester.tap(find.byKey(const ValueKey('stream-filter-apply')));
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(of: trigger, matching: find.text('支出')),
-        findsOneWidget,
-      );
-      expect(find.text('筛选'), findsNothing);
 
-      final hero = tester.getRect(
-        find
-            .ancestor(of: find.text('本月结余'), matching: find.byType(Container))
-            .first,
-      );
-      final firstGroup = tester.getRect(
-        find
-            .ancestor(
-              of: find.text('午餐 · 牛肉面'),
-              matching: find.byType(LedgerCard),
-            )
-            .first,
-      );
-      final month = tester.getRect(find.text(formatMonth(DateTime.now())));
-      expect(month.top, greaterThanOrEqualTo(hero.bottom));
-      expect(month.bottom, lessThanOrEqualTo(firstGroup.top));
+      final applied = requests.skip(baseline).toList();
+      expect(applied.length, 1);
+      expect(applied.single.url.queryParameters, {
+        'limit': '100',
+        'type': 'expense',
+      });
+      expect(find.text('支出'), findsWidgets);
+      expect(filterButtonColor(tester), schemeOf(tester).secondaryContainer);
     },
   );
 
-  testWidgets('empty stream offers the record action', (tester) async {
-    final controllers = await testControllersWithHandler(
-      (request) => defaultApi(request, transactions: []),
-    );
+  testWidgets(
+    'applying every dimension sends one request and shows the summary',
+    (tester) async {
+      final requests = <http.Request>[];
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.url.path == '/api/transactions') requests.add(request);
+        return defaultApi(request);
+      });
+      await controllers.ledger.loadAll();
+      await pumpWithProviders(
+        tester,
+        home: const StreamScreen(),
+        controllers: controllers,
+      );
+      final baseline = requests.length;
+
+      await openFilter(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('stream-filter-type-expense')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('stream-filter-category-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('stream-filter-tag-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('stream-filter-channel-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('stream-filter-apply')));
+      await tester.pumpAndSettle();
+
+      final applied = requests.skip(baseline).toList();
+      expect(applied.length, 1);
+      expect(applied.single.url.queryParameters, {
+        'limit': '100',
+        'type': 'expense',
+        'category_id': '1',
+        'tag_id': '1',
+        'payment_method_id': '1',
+      });
+      expect(find.text('支出 · 餐饮美食 · 午餐 · 招商银行卡'), findsOneWidget);
+    },
+  );
+
+  testWidgets('filter sheet converges categories and tags with the type', (
+    tester,
+  ) async {
+    final controllers = await testControllersWithHandler(defaultApi);
     await controllers.ledger.loadAll();
     await pumpWithProviders(
       tester,
@@ -148,16 +164,88 @@ void main() {
       controllers: controllers,
     );
 
-    expect(find.text('本月还没有记账'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '记一笔'), findsOneWidget);
+    await openFilter(tester);
+    expect(
+      find.byKey(const ValueKey('stream-filter-type-all')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-all')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('stream-filter-channel-all')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('stream-filter-tag-all')), findsNothing);
+    expect(find.text('选择分类后可筛选标签'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('stream-filter-category-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('stream-filter-tag-all')), findsOneWidget);
+    expect(find.byKey(const ValueKey('stream-filter-tag-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('stream-filter-type-transfer')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-all')),
+      findsNothing,
+    );
+    expect(find.byKey(const ValueKey('stream-filter-tag-all')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('stream-filter-type-expense')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-4')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('stream-filter-type-income')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-4')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('stream-filter-category-1')),
+      findsNothing,
+    );
   });
 
-  testWidgets('delete asks for confirmation and sends one request', (
+  testWidgets('filter groups align with the sheet title and footer', (
     tester,
   ) async {
-    final deletes = <http.Request>[];
+    final controllers = await testControllersWithHandler(defaultApi);
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    await openFilter(tester);
+    expect(tester.getTopLeft(find.text('筛选')).dx, closeTo(20, 0.5));
+    expect(tester.getTopLeft(find.text('类型')).dx, closeTo(20, 0.5));
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('stream-filter-type-all')))
+          .dx,
+      closeTo(20, 0.5),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('stream-filter-reset'))).dx,
+      closeTo(20, 0.5),
+    );
+  });
+
+  testWidgets('reset clears dimensions but keeps the keyword', (tester) async {
+    final requests = <http.Request>[];
     final controllers = await testControllersWithHandler((request) async {
-      if (request.method == 'DELETE') deletes.add(request);
+      if (request.url.path == '/api/transactions') requests.add(request);
       return defaultApi(request);
     });
     await controllers.ledger.loadAll();
@@ -167,26 +255,184 @@ void main() {
       controllers: controllers,
     );
 
-    expect(popupClip(tester, find.byTooltip('更多操作')), Clip.antiAlias);
-    await tester.tap(find.byTooltip('更多操作'));
+    await tester.tap(find.byKey(const ValueKey('stream-search-toggle')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
-    expect(find.text('删除账单'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(TextButton, '取消'));
-    await tester.pumpAndSettle();
-    expect(deletes, isEmpty);
-
-    await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.enterText(
+      find.byKey(const ValueKey('stream-search-field')),
+      '午',
+    );
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
 
-    expect(deletes.length, 1);
-    expect(find.text('账单已删除'), findsOneWidget);
+    // Apply a dimension first so reset has something to clear.
+    await openFilter(tester);
+    await tester.tap(find.byKey(const ValueKey('stream-filter-type-expense')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('stream-filter-apply')));
+    await tester.pumpAndSettle();
+    final baseline = requests.length;
+
+    await openFilter(tester);
+    await tester.tap(find.byKey(const ValueKey('stream-filter-reset')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('stream-filter-type-all')),
+          )
+          .selected,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<ChoiceChip>(
+            find.byKey(const ValueKey('stream-filter-category-all')),
+          )
+          .selected,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('stream-filter-apply')));
+    await tester.pumpAndSettle();
+
+    final applied = requests.skip(baseline).toList();
+    expect(applied.length, 1);
+    expect(applied.single.url.queryParameters, {'limit': '100', 'q': '午'});
+  });
+
+  testWidgets('search debounces to the last keyword and collapses', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions') requests.add(request);
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+    final baseline = requests.length;
+
+    await tester.tap(find.byKey(const ValueKey('stream-search-toggle')));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const ValueKey('stream-search-field'));
+    expect(field, findsOneWidget);
+
+    await tester.enterText(field, '拼');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(field, '拼多');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(field, '拼多多');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+
+    final searched = requests
+        .skip(baseline)
+        .where((request) => request.url.queryParameters.containsKey('q'))
+        .toList();
+    expect(searched.length, 1);
+    expect(searched.single.url.queryParameters['q'], '拼多多');
+
+    await tester.tap(find.byKey(const ValueKey('stream-search-clear')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('stream-search-field')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('stream-search-clear')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('stream-search-field')), findsNothing);
+    expect(find.text(formatMonth(DateTime.now())), findsOneWidget);
+  });
+
+  testWidgets('clearing within the debounce window drops the pending keyword', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions') requests.add(request);
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+    final baseline = requests.length;
+
+    await tester.tap(find.byKey(const ValueKey('stream-search-toggle')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('stream-search-field')),
+      '拼多多',
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey('stream-search-clear')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(
+      requests
+          .skip(baseline)
+          .where((request) => request.url.queryParameters['q'] == '拼多多'),
+      isEmpty,
+    );
+  });
+
+  testWidgets('an active query shows the filtered empty state', (tester) async {
+    final controllers = await testControllersWithHandler(
+      (request) => defaultApi(request, transactions: []),
+    );
+    await controllers.ledger.loadAll();
+    await controllers.ledger.setQuery(
+      const TransactionQuery(type: TransactionType.expense),
+    );
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    expect(find.text('没有符合条件的账单'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '记一笔'), findsNothing);
+  });
+
+  testWidgets('row keeps the channel note visible and wraps a long meta', (
+    tester,
+  ) async {
+    final controllers = await testControllersWithHandler((request) {
+      if (request.url.path == '/api/transactions') {
+        return Future.value(
+          jsonResponse([
+            transactionJson(
+              id: 1,
+              categoryName: '一个非常非常长的分类名称用来测试折行行为',
+              tagName: '一个同样非常长的标签名称测试折行',
+              paymentMethodName: '招商银行卡',
+            ),
+          ]),
+        );
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    final note = find.byKey(const ValueKey('stream-row-note-1'));
+    expect(note, findsOneWidget);
+    expect(tester.widget<Text>(note).data, '招商银行卡');
+    final row = tester.getRect(find.byKey(const ValueKey('stream-row-1')));
+    expect(tester.getRect(note).right, lessThanOrEqualTo(row.right + 0.5));
+
+    final meta = tester.widget<Text>(
+      find.byKey(const ValueKey('stream-row-meta-1')),
+    );
+    expect(meta.maxLines, 2);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('excluded categories leave the day subtotal but keep rows', (
@@ -253,28 +499,114 @@ void main() {
     expect(find.text('地铁通勤'), findsOneWidget);
   });
 
-  testWidgets('stream fits 320dp with 2x text', (tester) async {
-    final controllers = await testControllersWithHandler(defaultApi);
+  testWidgets('empty stream offers the record action', (tester) async {
+    final controllers = await testControllersWithHandler(
+      (request) => defaultApi(request, transactions: []),
+    );
     await controllers.ledger.loadAll();
     await pumpWithProviders(
       tester,
       home: const StreamScreen(),
       controllers: controllers,
-      size: const Size(320, 800),
-      textScaler: const TextScaler.linear(2),
     );
+
+    expect(find.text('本月还没有记账'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '记一笔'), findsOneWidget);
+  });
+
+  testWidgets('delete asks for confirmation and sends one request', (
+    tester,
+  ) async {
+    final deletes = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE') deletes.add(request);
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    expect(popupClip(tester, find.byTooltip('更多操作')), Clip.antiAlias);
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(find.text('删除账单'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(deletes, isEmpty);
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const ValueKey('filter-menu')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('filter-menu')));
-    await tester.pumpAndSettle();
+    expect(deletes.length, 1);
+    expect(find.text('账单已删除'), findsOneWidget);
+  });
+
+  testWidgets(
+    '320dp with 2x text opens the filter and reaches the apply button',
+    (tester) async {
+      final controllers = await testControllersWithHandler(defaultApi);
+      await controllers.ledger.loadAll();
+      await pumpWithProviders(
+        tester,
+        home: const StreamScreen(),
+        controllers: controllers,
+        size: const Size(320, 800),
+        textScaler: const TextScaler.linear(2),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('stream-filter-menu')),
+      );
+      await tester.pumpAndSettle();
+      await openFilter(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey('stream-filter-type-expense')),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('stream-filter-menu'))).height,
+        greaterThanOrEqualTo(48),
+      );
+      final sheetScrollable = find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(Scrollable),
+      );
+      await tester.drag(sheetScrollable.first, const Offset(0, -240));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('stream-filter-apply')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('dark theme renders the filtered stream without errors', (
+    tester,
+  ) async {
+    final controllers = await testControllersWithHandler(defaultApi);
+    await controllers.ledger.loadAll();
+    await controllers.ledger.setQuery(
+      const TransactionQuery(type: TransactionType.expense, paymentMethodId: 1),
+    );
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+      themeMode: ThemeMode.dark,
+    );
 
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const ValueKey('filter-expense')), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const ValueKey('filter-expense'))).height,
-      greaterThanOrEqualTo(48),
-    );
+    expect(find.text('支出 · 招商银行卡'), findsOneWidget);
   });
 }

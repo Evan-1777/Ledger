@@ -161,7 +161,9 @@ void main() {
       }, cache: cache);
 
       await controllers.ledger.loadAll();
-      await controllers.ledger.setFilter(TransactionFilter.expense);
+      await controllers.ledger.setQuery(
+        const TransactionQuery(type: TransactionType.expense),
+      );
 
       expect(cache.transactionWrites, 1);
       expect(cache.transactions!.single.description, '午餐 · 牛肉面');
@@ -187,7 +189,9 @@ void main() {
 
       final stale = controllers.ledger.loadTransactions();
       await Future<void>.delayed(const Duration(milliseconds: 2));
-      await controllers.ledger.setFilter(TransactionFilter.expense);
+      await controllers.ledger.setQuery(
+        const TransactionQuery(type: TransactionType.expense),
+      );
       await stale;
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -195,6 +199,220 @@ void main() {
     },
   );
 
+  test('setQuery deduplicates identical queries and reloads once', () async {
+    final requests = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions') requests.add(request);
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadAll();
+    final baseline = requests.length;
+
+    const query = TransactionQuery(
+      type: TransactionType.expense,
+      categoryId: 1,
+    );
+    await controllers.ledger.setQuery(query);
+    await controllers.ledger.setQuery(query);
+
+    expect(requests.length, baseline + 1);
+    expect(requests.last.url.queryParameters['type'], 'expense');
+    expect(requests.last.url.queryParameters['category_id'], '1');
+  });
+
+  test(
+    'a keyword-only query does not overwrite the cold-start snapshot',
+    () async {
+      final cache = MemoryLedgerCache();
+      final controllers = await testControllersWithHandler(
+        standardHandler,
+        cache: cache,
+      );
+
+      await controllers.ledger.loadAll();
+      await controllers.ledger.setQuery(const TransactionQuery(keyword: '午'));
+
+      expect(cache.transactionWrites, 1);
+      expect(cache.transactions!.single.description, '午餐 · 牛肉面');
+    },
+  );
+
+  test(
+    'deleting the filtered category clears the transaction dimensions',
+    () async {
+      var deleted = false;
+      final requests = <http.Request>[];
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.method == 'DELETE' &&
+            request.url.path == '/api/categories/1') {
+          deleted = true;
+          return jsonResponse({'success': true});
+        }
+        if (request.url.path == '/api/categories') {
+          return jsonResponse(
+            deleted
+                ? <Object?>[]
+                : [
+                    {
+                      'id': 1,
+                      'name': '餐饮美食',
+                      'sort_order': 1,
+                      'type': 'expense',
+                      'exclude_from_stats': false,
+                      'created_at': '',
+                      'tags': [
+                        {
+                          'id': 1,
+                          'category_id': 1,
+                          'name': '午餐',
+                          'sort_order': 1,
+                        },
+                      ],
+                    },
+                  ],
+          );
+        }
+        if (request.url.path == '/api/transactions') requests.add(request);
+        return standardHandler(request);
+      });
+      await controllers.ledger.loadConfig();
+      await controllers.ledger.setQuery(
+        const TransactionQuery(categoryId: 1, tagId: 1),
+      );
+      final before = requests.length;
+
+      await controllers.ledger.deleteCategory(
+        controllers.ledger.categories.single,
+      );
+
+      expect(controllers.ledger.query.categoryId, isNull);
+      expect(controllers.ledger.query.tagId, isNull);
+      expect(requests.length, before + 1);
+      expect(
+        requests.last.url.queryParameters.containsKey('category_id'),
+        isFalse,
+      );
+      expect(requests.last.url.queryParameters.containsKey('tag_id'), isFalse);
+    },
+  );
+
+  test('deleting a tag clears only the tag dimension', () async {
+    var deleted = false;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE' && request.url.path == '/api/tags/1') {
+        deleted = true;
+        return jsonResponse({'success': true});
+      }
+      if (request.url.path == '/api/categories') {
+        return jsonResponse([
+          {
+            'id': 1,
+            'name': '餐饮美食',
+            'sort_order': 1,
+            'type': 'expense',
+            'exclude_from_stats': false,
+            'created_at': '',
+            'tags': deleted
+                ? <Object?>[]
+                : [
+                    {'id': 1, 'category_id': 1, 'name': '午餐', 'sort_order': 1},
+                  ],
+          },
+        ]);
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadConfig();
+    await controllers.ledger.setQuery(
+      const TransactionQuery(categoryId: 1, tagId: 1),
+    );
+
+    await controllers.ledger.deleteTag(
+      const Tag(id: 1, categoryId: 1, name: '午餐', sortOrder: 1),
+    );
+
+    expect(controllers.ledger.query.categoryId, 1);
+    expect(controllers.ledger.query.tagId, isNull);
+  });
+
+  test('deleting a channel clears the payment dimension', () async {
+    var deleted = false;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'DELETE' &&
+          request.url.path == '/api/payment-methods/1') {
+        deleted = true;
+        return jsonResponse({'success': true});
+      }
+      if (request.url.path == '/api/payment-methods') {
+        return jsonResponse(
+          deleted
+              ? <Object?>[]
+              : [
+                  {
+                    'id': 1,
+                    'name': '招商银行卡',
+                    'sort_order': 1,
+                    'type': 'asset',
+                    'initial_balance': 0,
+                    'credit_limit': 0,
+                    'created_at': '',
+                  },
+                ],
+        );
+      }
+      return standardHandler(request);
+    });
+    await controllers.ledger.loadConfig();
+    await controllers.ledger.setQuery(
+      const TransactionQuery(paymentMethodId: 1),
+    );
+
+    await controllers.ledger.deleteChannel(
+      const PaymentMethod(
+        id: 1,
+        name: '招商银行卡',
+        sortOrder: 1,
+        type: ChannelType.asset,
+        initialBalance: 0,
+        creditLimit: 0,
+      ),
+    );
+
+    expect(controllers.ledger.query.paymentMethodId, isNull);
+  });
+
+  test(
+    'a config refresh without stale dimensions keeps the request count',
+    () async {
+      final requests = <http.Request>[];
+      final controllers = await testControllersWithHandler((request) async {
+        if (request.url.path == '/api/transactions') requests.add(request);
+        return standardHandler(request);
+      });
+      await controllers.ledger.loadConfig();
+      await controllers.ledger.setQuery(
+        const TransactionQuery(categoryId: 1, tagId: 1),
+      );
+      final before = requests.length;
+
+      await controllers.ledger.loadConfig();
+
+      expect(controllers.ledger.query.categoryId, 1);
+      expect(requests.length, before);
+    },
+  );
+
+  test('clear resets the transaction query to the inactive default', () async {
+    final controllers = await testControllersWithHandler(standardHandler);
+    await controllers.ledger.setQuery(
+      const TransactionQuery(type: TransactionType.expense, keyword: 'x'),
+    );
+
+    controllers.ledger.clear();
+
+    expect(controllers.ledger.query.isActive, isFalse);
+    expect(controllers.ledger.query, const TransactionQuery());
+  });
   test('a stale config success cannot repopulate cleared data', () async {
     final controllers = await testControllersWithHandler((request) async {
       if (request.url.path == '/api/categories' ||

@@ -110,8 +110,76 @@ void main() {
       transactedAt: DateTime(2026, 10, 19, 10),
     );
 
-    expect(transactionMeta(expense), '餐饮美食 · 午餐 · 招商银行卡 · 08:42');
-    expect(transactionMeta(transfer), '招商银行卡 → 支付宝 · 手续费 ¥1.50 · 09:05');
+    expect(transactionMeta(expense), '餐饮美食 · 午餐 · 08:42');
+    expect(transactionNote(expense), '招商银行卡');
+    expect(transactionMeta(transfer), '招商银行卡 → 支付宝 · 09:05');
+    expect(transactionNote(transfer), '手续费 ¥1.50');
     expect(transactionMeta(repayment), '外部/未记录资金 → 招商信用卡 · 10:00');
+    expect(transactionNote(repayment), '');
+  });
+
+  test('metadata omits an empty tag and a fee-free transfer', () {
+    final noTag = transactionModel(tagName: '');
+    final freeTransfer = transactionModel(
+      type: TransactionType.transfer,
+      amountCents: 10000,
+      paymentMethodName: '支付宝',
+      sourcePaymentMethodName: '招商银行卡',
+      transactedAt: DateTime(2026, 10, 19, 9, 5),
+    );
+
+    expect(transactionMeta(noTag), '餐饮美食 · 08:42');
+    expect(transactionNote(freeTransfer), '');
+  });
+
+  test('query summary lists active dimensions in a fixed order', () {
+    final categories = [
+      category(
+        id: 1,
+        name: '餐饮美食',
+        tags: const [Tag(id: 1, categoryId: 1, name: '午餐', sortOrder: 1)],
+      ),
+      category(id: 4, name: '职业收入', type: CategoryType.income),
+    ];
+    final channels = [paymentMethod(id: 1, name: '招商银行卡')];
+
+    expect(
+      transactionQuerySummary(
+        const TransactionQuery(),
+        categories: categories,
+        channels: channels,
+      ),
+      isNull,
+    );
+    expect(
+      transactionQuerySummary(
+        const TransactionQuery(keyword: ' 拼多多 '),
+        categories: categories,
+        channels: channels,
+      ),
+      '搜索「拼多多」',
+    );
+    expect(
+      transactionQuerySummary(
+        const TransactionQuery(
+          type: TransactionType.expense,
+          categoryId: 1,
+          tagId: 1,
+          paymentMethodId: 1,
+          keyword: '午餐',
+        ),
+        categories: categories,
+        channels: channels,
+      ),
+      '支出 · 餐饮美食 · 午餐 · 招商银行卡 · 搜索「午餐」',
+    );
+    expect(
+      transactionQuerySummary(
+        const TransactionQuery(categoryId: 99, paymentMethodId: 99),
+        categories: categories,
+        channels: channels,
+      ),
+      isNull,
+    );
   });
 }

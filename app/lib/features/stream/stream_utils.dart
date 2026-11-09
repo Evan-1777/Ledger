@@ -86,7 +86,6 @@ String transactionMeta(Transaction transaction) {
   return switch (transaction.type) {
     TransactionType.transfer => [
       '${transaction.sourcePaymentMethodName} → ${transaction.paymentMethodName}',
-      if (transaction.feeCents > 0) '手续费 ${formatMoney(transaction.fee)}',
       time,
     ].join(' · '),
     TransactionType.repayment => [
@@ -96,10 +95,52 @@ String transactionMeta(Transaction transaction) {
     _ => [
       transaction.categoryName,
       if (transaction.tagName.isNotEmpty) transaction.tagName,
-      transaction.paymentMethodName,
       time,
     ].join(' · '),
   };
+}
+
+String transactionNote(Transaction transaction) {
+  return switch (transaction.type) {
+    TransactionType.transfer =>
+      transaction.feeCents > 0 ? '手续费 ${formatMoney(transaction.fee)}' : '',
+    TransactionType.repayment => '',
+    _ => transaction.paymentMethodName,
+  };
+}
+
+String? transactionQuerySummary(
+  TransactionQuery query, {
+  required List<Category> categories,
+  required List<PaymentMethod> channels,
+}) {
+  final parts = <String>[];
+  final type = query.type;
+  if (type != null) parts.add(type.label);
+  final category = _firstOrNull(
+    categories,
+    (item) => item.id == query.categoryId,
+  );
+  if (category != null) {
+    parts.add(category.name);
+    final tag = _firstOrNull(category.tags, (item) => item.id == query.tagId);
+    if (tag != null) parts.add(tag.name);
+  }
+  final channel = _firstOrNull(
+    channels,
+    (item) => item.id == query.paymentMethodId,
+  );
+  if (channel != null) parts.add(channel.name);
+  final keyword = query.keyword.trim();
+  if (keyword.isNotEmpty) parts.add('搜索「$keyword」');
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+T? _firstOrNull<T>(Iterable<T> items, bool Function(T) test) {
+  for (final item in items) {
+    if (test(item)) return item;
+  }
+  return null;
 }
 
 Color transactionColor(BuildContext context, Transaction transaction) {

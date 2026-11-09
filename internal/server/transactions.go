@@ -64,7 +64,53 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	conditions := make([]string, 0, 5)
+	args := make([]any, 0, 8)
+
+	// 未知 type 保持既有「不过滤」语义
 	typeFilter := strings.ToLower(r.URL.Query().Get("type"))
+	if typeFilter == "expense" || typeFilter == "income" || typeFilter == "repayment" || typeFilter == "transfer" {
+		conditions = append(conditions, "t.type = ?")
+		args = append(args, typeFilter)
+	}
+
+	categoryID, err := parseOptionalPositiveID(r.URL.Query().Get("category_id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "category_id must be a positive integer")
+		return
+	}
+	if categoryID > 0 {
+		conditions = append(conditions, "t.category_id = ?")
+		args = append(args, categoryID)
+	}
+
+	tagID, err := parseOptionalPositiveID(r.URL.Query().Get("tag_id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "tag_id must be a positive integer")
+		return
+	}
+	if tagID > 0 {
+		conditions = append(conditions, "t.tag_id = ?")
+		args = append(args, tagID)
+	}
+
+	channelID, err := parseOptionalPositiveID(r.URL.Query().Get("payment_method_id"))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "payment_method_id must be a positive integer")
+		return
+	}
+	if channelID > 0 {
+		// 转账的转出账户与还款的来源账户也参与匹配，与渠道引用检查同口径
+		conditions = append(conditions, "(t.payment_method_id = ? OR t.source_payment_method_id = ?)")
+		args = append(args, channelID, channelID)
+	}
+
+	if keyword := strings.TrimSpace(r.URL.Query().Get("q")); keyword != "" {
+		pattern := "%" + escapeLike(keyword) + "%"
+		conditions = append(conditions, `(t.description LIKE ? ESCAPE '\' OR c.name LIKE ? ESCAPE '\' OR tg.name LIKE ? ESCAPE '\' OR pm.name LIKE ? ESCAPE '\' OR spm.name LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern, pattern, pattern)
+	}
+
 	var query strings.Builder
 	query.WriteString(`
 		SELECT t.id, t.type, t.amount_cents, t.fee_cents, t.description,
@@ -80,15 +126,9 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		LEFT JOIN tags tg ON t.tag_id = tg.id
 	`)
 
-	args := make([]any, 0)
-	if typeFilter == "expense" {
-		query.WriteString(" WHERE t.type = 'expense'")
-	} else if typeFilter == "income" {
-		query.WriteString(" WHERE t.type = 'income'")
-	} else if typeFilter == "repayment" {
-		query.WriteString(" WHERE t.type = 'repayment'")
-	} else if typeFilter == "transfer" {
-		query.WriteString(" WHERE t.type = 'transfer'")
+	if len(conditions) > 0 {
+		query.WriteString(" WHERE ")
+		query.WriteString(strings.Join(conditions, " AND "))
 	}
 
 	query.WriteString(" ORDER BY t.transacted_at DESC, t.id DESC LIMIT ? OFFSET ?")
@@ -133,6 +173,10 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, list)
 }
 
+// escapeLike 转义 LIKE 模式中的通配符，使关键词按字面量匹配。
+func escapeLike(raw string) string {
+	return strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(raw)
+}
 func (s *Server) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
 	var req TransactionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

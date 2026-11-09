@@ -268,14 +268,23 @@ class ApiClient {
     await _expectOk('DELETE', '/api/tags/$id');
   }
 
-  Future<List<Transaction>> getTransactions({
-    TransactionType? type,
+  Future<List<Transaction>> getTransactions(
+    TransactionQuery query, {
     int limit = 100,
   }) async {
+    final keyword = query.keyword.trim();
     final decoded = await _expectOk(
       'GET',
       '/api/transactions',
-      query: {'limit': '$limit', if (type != null) 'type': type.api},
+      query: {
+        'limit': '$limit',
+        if (query.type != null) 'type': query.type!.api,
+        if (query.categoryId != null) 'category_id': '${query.categoryId}',
+        if (query.tagId != null) 'tag_id': '${query.tagId}',
+        if (query.paymentMethodId != null)
+          'payment_method_id': '${query.paymentMethodId}',
+        if (keyword.isNotEmpty) 'q': keyword,
+      },
     );
     return _list(decoded, Transaction.fromJson);
   }

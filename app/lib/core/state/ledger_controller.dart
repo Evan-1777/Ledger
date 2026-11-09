@@ -5,30 +5,6 @@ import '../api/api_exception.dart';
 import '../api/models.dart';
 import '../storage/ledger_cache.dart';
 
-enum TransactionFilter {
-  all,
-  expense,
-  income,
-  transfer,
-  repayment;
-
-  TransactionType? get type => switch (this) {
-    TransactionFilter.all => null,
-    TransactionFilter.expense => TransactionType.expense,
-    TransactionFilter.income => TransactionType.income,
-    TransactionFilter.transfer => TransactionType.transfer,
-    TransactionFilter.repayment => TransactionType.repayment,
-  };
-
-  String get label => switch (this) {
-    TransactionFilter.all => '全部',
-    TransactionFilter.expense => '支出',
-    TransactionFilter.income => '收入',
-    TransactionFilter.transfer => '转账',
-    TransactionFilter.repayment => '还款',
-  };
-}
-
 class LedgerController extends ChangeNotifier {
   LedgerController({
     required ApiClient api,
@@ -50,7 +26,7 @@ class LedgerController extends ChangeNotifier {
   StatsSummary? stats;
   RangeStats? rangeStats;
   StatsQuery statsQuery = StatsQuery.currentMonth(DateTime.now());
-  TransactionFilter filter = TransactionFilter.all;
+  TransactionQuery query = const TransactionQuery();
 
   bool configLoading = false;
   bool transactionsLoading = false;
@@ -131,6 +107,7 @@ class LedgerController extends ChangeNotifier {
         CachedLedgerConfig(categories: categories, channels: channels),
       );
       await _pruneStatsQuery();
+      await _pruneTransactionQuery();
     } on ApiException catch (error) {
       if (generation != _configGeneration) return;
       if (error.isUnauthorized) {
@@ -155,11 +132,11 @@ class LedgerController extends ChangeNotifier {
     transactionsError = null;
     notifyListeners();
     try {
-      final list = await _api.getTransactions(type: filter.type);
+      final list = await _api.getTransactions(query);
       if (generation != _transactionsGeneration) return;
       transactions = list;
-      // 服务端按筛选返回子集，只有全量结果才适合作为冷启动快照。
-      if (filter == TransactionFilter.all) {
+      // 服务端按查询返回子集，只有无条件的全量结果才适合作为冷启动快照。
+      if (!query.isActive) {
         await _cache?.writeTransactions(transactions);
       }
     } on ApiException catch (error) {
@@ -275,9 +252,9 @@ class LedgerController extends ChangeNotifier {
     await loadRangeStats();
   }
 
-  Future<void> setFilter(TransactionFilter next) async {
-    if (filter == next) return;
-    filter = next;
+  Future<void> setQuery(TransactionQuery next) async {
+    if (query == next) return;
+    query = next;
     notifyListeners();
     await loadTransactions();
   }
@@ -589,7 +566,7 @@ class LedgerController extends ChangeNotifier {
     subscriptionGroups = [];
     subscriptions = [];
     statsQuery = StatsQuery.currentMonth(DateTime.now());
-    filter = TransactionFilter.all;
+    query = const TransactionQuery();
     configLoading = false;
     transactionsLoading = false;
     statsLoading = false;
@@ -631,6 +608,41 @@ class LedgerController extends ChangeNotifier {
     rangeStatsError = null;
     notifyListeners();
     await loadRangeStats();
+  }
+
+  Future<void> _pruneTransactionQuery() async {
+    var categoryId = query.categoryId;
+    var tagId = query.tagId;
+    var paymentMethodId = query.paymentMethodId;
+    if (categoryId != null) {
+      final matches = categories.where((item) => item.id == categoryId);
+      if (matches.isEmpty) {
+        categoryId = null;
+        tagId = null;
+      } else if (tagId != null &&
+          !matches.first.tags.any((item) => item.id == tagId)) {
+        tagId = null;
+      }
+    } else {
+      tagId = null;
+    }
+    if (paymentMethodId != null &&
+        !channels.any((item) => item.id == paymentMethodId)) {
+      paymentMethodId = null;
+    }
+    if (categoryId == query.categoryId &&
+        tagId == query.tagId &&
+        paymentMethodId == query.paymentMethodId) {
+      return;
+    }
+    query = TransactionQuery(
+      type: query.type,
+      categoryId: categoryId,
+      tagId: tagId,
+      paymentMethodId: paymentMethodId,
+      keyword: query.keyword,
+    );
+    await loadTransactions();
   }
 
   Future<void> _expire() async {

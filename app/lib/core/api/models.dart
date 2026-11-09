@@ -232,6 +232,51 @@ class Transaction {
   };
 }
 
+class TransactionQuery {
+  const TransactionQuery({
+    this.type,
+    this.categoryId,
+    this.tagId,
+    this.paymentMethodId,
+    this.keyword = '',
+  });
+
+  final TransactionType? type;
+  final int? categoryId;
+  final int? tagId;
+  final int? paymentMethodId;
+  final String keyword;
+
+  bool get hasDimensions =>
+      type != null ||
+      categoryId != null ||
+      tagId != null ||
+      paymentMethodId != null;
+
+  bool get isActive => hasDimensions || keyword.trim().isNotEmpty;
+
+  TransactionQuery withKeyword(String value) => TransactionQuery(
+    type: type,
+    categoryId: categoryId,
+    tagId: tagId,
+    paymentMethodId: paymentMethodId,
+    keyword: value,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is TransactionQuery &&
+      other.type == type &&
+      other.categoryId == categoryId &&
+      other.tagId == tagId &&
+      other.paymentMethodId == paymentMethodId &&
+      other.keyword == keyword;
+
+  @override
+  int get hashCode =>
+      Object.hash(type, categoryId, tagId, paymentMethodId, keyword);
+}
+
 class TransactionInput {
   const TransactionInput({
     required this.type,

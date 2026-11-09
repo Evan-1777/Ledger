@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -2210,5 +2211,199 @@ func TestTransferTransactionWithFee(t *testing.T) {
 	}
 	if len(statsAfter.CategoryDistribution) != 0 {
 		t.Errorf("P&L polluted: expected CategoryDistribution empty, got %d items", len(statsAfter.CategoryDistribution))
+	}
+}
+
+func TestListTransactionsFilters(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+	authHeader := "Bearer " + token
+
+	getJSON := func(path string, target any) {
+		t.Helper()
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Authorization", authHeader)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s failed: %d %s", path, rec.Code, rec.Body.String())
+		}
+		if err := json.NewDecoder(rec.Body).Decode(target); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+	}
+
+	var categories []Category
+	getJSON("/api/categories", &categories)
+	categoryByName := map[string]Category{}
+	for _, item := range categories {
+		categoryByName[item.Name] = item
+	}
+	var methods []PaymentMethod
+	getJSON("/api/payment-methods", &methods)
+	methodByName := map[string]PaymentMethod{}
+	for _, item := range methods {
+		methodByName[item.Name] = item
+	}
+
+	food := categoryByName["餐饮美食"]
+	transport := categoryByName["交通出行"]
+	incomeCat := categoryByName["职业收入"]
+	lunch := food.Tags[0]
+	metro := transport.Tags[0]
+	salary := incomeCat.Tags[0]
+	wechat := methodByName["微信支付"]
+	alipay := methodByName["支付宝"]
+	bank := methodByName["招商银行卡"]
+	cash := methodByName["现金钞票"]
+	credit := methodByName["招商信用卡"]
+
+	create := func(body map[string]any) Transaction {
+		t.Helper()
+		payload, _ := json.Marshal(body)
+		req := httptest.NewRequest("POST", "/api/transactions", strings.NewReader(string(payload)))
+		req.Header.Set("Authorization", authHeader)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create %v failed: %d %s", body["description"], rec.Code, rec.Body.String())
+		}
+		var created Transaction
+		if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+			t.Fatalf("decode created transaction: %v", err)
+		}
+		return created
+	}
+
+	lunchTx := create(map[string]any{
+		"type": "expense", "amount": -25.5, "description": "午餐 · 牛肉面",
+		"payment_method_id": wechat.ID, "category_id": food.ID, "tag_id": lunch.ID,
+		"transacted_at": "2026-10-01T12:30:00Z",
+	})
+	metroTx := create(map[string]any{
+		"type": "expense", "amount": -4.0, "description": "地铁通勤",
+		"payment_method_id": alipay.ID, "category_id": transport.ID, "tag_id": metro.ID,
+		"transacted_at": "2026-10-02T08:00:00Z",
+	})
+	incomeTx := create(map[string]any{
+		"type": "income", "amount": 8000, "description": "八月工资",
+		"payment_method_id": bank.ID, "category_id": incomeCat.ID, "tag_id": salary.ID,
+		"transacted_at": "2026-10-03T09:00:00Z",
+	})
+	transferTx := create(map[string]any{
+		"type": "transfer", "amount": 1000, "fee": 1.5, "description": "账户互转",
+		"payment_method_id": bank.ID, "source_payment_method_id": alipay.ID,
+		"transacted_at": "2026-10-04T10:00:00Z",
+	})
+	repaymentTx := create(map[string]any{
+		"type": "repayment", "amount": 500, "description": "信用卡还款",
+		"payment_method_id": credit.ID, "source_payment_method_id": cash.ID,
+		"transacted_at": "2026-10-05T11:00:00Z",
+	})
+
+	list := func(query string) []Transaction {
+		t.Helper()
+		var items []Transaction
+		getJSON("/api/transactions?"+query, &items)
+		return items
+	}
+	ids := func(items []Transaction) []int64 {
+		result := make([]int64, 0, len(items))
+		for _, item := range items {
+			result = append(result, item.ID)
+		}
+		return result
+	}
+	sameIDs := func(label string, got []int64, want ...int64) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: expected %v, got %v", label, want, got)
+		}
+		counts := map[int64]int{}
+		for _, id := range got {
+			counts[id]++
+		}
+		for _, id := range want {
+			if counts[id] == 0 {
+				t.Fatalf("%s: expected %v, got %v", label, want, got)
+			}
+			counts[id]--
+		}
+	}
+
+	// 未过滤列表按时间倒序
+	ordered := list("")
+	wantOrder := []int64{repaymentTx.ID, transferTx.ID, incomeTx.ID, metroTx.ID, lunchTx.ID}
+	if len(ordered) != len(wantOrder) {
+		t.Fatalf("expected %d transactions, got %d", len(wantOrder), len(ordered))
+	}
+	for i, item := range ordered {
+		if item.ID != wantOrder[i] {
+			t.Fatalf("order[%d]: expected %d, got %d", i, wantOrder[i], item.ID)
+		}
+	}
+	// 未知 type 保持不过滤
+	sameIDs("unknown type", ids(list("type=bogus")), wantOrder...)
+
+	// 单维度与组合维度
+	sameIDs("category", ids(list("category_id="+strconv.FormatInt(food.ID, 10))), lunchTx.ID)
+	sameIDs("tag", ids(list("tag_id="+strconv.FormatInt(metro.ID, 10))), metroTx.ID)
+	sameIDs("type+category", ids(list("type=expense&category_id="+strconv.FormatInt(food.ID, 10))), lunchTx.ID)
+	sameIDs("type+tag", ids(list("type=expense&tag_id="+strconv.FormatInt(metro.ID, 10))), metroTx.ID)
+
+	// 支付渠道双边匹配：目标渠道、转账转出、还款来源
+	sameIDs("channel target", ids(list("payment_method_id="+strconv.FormatInt(wechat.ID, 10))), lunchTx.ID)
+	sameIDs("channel transfer source", ids(list("payment_method_id="+strconv.FormatInt(alipay.ID, 10))), metroTx.ID, transferTx.ID)
+	sameIDs("channel repayment source", ids(list("payment_method_id="+strconv.FormatInt(cash.ID, 10))), repaymentTx.ID)
+	sameIDs("channel bank", ids(list("payment_method_id="+strconv.FormatInt(bank.ID, 10))), incomeTx.ID, transferTx.ID)
+
+	// 关键词命中描述、分类名、标签名、目标渠道名与转出渠道名
+	sameIDs("keyword description", ids(list(url.Values{"q": {"牛肉"}}.Encode())), lunchTx.ID)
+	sameIDs("keyword category", ids(list(url.Values{"q": {"交通出行"}}.Encode())), metroTx.ID)
+	sameIDs("keyword tag", ids(list(url.Values{"q": {"地铁"}}.Encode())), metroTx.ID)
+	sameIDs("keyword target channel", ids(list(url.Values{"q": {"支付宝"}}.Encode())), metroTx.ID, transferTx.ID)
+	sameIDs("keyword source channel", ids(list(url.Values{"q": {"现金钞票"}}.Encode())), repaymentTx.ID)
+	sameIDs("keyword trimmed", ids(list(url.Values{"q": {"  地铁  "}}.Encode())), metroTx.ID)
+
+	// 通配符按字面量匹配，无命中时返回空数组而非 null
+	emptyReq := httptest.NewRequest("GET", "/api/transactions?"+url.Values{"q": {"不存在的记录"}}.Encode(), nil)
+	emptyReq.Header.Set("Authorization", authHeader)
+	emptyRec := httptest.NewRecorder()
+	s.ServeHTTP(emptyRec, emptyReq)
+	if strings.TrimSpace(emptyRec.Body.String()) != "[]" {
+		t.Errorf("expected empty array for unmatched keyword, got %s", emptyRec.Body.String())
+	}
+	sameIDs("literal percent", ids(list(url.Values{"q": {"%"}}.Encode())))
+	sameIDs("literal underscore", ids(list(url.Values{"q": {"_"}}.Encode())))
+	sameIDs("percent literal content", ids(list(url.Values{"q": {"100%"}}.Encode())))
+
+	// 非法维度参数返回 400，文案以参数名开头
+	expectBadRequest := func(query, prefix string) {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/api/transactions?"+query, nil)
+		req.Header.Set("Authorization", authHeader)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d", query, rec.Code)
+		}
+		var payload map[string]string
+		if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
+			t.Fatalf("%s: decode error body: %v", query, err)
+		}
+		if !strings.HasPrefix(payload["error"], prefix) {
+			t.Errorf("%s: expected error starting with %q, got %q", query, prefix, payload["error"])
+		}
+	}
+	expectBadRequest("category_id=abc", "category_id")
+	expectBadRequest("tag_id=0", "tag_id")
+	expectBadRequest("payment_method_id=-1", "payment_method_id")
+
+	// limit 与 offset 语义不变
+	if got := len(list("limit=2")); got != 2 {
+		t.Errorf("expected limit=2 to return 2 rows, got %d", got)
+	}
+	if got := len(list("limit=2&offset=4")); got != 1 {
+		t.Errorf("expected limit=2&offset=4 to return 1 row, got %d", got)
 	}
 }
