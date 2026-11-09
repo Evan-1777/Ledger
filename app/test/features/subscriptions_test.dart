@@ -160,6 +160,11 @@ Future<TestControllers> _pumpSubscriptions(
   return controllers;
 }
 
+/// Hero 月度金额；「未来 7 天」可能算出同一数值，不能按全文匹配。
+String heroMonthly(WidgetTester tester) => tester
+    .widget<Text>(find.byKey(const ValueKey('subscriptions-hero-monthly')))
+    .data!;
+
 Future<void> scrollTo(WidgetTester tester, Finder finder) async {
   await tester.scrollUntilVisible(
     finder,
@@ -178,10 +183,17 @@ void main() {
     final server = _FakeSubscriptionServer();
     await _pumpSubscriptions(tester, server);
 
-    expect(find.text('87.00'), findsOneWidget);
+    expect(heroMonthly(tester), '87.00');
     expect(find.text('1,044.00'), findsOneWidget);
-    expect(find.text('75.00'), findsNWidgets(2));
-    expect(find.text('1 项'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('subscription-amount-1')),
+        matching: find.text('75.00'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('共 2 项'), findsOneWidget);
+    expect(find.text('共 1 项'), findsOneWidget);
     expect(find.text('75.00 / 月'), findsOneWidget);
     expect(find.text('iCloud'), findsOneWidget);
     expect(find.text('已暂停 · 原扣款日 30 日'), findsOneWidget);
@@ -204,7 +216,7 @@ void main() {
     expect(find.text('iCloud'), findsOneWidget);
     expect(find.text('Netflix'), findsNothing);
     expect(find.text('1 项已暂停'), findsOneWidget);
-    expect(find.text('87.00'), findsOneWidget);
+    expect(heroMonthly(tester), '87.00');
     expect(find.text('—'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('subscriptions-filter-all')));

@@ -343,6 +343,7 @@ class _SummaryHero extends StatelessWidget {
                       summary.monthlyCents / 100,
                       withCurrency: false,
                     ),
+                    key: const ValueKey('subscriptions-hero-monthly'),
                     style: theme.textTheme.displaySmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       fontFeatures: const [FontFeature.tabularFigures()],
