@@ -702,7 +702,10 @@ class _TransactionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final amountColor = transactionColor(context, transaction);
+    final refunded = transaction.isRefunded;
+    final amountColor = refunded
+        ? transactionColor(context, transaction).withValues(alpha: 0.55)
+        : transactionColor(context, transaction);
     final note = transactionNote(transaction);
     return InkWell(
       key: ValueKey('stream-row-${transaction.id}'),
@@ -718,11 +721,39 @@ class _TransactionRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      transaction.description,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyLarge,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            transaction.description,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        ),
+                        if (transaction.isRefunded) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            key: ValueKey(
+                              'stream-row-refunded-${transaction.id}',
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '已退款',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -754,6 +785,10 @@ class _TransactionRow extends StatelessWidget {
                         key: ValueKey('stream-row-amount-${transaction.id}'),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
+                          decoration: refunded
+                              ? TextDecoration.lineThrough
+                              : null,
+                          decorationColor: amountColor,
                         ),
                         color: amountColor,
                       ),
@@ -778,9 +813,20 @@ class _TransactionRow extends StatelessWidget {
                 tooltip: '更多操作',
                 clipBehavior: Clip.antiAlias,
                 onSelected: (action) => _handleAction(context, action),
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: _RowAction.edit, child: Text('编辑')),
-                  PopupMenuItem(value: _RowAction.delete, child: Text('删除')),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: _RowAction.edit,
+                    child: Text('编辑'),
+                  ),
+                  if (transaction.canRefund)
+                    PopupMenuItem(
+                      value: _RowAction.refund,
+                      child: Text(transaction.isRefunded ? '取消退款' : '退款'),
+                    ),
+                  const PopupMenuItem(
+                    value: _RowAction.delete,
+                    child: Text('删除'),
+                  ),
                 ],
               ),
             ],
@@ -793,6 +839,10 @@ class _TransactionRow extends StatelessWidget {
   Future<void> _handleAction(BuildContext context, _RowAction action) async {
     if (action == _RowAction.edit) {
       await RecordSheet.show(context, initial: transaction);
+      return;
+    }
+    if (action == _RowAction.refund) {
+      await _toggleRefund(context);
       return;
     }
     final confirmed = await ConfirmDialog.show(
@@ -811,6 +861,22 @@ class _TransactionRow extends StatelessWidget {
       showLedgerSnackBar(context, error.message, isError: true);
     }
   }
+
+  // 退款可一键撤销，与订阅的暂停/恢复同为可逆状态切换，故不设确认对话框
+  Future<void> _toggleRefund(BuildContext context) async {
+    final refunded = transaction.isRefunded;
+    try {
+      await context.read<LedgerController>().setTransactionRefund(
+        transaction.id,
+        !refunded,
+      );
+      if (!context.mounted) return;
+      showLedgerSnackBar(context, refunded ? '已撤销退款' : '已标记退款');
+    } on ApiException catch (error) {
+      if (!context.mounted) return;
+      showLedgerSnackBar(context, error.message, isError: true);
+    }
+  }
 }
 
-enum _RowAction { edit, delete }
+enum _RowAction { edit, refund, delete }

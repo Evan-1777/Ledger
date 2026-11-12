@@ -105,5 +105,9 @@ export function buildMetaParts(item: MetaItemInput): string[] {
   return metaParts;
 }
 
+export function isRefunded(item: { refunded_at?: string | null }): boolean {
+  return Boolean(item.refunded_at);
+}
+
 export { formatAmount } from '../lib/format.ts';
 export type { FormattedAmount } from '../lib/format.ts';

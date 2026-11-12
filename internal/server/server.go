@@ -70,6 +70,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/transactions", s.requireAuth(s.handleCreateTransaction))
 	s.mux.HandleFunc("PUT /api/transactions/{id}", s.requireAuth(s.handleUpdateTransaction))
 	s.mux.HandleFunc("DELETE /api/transactions/{id}", s.requireAuth(s.handleDeleteTransaction))
+	s.mux.HandleFunc("POST /api/transactions/{id}/refund", s.requireAuth(s.handleRefundTransaction))
+	s.mux.HandleFunc("DELETE /api/transactions/{id}/refund", s.requireAuth(s.handleCancelRefundTransaction))
 
 	// Subscription routes
 	s.mux.HandleFunc("GET /api/subscription-groups", s.requireAuth(s.handleListSubscriptionGroups))

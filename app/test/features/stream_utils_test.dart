@@ -78,6 +78,37 @@ void main() {
     expect(daySubtotal(group), '支出 ¥38.00  收入 ¥3,200.00');
   });
 
+  test('day subtotals skip refunded transactions', () {
+    final list = [
+      transactionModel(id: 1, amountCents: -2800),
+      transactionModel(
+        id: 2,
+        amountCents: -1000,
+        refundedAt: DateTime(2026, 10, 19, 5),
+      ),
+      transactionModel(
+        id: 3,
+        type: TransactionType.income,
+        amountCents: 320000,
+      ),
+      transactionModel(
+        id: 4,
+        type: TransactionType.income,
+        amountCents: 5000,
+        categoryId: 4,
+        categoryName: '职业收入',
+        refundedAt: DateTime(2026, 10, 19, 6),
+      ),
+    ];
+
+    final group = groupTransactions(list).single;
+
+    expect(group.items.length, 4);
+    expect(group.expense, 28);
+    expect(group.income, 3200);
+    expect(daySubtotal(group), '支出 ¥28.00  收入 ¥3,200.00');
+  });
+
   test('day header includes relative label, date and weekday', () {
     final now = DateTime(2026, 10, 19, 12);
     final groups = groupTransactions([

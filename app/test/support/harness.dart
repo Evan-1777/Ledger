@@ -371,6 +371,7 @@ Map<String, Object?> transactionJson({
   int tagId = 1,
   String tagName = '午餐',
   String transactedAt = '2026-10-19T04:42:00Z',
+  String? refundedAt,
 }) => {
   'id': id,
   'type': type,
@@ -389,6 +390,7 @@ Map<String, Object?> transactionJson({
   'tag_name': tagName,
   'transacted_at': transactedAt,
   'created_at': transactedAt,
+  'refunded_at': refundedAt,
 };
 
 Map<String, Object?> rangeStatsJson({

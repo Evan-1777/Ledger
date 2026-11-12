@@ -48,6 +48,7 @@ class LedgerController extends ChangeNotifier {
   int _subscriptionsGeneration = 0;
   bool _expiring = false;
   final Set<int> _deletingTransactions = {};
+  final Set<int> _refundingTransactions = {};
 
   List<PaymentMethod> get assetChannels =>
       channels.where((item) => item.type == ChannelType.asset).toList();
@@ -280,6 +281,22 @@ class LedgerController extends ChangeNotifier {
       await refreshAfterTransactionChange();
     } finally {
       _deletingTransactions.remove(id);
+    }
+  }
+
+  bool isRefundingTransaction(int id) => _refundingTransactions.contains(id);
+
+  Future<void> setTransactionRefund(int id, bool refunded) async {
+    if (!_refundingTransactions.add(id)) return;
+    try {
+      await _guard(
+        () => refunded
+            ? _api.refundTransaction(id)
+            : _api.cancelRefundTransaction(id),
+      );
+      await refreshAfterTransactionChange();
+    } finally {
+      _refundingTransactions.remove(id);
     }
   }
 

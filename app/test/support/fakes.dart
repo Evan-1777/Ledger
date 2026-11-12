@@ -127,6 +127,7 @@ Transaction transactionModel({
   int tagId = 1,
   String tagName = '午餐',
   DateTime? transactedAt,
+  DateTime? refundedAt,
 }) => Transaction(
   id: id,
   type: type,
@@ -142,6 +143,7 @@ Transaction transactionModel({
   tagId: tagId,
   tagName: tagName,
   transactedAt: (transactedAt ?? DateTime(2026, 10, 19, 8, 42)).toUtc(),
+  refundedAt: refundedAt?.toUtc(),
 );
 
 class MemoryLedgerCache implements LedgerCache {

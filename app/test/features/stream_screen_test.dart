@@ -551,6 +551,96 @@ void main() {
     expect(find.text('账单已删除'), findsOneWidget);
   });
 
+  testWidgets('refunded row shows its badge and cancels refund in one tap', (
+    tester,
+  ) async {
+    final refundRequests = <http.Request>[];
+    final refunded = transactionJson(refundedAt: '2026-10-19T05:00:00Z');
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions/1/refund') {
+        refundRequests.add(request);
+        return jsonResponse(transactionJson());
+      }
+      return defaultApi(request, transactions: [refunded]);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    expect(find.byKey(const ValueKey('stream-row-refunded-1')), findsOneWidget);
+    expect(find.text('已退款'), findsOneWidget);
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(find.text('取消退款'), findsOneWidget);
+    await tester.tap(find.text('取消退款'));
+    await tester.pumpAndSettle();
+
+    expect(refundRequests.length, 1);
+    expect(refundRequests.single.method, 'DELETE');
+    expect(refundRequests.single.url.path, '/api/transactions/1/refund');
+    expect(find.text('已撤销退款'), findsOneWidget);
+  });
+
+  testWidgets('refunding a row sends one request and reports success', (
+    tester,
+  ) async {
+    final refunds = <http.Request>[];
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'POST' &&
+          request.url.path == '/api/transactions/1/refund') {
+        refunds.add(request);
+        return jsonResponse(
+          transactionJson(refundedAt: '2026-10-19T05:00:00Z'),
+        );
+      }
+      return defaultApi(request);
+    });
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('退款'));
+    await tester.pumpAndSettle();
+
+    expect(refunds.length, 1);
+    expect(refunds.single.method, 'POST');
+    expect(refunds.single.url.path, '/api/transactions/1/refund');
+    expect(find.text('已标记退款'), findsOneWidget);
+  });
+
+  testWidgets('transfer rows offer no refund entry', (tester) async {
+    final transfer = transactionJson(
+      type: 'transfer',
+      amountCents: 10000,
+      paymentMethodName: '支付宝',
+      sourcePaymentMethodName: '招商银行卡',
+    );
+    final controllers = await testControllersWithHandler(
+      (request) => defaultApi(request, transactions: [transfer]),
+    );
+    await controllers.ledger.loadAll();
+    await pumpWithProviders(
+      tester,
+      home: const StreamScreen(),
+      controllers: controllers,
+    );
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('退款'), findsNothing);
+    expect(find.text('取消退款'), findsNothing);
+    expect(find.text('删除'), findsOneWidget);
+  });
+
   testWidgets(
     '320dp with 2x text opens the filter and reaches the apply button',
     (tester) async {

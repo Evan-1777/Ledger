@@ -230,6 +230,23 @@ export default function App() {
     }
   };
 
+  const handleToggleRefund = async (tx: Transaction) => {
+    const refunding = !tx.refunded_at;
+    try {
+      if (refunding) {
+        await api.refundTransaction(tx.id);
+        addToast('success', '已标记退款');
+      } else {
+        await api.cancelRefundTransaction(tx.id);
+        addToast('success', '已撤销退款');
+      }
+      fetchTransactions();
+      if (currentTab === 'stats' || currentTab === 'assets') fetchStats();
+    } catch (err: unknown) {
+      addToast('error', err instanceof Error ? err.message : refunding ? '退款失败' : '撤销退款失败');
+    }
+  };
+
   const handleEditClick = (tx: Transaction) => {
     setEditingTransaction(tx);
     setIsRecordModalOpen(true);
@@ -407,6 +424,7 @@ export default function App() {
                   summary: tx ? `${tx.description} · ${tx.category_name || ''}` : '',
                 });
               }}
+              onToggleRefund={handleToggleRefund}
               onAddRecord={() => {
                 setEditingTransaction(null);
                 setIsRecordModalOpen(true);

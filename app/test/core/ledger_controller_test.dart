@@ -598,6 +598,87 @@ void main() {
     expect(deletes, 1);
   });
 
+  test('refunding a transaction refreshes list and stats once', () async {
+    final refundMethods = <String>[];
+    final refunded = jsonResponse(
+      transactionJson(refundedAt: '2026-10-19T05:00:00Z'),
+    );
+    var transactionGets = 0;
+    var statsGets = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions/1/refund') {
+        refundMethods.add(request.method);
+        return request.method == 'POST'
+            ? refunded
+            : jsonResponse(transactionJson());
+      }
+      if (request.url.path == '/api/transactions') {
+        transactionGets++;
+        return jsonResponse([transactionJson()]);
+      }
+      if (request.url.path == '/api/stats/summary') {
+        statsGets++;
+        return jsonResponse(statsJson());
+      }
+      return standardHandler(request);
+    });
+
+    await controllers.ledger.setTransactionRefund(1, true);
+
+    expect(refundMethods, ['POST']);
+    expect(transactionGets, 1);
+    expect(statsGets, 1);
+
+    await controllers.ledger.setTransactionRefund(1, false);
+
+    expect(refundMethods, ['POST', 'DELETE']);
+    expect(transactionGets, 2);
+    expect(statsGets, 2);
+  });
+
+  test('duplicate refund calls send one request', () async {
+    var refunds = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.method == 'POST' &&
+          request.url.path == '/api/transactions/1/refund') {
+        refunds++;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return jsonResponse(
+          transactionJson(refundedAt: '2026-10-19T05:00:00Z'),
+        );
+      }
+      return standardHandler(request);
+    });
+
+    await Future.wait([
+      controllers.ledger.setTransactionRefund(1, true),
+      controllers.ledger.setTransactionRefund(1, true),
+    ]);
+
+    expect(refunds, 1);
+  });
+
+  test('a failed refund marks the session expired on 401', () async {
+    var expired = 0;
+    final controllers = await testControllersWithHandler((request) async {
+      if (request.url.path == '/api/transactions/1/refund') {
+        return jsonResponse({'error': 'unauthorized'}, status: 401);
+      }
+      return standardHandler(request);
+    });
+    final ledger = LedgerController(
+      api: controllers.api,
+      onSessionExpired: () async => expired++,
+    );
+
+    await expectLater(
+      ledger.setTransactionRefund(1, true),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(expired, 1);
+  });
+
   test('creating a transaction refreshes list and stats once', () async {
     var posts = 0;
     var transactionGets = 0;

@@ -433,6 +433,7 @@ func TestTransactionsMigration(t *testing.T) {
 
 	hasType := false
 	hasSourcePM := false
+	hasRefundedAt := false
 	for rows.Next() {
 		var cid int
 		var name, colType string
@@ -447,9 +448,28 @@ func TestTransactionsMigration(t *testing.T) {
 		if name == "source_payment_method_id" {
 			hasSourcePM = true
 		}
+		if name == "refunded_at" {
+			hasRefundedAt = true
+		}
 	}
-	if !hasType || !hasSourcePM {
-		t.Fatalf("transactions columns missing: hasType=%v, hasSourcePM=%v", hasType, hasSourcePM)
+	if !hasType || !hasSourcePM || !hasRefundedAt {
+		t.Fatalf("transactions columns missing: hasType=%v, hasSourcePM=%v, hasRefundedAt=%v", hasType, hasSourcePM, hasRefundedAt)
+	}
+
+	// 存量行数不变，且补列的退款状态为空
+	var txCount int
+	if err := upgradedDB.QueryRow("SELECT COUNT(*) FROM transactions").Scan(&txCount); err != nil {
+		t.Fatalf("failed to count transactions: %v", err)
+	}
+	if txCount != 2 {
+		t.Errorf("expected 2 surviving transactions, got %d", txCount)
+	}
+	var refundedAt sql.NullString
+	if err := upgradedDB.QueryRow("SELECT refunded_at FROM transactions WHERE description = '旧支出'").Scan(&refundedAt); err != nil {
+		t.Fatalf("failed to query refunded_at: %v", err)
+	}
+	if refundedAt.Valid {
+		t.Errorf("expected legacy row to have NULL refunded_at, got %q", refundedAt.String)
 	}
 
 	// Verify backfilled type values

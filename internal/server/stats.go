@@ -258,7 +258,7 @@ func (s *Server) handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		       COALESCE((SELECT SUM(amount_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'repayment'), 0) AS source_repayment_sum,
 		       COALESCE((SELECT SUM(amount_cents + fee_cents) FROM transactions WHERE source_payment_method_id = pm.id AND type = 'transfer'), 0) AS source_transfer_sum
 		FROM payment_methods pm
-		LEFT JOIN transactions t ON t.payment_method_id = pm.id
+		LEFT JOIN transactions t ON t.payment_method_id = pm.id AND t.refunded_at IS NULL
 		GROUP BY pm.id, pm.name, pm.type, pm.initial_balance_cents, pm.credit_limit_cents
 		ORDER BY pm.sort_order ASC, pm.id ASC
 	`)
@@ -573,7 +573,7 @@ func (s *Server) sumByType(ctx context.Context, txType, startUTC, endUTC string,
 		SELECT COALESCE(SUM(t.amount_cents), 0)
 		FROM transactions t
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0 AND t.refunded_at IS NULL`+filterSQL+`
 	`, args...).Scan(&cents)
 	if err != nil {
 		return 0, err
@@ -589,7 +589,7 @@ func (s *Server) countByType(ctx context.Context, txType, startUTC, endUTC strin
 		SELECT COUNT(*)
 		FROM transactions t
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0 AND t.refunded_at IS NULL`+filterSQL+`
 	`, args...).Scan(&count)
 	if err != nil {
 		return 0, err
@@ -607,7 +607,7 @@ func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, end
 		SELECT c.id, c.name, COALESCE(SUM(t.amount_cents), 0)
 		FROM categories c
 		JOIN transactions t ON t.category_id = c.id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0 AND t.refunded_at IS NULL`+filterSQL+`
 		GROUP BY c.id, c.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
 	`, args...)
@@ -647,7 +647,7 @@ func (s *Server) categoryDistribution(ctx context.Context, txType, startUTC, end
 		FROM tags tg
 		JOIN transactions t ON t.tag_id = tg.id
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0 AND t.refunded_at IS NULL`+filterSQL+`
 		GROUP BY t.category_id, tg.id, tg.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
 	`, tagArgs...)
@@ -691,7 +691,7 @@ func (s *Server) paymentDistribution(ctx context.Context, txType, startUTC, endU
 		FROM payment_methods pm
 		JOIN transactions t ON t.payment_method_id = pm.id
 		JOIN categories c ON c.id = t.category_id
-		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0`+filterSQL+`
+		WHERE t.transacted_at >= ? AND t.transacted_at <= ? AND t.type = ? AND c.exclude_from_stats = 0 AND t.refunded_at IS NULL`+filterSQL+`
 		GROUP BY pm.id, pm.name
 		ORDER BY ABS(SUM(t.amount_cents)) DESC
 	`, args...)

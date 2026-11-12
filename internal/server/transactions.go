@@ -30,6 +30,7 @@ type Transaction struct {
 	TagName                 string  `json:"tag_name"`
 	TransactedAt            string  `json:"transacted_at"`
 	CreatedAt               string  `json:"created_at"`
+	RefundedAt              *string `json:"refunded_at,omitempty"`
 }
 
 type TransactionRequest struct {
@@ -118,7 +119,7 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
 		       t.tag_id, COALESCE(tg.name, ''),
-		       t.transacted_at, t.created_at
+		       t.transacted_at, t.created_at, t.refunded_at
 		FROM transactions t
 		LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
 		LEFT JOIN payment_methods spm ON t.source_payment_method_id = spm.id
@@ -146,13 +147,14 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		var item Transaction
 		var srcPMID sql.NullInt64
 		var srcPMName sql.NullString
+		var refundedAt sql.NullString
 		err := rows.Scan(
 			&item.ID, &item.Type, &item.AmountCents, &item.FeeCents, &item.Description,
 			&item.PaymentMethodID, &item.PaymentMethodName,
 			&srcPMID, &srcPMName,
 			&item.CategoryID, &item.CategoryName,
 			&item.TagID, &item.TagName,
-			&item.TransactedAt, &item.CreatedAt,
+			&item.TransactedAt, &item.CreatedAt, &refundedAt,
 		)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
@@ -164,6 +166,10 @@ func (s *Server) handleListTransactions(w http.ResponseWriter, r *http.Request) 
 		}
 		if srcPMName.Valid {
 			item.SourcePaymentMethodName = srcPMName.String
+		}
+		if refundedAt.Valid {
+			val := refundedAt.String
+			item.RefundedAt = &val
 		}
 		item.Amount = float64(item.AmountCents) / 100.0
 		item.Fee = float64(item.FeeCents) / 100.0
@@ -288,6 +294,56 @@ func (s *Server) handleDeleteTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleRefundTransaction(w http.ResponseWriter, r *http.Request) {
+	s.setTransactionRefund(w, r, true)
+}
+
+func (s *Server) handleCancelRefundTransaction(w http.ResponseWriter, r *http.Request) {
+	s.setTransactionRefund(w, r, false)
+}
+
+// setTransactionRefund 执行退款 / 撤销退款；两者仅 UPDATE 语句不同，共用守卫与响应。
+func (s *Server) setTransactionRefund(w http.ResponseWriter, r *http.Request, refunded bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	existing, err := s.getTransactionByID(r, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSONError(w, http.StatusNotFound, "transaction not found")
+			return
+		}
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if existing.Type != "expense" && existing.Type != "income" {
+		writeJSONError(w, http.StatusBadRequest, "only expense or income transactions can be refunded")
+		return
+	}
+
+	if refunded {
+		// COALESCE 保证幂等：重复退款不刷新首次退款时间
+		_, err = s.db.ExecContext(r.Context(), "UPDATE transactions SET refunded_at = COALESCE(refunded_at, ?) WHERE id = ?", time.Now().UTC().Format(time.RFC3339), id)
+	} else {
+		_, err = s.db.ExecContext(r.Context(), "UPDATE transactions SET refunded_at = NULL WHERE id = ?", id)
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to update refund state: "+err.Error())
+		return
+	}
+
+	txItem, err := s.getTransactionByID(r, id)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, txItem)
 }
 
 func (s *Server) validateTransactionInput(r *http.Request, req *TransactionRequest) (int64, int64, string, string, error) {
@@ -460,7 +516,7 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 		       t.source_payment_method_id, COALESCE(spm.name, ''),
 		       t.category_id, COALESCE(c.name, ''),
 		       t.tag_id, COALESCE(tg.name, ''),
-		       t.transacted_at, t.created_at
+		       t.transacted_at, t.created_at, t.refunded_at
 		FROM transactions t
 		LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
 		LEFT JOIN payment_methods spm ON t.source_payment_method_id = spm.id
@@ -470,17 +526,18 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 	`
 	var srcPMID sql.NullInt64
 	var srcPMName sql.NullString
+	var refundedAt sql.NullString
 	err := s.db.QueryRowContext(r.Context(), query, id).Scan(
 		&item.ID, &item.Type, &item.AmountCents, &item.FeeCents, &item.Description,
 		&item.PaymentMethodID, &item.PaymentMethodName,
 		&srcPMID, &srcPMName,
 		&item.CategoryID, &item.CategoryName,
 		&item.TagID, &item.TagName,
-		&item.TransactedAt, &item.CreatedAt,
+		&item.TransactedAt, &item.CreatedAt, &refundedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("transaction not found")
+			return nil, fmt.Errorf("transaction not found: %w", sql.ErrNoRows)
 		}
 		return nil, err
 	}
@@ -490,6 +547,10 @@ func (s *Server) getTransactionByID(r *http.Request, id int64) (*Transaction, er
 	}
 	if srcPMName.Valid {
 		item.SourcePaymentMethodName = srcPMName.String
+	}
+	if refundedAt.Valid {
+		val := refundedAt.String
+		item.RefundedAt = &val
 	}
 	item.Amount = float64(item.AmountCents) / 100.0
 	item.Fee = float64(item.FeeCents) / 100.0

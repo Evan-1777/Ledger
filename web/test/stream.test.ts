@@ -5,6 +5,7 @@ import {
   formatTime,
   buildMetaParts,
   formatAmount,
+  isRefunded,
 } from '../src/pages/streamUtils.ts';
 
 describe('streamUtils - getDayInfo', () => {
@@ -126,6 +127,19 @@ describe('streamUtils - buildMetaParts', () => {
       transacted_at: new Date(2026, 9, 4, 15, 30).toISOString(),
     });
     assert.deepStrictEqual(parts, ['账户转账', '资金互转', '招商银行 → 微信零钱', '15:30']);
+  });
+});
+
+describe('streamUtils - isRefunded', () => {
+  test('treats undefined, null and empty string as not refunded', () => {
+    assert.strictEqual(isRefunded({}), false);
+    assert.strictEqual(isRefunded({ refunded_at: null }), false);
+    assert.strictEqual(isRefunded({ refunded_at: undefined }), false);
+    assert.strictEqual(isRefunded({ refunded_at: '' }), false);
+  });
+
+  test('treats a valid timestamp as refunded', () => {
+    assert.strictEqual(isRefunded({ refunded_at: '2026-10-28T12:00:00Z' }), true);
   });
 });
 

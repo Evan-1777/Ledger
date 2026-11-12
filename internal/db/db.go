@@ -89,6 +89,7 @@ func migrateAndSeed(db *sql.DB) error {
 		type TEXT NOT NULL DEFAULT 'expense',
 		source_payment_method_id INTEGER DEFAULT NULL REFERENCES payment_methods(id) ON DELETE RESTRICT,
 		fee_cents INTEGER NOT NULL DEFAULT 0,
+		refunded_at TEXT DEFAULT NULL,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -362,6 +363,7 @@ func migrateTransactionsColumns(tx *sql.Tx) error {
 	hasType := false
 	hasSourcePM := false
 	hasFeeCents := false
+	hasRefundedAt := false
 
 	for rows.Next() {
 		var cid int
@@ -378,6 +380,8 @@ func migrateTransactionsColumns(tx *sql.Tx) error {
 			hasSourcePM = true
 		case "fee_cents":
 			hasFeeCents = true
+		case "refunded_at":
+			hasRefundedAt = true
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -400,6 +404,11 @@ func migrateTransactionsColumns(tx *sql.Tx) error {
 	if !hasFeeCents {
 		if _, err := tx.Exec("ALTER TABLE transactions ADD COLUMN fee_cents INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return fmt.Errorf("failed to add column fee_cents to transactions: %w", err)
+		}
+	}
+	if !hasRefundedAt {
+		if _, err := tx.Exec("ALTER TABLE transactions ADD COLUMN refunded_at TEXT DEFAULT NULL"); err != nil {
+			return fmt.Errorf("failed to add column refunded_at to transactions: %w", err)
 		}
 	}
 

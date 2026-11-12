@@ -174,6 +174,7 @@ class Transaction {
     required this.tagId,
     required this.tagName,
     required this.transactedAt,
+    this.refundedAt,
   });
 
   final int id;
@@ -190,10 +191,14 @@ class Transaction {
   final int tagId;
   final String tagName;
   final DateTime transactedAt;
+  final DateTime? refundedAt;
 
   double get amount => amountCents / 100;
   double get fee => feeCents / 100;
   DateTime get localTransactedAt => transactedAt.toLocal();
+  bool get isRefunded => refundedAt != null;
+  bool get canRefund =>
+      type == TransactionType.expense || type == TransactionType.income;
 
   factory Transaction.fromJson(Map<String, dynamic> json) => Transaction(
     id: _asInt(json['id']),
@@ -212,6 +217,9 @@ class Transaction {
     tagId: _asInt(json['tag_id']),
     tagName: _asString(json['tag_name']),
     transactedAt: DateTime.parse(_asString(json['transacted_at'])).toUtc(),
+    refundedAt: _asString(json['refunded_at']).isEmpty
+        ? null
+        : DateTime.parse(_asString(json['refunded_at'])).toUtc(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -229,6 +237,8 @@ class Transaction {
     'tag_id': tagId,
     'tag_name': tagName,
     'transacted_at': transactedAt.toUtc().toIso8601String(),
+    if (refundedAt != null)
+      'refunded_at': refundedAt!.toUtc().toIso8601String(),
   };
 }
 

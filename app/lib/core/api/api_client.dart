@@ -311,6 +311,16 @@ class ApiClient {
     await _expectOk('DELETE', '/api/transactions/$id');
   }
 
+  Future<Transaction> refundTransaction(int id) async {
+    final decoded = await _expectOk('POST', '/api/transactions/$id/refund');
+    return _one(decoded, Transaction.fromJson);
+  }
+
+  Future<Transaction> cancelRefundTransaction(int id) async {
+    final decoded = await _expectOk('DELETE', '/api/transactions/$id/refund');
+    return _one(decoded, Transaction.fromJson);
+  }
+
   Future<StatsSummary> getStatsSummary() async {
     final decoded = await _expectOk('GET', '/api/stats/summary');
     return _one(decoded, StatsSummary.fromJson);

@@ -181,6 +181,48 @@ void main() {
     );
   });
 
+  test('refund and cancel send matching methods and paths', () async {
+    final requests = <http.Request>[];
+    final api = ApiClient(
+      client: MockClient((request) async {
+        requests.add(request);
+        return jsonResponse(
+          transactionJson(
+            refundedAt: request.method == 'DELETE'
+                ? null
+                : '2026-10-19T05:00:00Z',
+          ),
+        );
+      }),
+      baseUrl: () => 'https://ledger.test',
+      tokenProvider: () async => 'token',
+    );
+
+    final refunded = await api.refundTransaction(7);
+
+    expect(requests.single.method, 'POST');
+    expect(requests.single.url.path, '/api/transactions/7/refund');
+    expect(refunded.isRefunded, isTrue);
+    expect(refunded.refundedAt, DateTime.utc(2026, 10, 19, 5));
+
+    final restored = await api.cancelRefundTransaction(7);
+
+    expect(requests.last.method, 'DELETE');
+    expect(requests.last.url.path, '/api/transactions/7/refund');
+    expect(restored.isRefunded, isFalse);
+    expect(restored.refundedAt, isNull);
+  });
+
+  test('a transaction snapshot without refunded_at parses as not refunded', () {
+    final json = transactionJson()..remove('refunded_at');
+
+    expect(Transaction.fromJson(json).isRefunded, isFalse);
+    expect(
+      Transaction.fromJson(transactionJson(refundedAt: '')).isRefunded,
+      isFalse,
+    );
+  });
+
   test('transaction list sends only the active query dimensions', () async {
     late http.Request captured;
     final api = ApiClient(

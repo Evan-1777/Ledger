@@ -17,6 +17,7 @@ class TransactionDayGroup {
       .where(
         (item) =>
             item.type == TransactionType.expense &&
+            !item.isRefunded &&
             !excludedCategoryIds.contains(item.categoryId),
       )
       .fold(0, (sum, item) => sum + item.amount.abs());
@@ -27,6 +28,7 @@ class TransactionDayGroup {
       .where(
         (item) =>
             item.type == TransactionType.income &&
+            !item.isRefunded &&
             !excludedCategoryIds.contains(item.categoryId),
       )
       .fold(0, (sum, item) => sum + item.amount.abs());

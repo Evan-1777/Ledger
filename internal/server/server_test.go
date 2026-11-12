@@ -2407,3 +2407,241 @@ func TestListTransactionsFilters(t *testing.T) {
 		t.Errorf("expected limit=2&offset=4 to return 1 row, got %d", got)
 	}
 }
+
+func TestTransactionRefundFlow(t *testing.T) {
+	s, token, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	authHeader := "Bearer " + token
+
+	now := time.Date(2026, 10, 28, 20, 0, 0, 0, time.Local)
+	nowFunc = func() time.Time { return now }
+	t.Cleanup(func() { nowFunc = time.Now })
+
+	do := func(method, path, body, auth string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return rec
+	}
+	create := func(payload map[string]any) Transaction {
+		t.Helper()
+		raw, _ := json.Marshal(payload)
+		rec := do("POST", "/api/transactions", string(raw), authHeader)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("failed to create transaction: %d %s", rec.Code, rec.Body.String())
+		}
+		var item Transaction
+		if err := json.NewDecoder(rec.Body).Decode(&item); err != nil {
+			t.Fatalf("failed to decode created transaction: %v", err)
+		}
+		return item
+	}
+	decodeTx := func(rec *httptest.ResponseRecorder) Transaction {
+		t.Helper()
+		var item Transaction
+		if err := json.NewDecoder(rec.Body).Decode(&item); err != nil {
+			t.Fatalf("failed to decode transaction: %v", err)
+		}
+		return item
+	}
+	summary := func() StatsSummaryResponse {
+		t.Helper()
+		rec := do("GET", "/api/stats/summary", "", authHeader)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("failed to get stats summary: %d %s", rec.Code, rec.Body.String())
+		}
+		var stats StatsSummaryResponse
+		if err := json.NewDecoder(rec.Body).Decode(&stats); err != nil {
+			t.Fatalf("failed to decode stats summary: %v", err)
+		}
+		return stats
+	}
+	refundPath := func(id int64) string {
+		return "/api/transactions/" + strconv.FormatInt(id, 10) + "/refund"
+	}
+
+	// 1. 支出退款：资产余额、当月支出与分布同步回落
+	expense := create(map[string]any{
+		"type": "expense", "amount": -100.0, "description": "退货商品",
+		"payment_method_id": 1, "category_id": 1, "tag_id": 1,
+		"transacted_at": now.Format(time.RFC3339),
+	})
+	if expense.RefundedAt != nil {
+		t.Errorf("expected new transaction to carry no refunded_at, got %q", *expense.RefundedAt)
+	}
+
+	before := summary()
+	if before.MonthExpense != 100.0 {
+		t.Fatalf("expected month_expense 100 before refund, got %v", before.MonthExpense)
+	}
+	if before.AssetSummary.TotalAssets != -100.0 {
+		t.Fatalf("expected total_assets -100 before refund, got %v", before.AssetSummary.TotalAssets)
+	}
+	if len(before.CategoryDistribution) != 1 || len(before.PaymentDistribution) != 1 {
+		t.Fatalf("expected one category and one payment channel before refund, got %d / %d",
+			len(before.CategoryDistribution), len(before.PaymentDistribution))
+	}
+
+	rec := do("POST", refundPath(expense.ID), "", authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for refund, got %d %s", rec.Code, rec.Body.String())
+	}
+	refunded := decodeTx(rec)
+	if refunded.RefundedAt == nil || *refunded.RefundedAt == "" {
+		t.Fatalf("expected refunded_at to be set, got %v", refunded.RefundedAt)
+	}
+	firstRefundAt := *refunded.RefundedAt
+
+	// 1.1 已退款账单仍留在流水窗口内
+	listRec := do("GET", "/api/transactions", "", authHeader)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for list transactions, got %d", listRec.Code)
+	}
+	var list []Transaction
+	if err := json.NewDecoder(listRec.Body).Decode(&list); err != nil {
+		t.Fatalf("failed to decode transactions: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != expense.ID {
+		t.Fatalf("expected refunded transaction to stay in list, got %+v", list)
+	}
+	if list[0].RefundedAt == nil {
+		t.Errorf("expected list row to carry refunded_at")
+	}
+
+	// 1.2 全部金额聚合回落
+	after := summary()
+	if after.MonthExpense != 0 {
+		t.Errorf("expected month_expense 0 after refund, got %v", after.MonthExpense)
+	}
+	if after.AssetSummary.TotalAssets != 0 {
+		t.Errorf("expected total_assets 0 after refund, got %v", after.AssetSummary.TotalAssets)
+	}
+	if len(after.CategoryDistribution) != 0 || len(after.PaymentDistribution) != 0 {
+		t.Errorf("expected empty distributions after refund, got %d / %d",
+			len(after.CategoryDistribution), len(after.PaymentDistribution))
+	}
+	lastTrend := after.MonthlyTrends[len(after.MonthlyTrends)-1]
+	if lastTrend.Month != now.Format("2006-01") || lastTrend.Expense != 0 {
+		t.Errorf("expected current month trend expense 0 after refund, got %+v", after.MonthlyTrends)
+	}
+
+	// 1.3 重复退款幂等
+	rec = do("POST", refundPath(expense.ID), "", authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for repeated refund, got %d", rec.Code)
+	}
+	if got := decodeTx(rec).RefundedAt; got == nil || *got != firstRefundAt {
+		t.Errorf("expected repeated refund to keep %q, got %v", firstRefundAt, got)
+	}
+
+	// 1.4 编辑已退款账单不清除退款状态
+	editRaw, _ := json.Marshal(map[string]any{
+		"type": "expense", "amount": -80.0, "description": "退货商品改价",
+		"payment_method_id": 1, "category_id": 1, "tag_id": 1,
+		"transacted_at": now.Format(time.RFC3339),
+	})
+	rec = do("PUT", "/api/transactions/"+strconv.FormatInt(expense.ID, 10), string(editRaw), authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for editing refunded transaction, got %d %s", rec.Code, rec.Body.String())
+	}
+	edited := decodeTx(rec)
+	if edited.RefundedAt == nil || *edited.RefundedAt != firstRefundAt {
+		t.Errorf("expected edit to keep refunded_at %q, got %v", firstRefundAt, edited.RefundedAt)
+	}
+	if got := summary().MonthExpense; got != 0 {
+		t.Errorf("expected month_expense 0 for edited refunded transaction, got %v", got)
+	}
+
+	// 1.5 撤销退款恢复账务
+	rec = do("DELETE", refundPath(expense.ID), "", authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for cancel refund, got %d %s", rec.Code, rec.Body.String())
+	}
+	if restored := decodeTx(rec); restored.RefundedAt != nil {
+		t.Errorf("expected refunded_at cleared, got %q", *restored.RefundedAt)
+	}
+	restored := summary()
+	if restored.MonthExpense != 80.0 {
+		t.Errorf("expected month_expense 80 after cancel refund, got %v", restored.MonthExpense)
+	}
+	if restored.AssetSummary.TotalAssets != -80.0 {
+		t.Errorf("expected total_assets -80 after cancel refund, got %v", restored.AssetSummary.TotalAssets)
+	}
+
+	// 2. 收入退款对称成立
+	income := create(map[string]any{
+		"type": "income", "amount": 8000.0, "description": "八月工资",
+		"payment_method_id": 3, "category_id": 5, "tag_id": 14,
+		"transacted_at": now.Format(time.RFC3339),
+	})
+	if got := summary().MonthIncome; got != 8000.0 {
+		t.Fatalf("expected month_income 8000 before refund, got %v", got)
+	}
+	rec = do("POST", refundPath(income.ID), "", authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for income refund, got %d %s", rec.Code, rec.Body.String())
+	}
+	incomeRefunded := summary()
+	if incomeRefunded.MonthIncome != 0 {
+		t.Errorf("expected month_income 0 after refund, got %v", incomeRefunded.MonthIncome)
+	}
+	if len(incomeRefunded.IncomeCategoryDistribution) != 0 || len(incomeRefunded.IncomePaymentDistribution) != 0 {
+		t.Errorf("expected empty income distributions after refund, got %d / %d",
+			len(incomeRefunded.IncomeCategoryDistribution), len(incomeRefunded.IncomePaymentDistribution))
+	}
+	rec = do("DELETE", refundPath(income.ID), "", authHeader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for cancel income refund, got %d", rec.Code)
+	}
+	if got := summary().MonthIncome; got != 8000.0 {
+		t.Errorf("expected month_income 8000 after cancel refund, got %v", got)
+	}
+
+	// 3. 可退款范围：转账与还款拒绝
+	transfer := create(map[string]any{
+		"type": "transfer", "amount": 100.0, "description": "账户互转",
+		"payment_method_id": 1, "source_payment_method_id": 2,
+		"transacted_at": now.Format(time.RFC3339),
+	})
+	repayment := create(map[string]any{
+		"type": "repayment", "amount": 50.0, "description": "信用卡还款",
+		"payment_method_id": 5, "source_payment_method_id": 1,
+		"transacted_at": now.Format(time.RFC3339),
+	})
+	for _, tc := range []struct {
+		name string
+		id   int64
+	}{
+		{"transfer", transfer.ID},
+		{"repayment", repayment.ID},
+	} {
+		for _, method := range []string{"POST", "DELETE"} {
+			rec = do(method, refundPath(tc.id), "", authHeader)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400 for %s %s refund, got %d", method, tc.name, rec.Code)
+			}
+		}
+	}
+
+	// 4. 边界与鉴权
+	if rec = do("POST", refundPath(999999), "", authHeader); rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for missing transaction refund, got %d", rec.Code)
+	}
+	if rec = do("DELETE", refundPath(999999), "", authHeader); rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for missing transaction cancel refund, got %d", rec.Code)
+	}
+	if rec = do("POST", "/api/transactions/abc/refund", "", authHeader); rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-numeric id, got %d", rec.Code)
+	}
+	if rec = do("POST", refundPath(expense.ID), "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without token, got %d", rec.Code)
+	}
+	if rec = do("DELETE", refundPath(expense.ID), "", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without token for cancel refund, got %d", rec.Code)
+	}
+}

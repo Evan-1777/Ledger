@@ -43,6 +43,7 @@ export interface Transaction {
   tag_name: string;
   transacted_at: string;
   created_at: string;
+  refunded_at?: string | null;
 }
 
 export interface TagStat {
@@ -359,6 +360,18 @@ export const api = {
 
   deleteTransaction(id: number): Promise<{ success: boolean }> {
     return request<{ success: boolean }>(`/api/transactions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  refundTransaction(id: number): Promise<Transaction> {
+    return request<Transaction>(`/api/transactions/${id}/refund`, {
+      method: 'POST',
+    });
+  },
+
+  cancelRefundTransaction(id: number): Promise<Transaction> {
+    return request<Transaction>(`/api/transactions/${id}/refund`, {
       method: 'DELETE',
     });
   },

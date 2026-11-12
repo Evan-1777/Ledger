@@ -1,9 +1,9 @@
 import type { FC } from 'react';
-import { CalendarIcon, EditIcon, TrashIcon } from '../components/Icons';
-import { TypeTile, Amount, Panel, SkeletonList, EmptyState, IconButton } from '../components/primitives';
+import { CalendarIcon, EditIcon, RefundIcon, TrashIcon } from '../components/Icons';
+import { TypeTile, Amount, Panel, SkeletonList, EmptyState, IconButton, Chip } from '../components/primitives';
 import { Transaction } from '../lib/api';
 import { formatMoney, formatPercent } from '../lib/format.ts';
-import { getDayInfo, buildMetaParts, formatAmount } from './streamUtils';
+import { getDayInfo, buildMetaParts, formatAmount, isRefunded } from './streamUtils';
 
 interface StreamPageProps {
   transactions: Transaction[];
@@ -12,6 +12,7 @@ interface StreamPageProps {
   loading: boolean;
   onEdit: (tx: Transaction) => void;
   onDelete: (id: number) => void;
+  onToggleRefund: (tx: Transaction) => void;
   onAddRecord: () => void;
 }
 
@@ -31,13 +32,14 @@ interface MonthHeadline {
   label: string;
 }
 
-/** Current-calendar-month aggregation, strictly excluding transfer & repayment */
+/** Current-calendar-month aggregation, strictly excluding transfer & repayment and refunded bills */
 function computeMonthHeadline(transactions: Transaction[]): MonthHeadline {
   const now = new Date();
   const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   let expense = 0;
   let income = 0;
   transactions.forEach((tx) => {
+    if (isRefunded(tx)) return;
     const key = toDateKey(tx.transacted_at);
     if (!key || !key.startsWith(monthPrefix)) return;
     if (tx.type === 'expense' || (!tx.type && tx.amount_cents < 0)) {
@@ -62,6 +64,7 @@ export const StreamPage: FC<StreamPageProps> = ({
   loading,
   onEdit,
   onDelete,
+  onToggleRefund,
   onAddRecord,
 }) => {
   if (loading) {
@@ -147,10 +150,11 @@ export const StreamPage: FC<StreamPageProps> = ({
           const items = groups[dateKey];
           const dayInfo = getDayInfo(dateKey);
 
-          // Day subtotals strictly exclude transfer & repayment
+          // Day subtotals strictly exclude transfer & repayment and refunded bills
           let groupExpense = 0;
           let groupIncome = 0;
           items.forEach((item) => {
+            if (isRefunded(item)) return;
             if (item.type === 'expense' || (!item.type && item.amount_cents < 0)) {
               groupExpense += Math.abs(item.amount);
             } else if (item.type === 'income' || (!item.type && item.amount_cents > 0)) {
@@ -191,6 +195,8 @@ export const StreamPage: FC<StreamPageProps> = ({
                 {items.map((item, idx) => {
                   const metaParts = buildMetaParts(item);
                   const { formattedText } = formatAmount(item.amount, item.type, item.amount_cents);
+                  const refunded = isRefunded(item);
+                  const refundable = item.type === 'expense' || item.type === 'income';
 
                   return (
                     <div
@@ -214,15 +220,29 @@ export const StreamPage: FC<StreamPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Amount */}
-                      <Amount
-                        value={formattedText}
-                        type={item.type}
-                        className="min-w-[76px] min-[640px]:min-w-[88px] text-right whitespace-nowrap flex-shrink-0 !text-[14px] min-[640px]:!text-[15px]"
-                      />
+                      {/* Amount — the refund badge lives here: this column already owns the width, so the badge never competes with the title */}
+                      <div className="flex flex-col items-end gap-0.5 min-w-[76px] min-[640px]:min-w-[88px] flex-shrink-0">
+                        <Amount
+                          value={formattedText}
+                          type={item.type}
+                          className={`text-right whitespace-nowrap !text-[14px] min-[640px]:!text-[15px] ${
+                            refunded ? 'line-through opacity-55' : ''
+                          }`}
+                        />
+                        {refunded && <Chip>已退款</Chip>}
+                      </div>
 
                       {/* Row Actions */}
                       <div className="flex gap-0.5 flex-shrink-0 opacity-100 min-[640px]:opacity-55 min-[640px]:group-hover:opacity-100 min-[640px]:group-focus-within:opacity-100 transition-opacity duration-[var(--d1)]">
+                        {refundable && (
+                          <IconButton
+                            label={refunded ? '取消退款' : '退款'}
+                            size={28}
+                            onClick={() => onToggleRefund(item)}
+                          >
+                            <RefundIcon size={14} />
+                          </IconButton>
+                        )}
                         <IconButton label="编辑" size={28} onClick={() => onEdit(item)}>
                           <EditIcon size={14} />
                         </IconButton>
